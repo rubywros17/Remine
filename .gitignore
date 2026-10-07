@@ -1,0 +1,84 @@
+# =========================================================
+# 🔒 비밀값 — 절대 커밋 금지
+# =========================================================
+.env
+.env.*
+!.env.example
+**/google-services.json
+**/GoogleService-Info.plist
+**/firebase-adminsdk*.json
+**/*serviceAccount*.json
+*.jks
+*.keystore
+**/key.properties
+**/application-local.yml
+**/application-secret.yml
+**/application-prod.yml
+
+# =========================================================
+# 📱 Flutter / Dart  (app/)
+# =========================================================
+app/.dart_tool/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/.packages
+app/.pub-cache/
+app/.pub/
+app/build/
+app/coverage/
+app/**/generated_plugin_registrant.*
+app/.metadata
+
+# Android (Flutter)
+app/android/.gradle/
+app/android/captures/
+app/android/local.properties
+app/android/app/debug/
+app/android/app/profile/
+app/android/app/release/
+app/android/**/gradle-wrapper.jar
+app/android/gradlew
+app/android/gradlew.bat
+
+# iOS (Flutter)
+app/ios/Pods/
+app/ios/.symlinks/
+app/ios/Flutter/Flutter.framework
+app/ios/Flutter/Flutter.podspec
+app/ios/Flutter/Generated.xcconfig
+app/ios/Flutter/ephemeral/
+app/ios/Flutter/flutter_export_environment.sh
+app/ios/Runner/GeneratedPluginRegistrant.*
+app/ios/**/xcuserdata/
+app/ios/**/DerivedData/
+
+# =========================================================
+# ⚙️ Spring Boot / Gradle  (server/)
+# =========================================================
+server/.gradle/
+server/build/
+server/out/
+server/bin/
+!server/gradle/wrapper/gradle-wrapper.jar
+server/logs/
+*.log
+
+# =========================================================
+# 🧰 IDE / OS
+# =========================================================
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/*
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# =========================================================
+# 🤖 Claude Code 로컬 설정
+# =========================================================
+.claude/settings.local.json
