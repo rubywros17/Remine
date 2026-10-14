@@ -2,11 +2,7 @@
   "pricedAt": "2026-10-14",
   "pricesUsdPerMillionTokens": "각 제공사 공식 가격 페이지 기준. 변동되면 이 파일만 고친다.",
   "candidates": [
-    { "name": "claude-haiku-5-5",      "provider": "anthropic", "model": "claude-haiku-5-5",      "inputPerMTok": 0.10, "outputPerMTok": 0.50 },
-    { "name": "claude-sonnet-5-5",     "provider": "anthropic", "model": "claude-sonnet-5-5",     "inputPerMTok": 2.00, "outputPerMTok": 10.00 },
-    { "name": "gemini-3.1-flash-lite", "provider": "gemini",    "model": "gemini-3.1-flash-lite", "inputPerMTok": 0.25, "outputPerMTok": 1.50 },
-    { "name": "gemini-2.5-flash-lite", "provider": "gemini",    "model": "gemini-2.5-flash-lite", "inputPerMTok": 0.10, "outputPerMTok": 0.40 },
-    { "name": "gpt-5-nano",            "provider": "openai",    "model": "gpt-5-nano",            "inputPerMTok": 0.05, "outputPerMTok": 0.40 },
-    { "name": "gpt-5-mini",            "provider": "openai",    "model": "gpt-5-mini",            "inputPerMTok": 0.25, "outputPerMTok": 2.00 }
+    { "name": "gemini-3.1-flash-lite", "provider": "gemini", "model": "gemini-3.1-flash-lite", "inputPerMTok": 0.25, "outputPerMTok": 1.50 },
+    { "name": "gemini-2.5-flash-lite", "provider": "gemini", "model": "gemini-2.5-flash-lite", "inputPerMTok": 0.10, "outputPerMTok": 0.40 }
   ]
 }

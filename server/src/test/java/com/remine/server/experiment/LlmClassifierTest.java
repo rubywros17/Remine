@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class LlmClassifierTest {
 
     private final JsonMapper mapper = JsonMapper.builder().build();
-    private final Candidate candidate = new Candidate("c", "openai", "m", 1, 1);
+    private final Candidate candidate = new Candidate("c", "gemini", "m", 1, 1);
 
     @Test
     void 응답을_분류_결과와_토큰으로_변환한다() {

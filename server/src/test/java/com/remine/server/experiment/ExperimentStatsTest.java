@@ -15,7 +15,7 @@ import static org.assertj.core.api.Assertions.within;
 class ExperimentStatsTest {
 
     // 입력 $1 / 출력 $2 per 1M tokens
-    private final Candidate candidate = new Candidate("test", "openai", "m", 1.0, 2.0);
+    private final Candidate candidate = new Candidate("test", "gemini", "m", 1.0, 2.0);
 
     private Sample called(Category expected, Category predicted, long latencyMs, int in, int out) {
         return new Sample("f", expected, predicted, LlmOutcome.Status.OK, true, new LlmUsage(in, out, latencyMs));

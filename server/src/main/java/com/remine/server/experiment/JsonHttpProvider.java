@@ -9,7 +9,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.time.Duration;
 import java.util.Map;
 
-/** 제공사 3종이 공유하는 "JSON POST → JSON 응답" 부분. 4xx/5xx는 예외로 올려 재시도 대상이 된다. */
+/** 제공사 구현이 공유하는 "JSON POST → JSON 응답" 부분. 4xx/5xx는 예외로 올려 재시도 대상이 된다. */
 abstract class JsonHttpProvider implements LlmProvider {
 
     protected final JsonMapper mapper;
