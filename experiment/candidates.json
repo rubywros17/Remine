@@ -1,8 +1,22 @@
 {
   "pricedAt": "2026-10-14",
-  "pricesUsdPerMillionTokens": "각 제공사 공식 가격 페이지 기준. 변동되면 이 파일만 고친다.",
+  "source": "https://ai.google.dev/gemini-api/docs/pricing (페이지 갱신 2026-10-13). 가격이 바뀌면 이 파일만 고친다.",
   "candidates": [
-    { "name": "gemini-3.1-flash-lite", "provider": "gemini", "model": "gemini-3.1-flash-lite", "inputPerMTok": 0.25, "outputPerMTok": 1.50 },
-    { "name": "gemini-2.5-flash-lite", "provider": "gemini", "model": "gemini-2.5-flash-lite", "inputPerMTok": 0.10, "outputPerMTok": 0.40 }
+    {
+      "name": "gemini-3.5-flash-lite",
+      "provider": "gemini",
+      "model": "gemini-3.5-flash-lite",
+      "inputPerMTok": 0.30,
+      "outputPerMTok": 2.50,
+      "note": "Flash-Lite 계열. 문서가 신규 프로젝트에 권장. 사고 기본값 minimal. 무료 티어 있음."
+    },
+    {
+      "name": "gemini-3.8-flash",
+      "provider": "gemini",
+      "model": "gemini-3.8-flash",
+      "inputPerMTok": 0.75,
+      "outputPerMTok": 3.75,
+      "note": "일반 Flash 계열. 사고 기본값 medium. 2027-01-01부터 1.50/7.50으로 인상 예정. 무료 티어 있음."
+    }
   ]
 }
