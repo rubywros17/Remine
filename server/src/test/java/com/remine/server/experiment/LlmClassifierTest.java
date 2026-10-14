@@ -16,12 +16,12 @@ class LlmClassifierTest {
     @Test
     void 응답을_분류_결과와_토큰으로_변환한다() {
         LlmProvider provider = (model, system, user) -> new LlmReply(
-                "{\"category\":\"MOVIE_DRAMA\",\"tags\":[\"드라마\"],\"summary\":\"드라마 정보\"}", 120, 20);
+                "{\"category\":\"ENTERTAINMENT\",\"tags\":[\"드라마\"],\"summary\":\"드라마 정보\"}", 120, 20);
 
         LlmOutcome outcome = new LlmClassifier(candidate, provider, mapper).classifyWithUsage("드라마 시즌2");
 
         assertThat(outcome.status()).isEqualTo(LlmOutcome.Status.OK);
-        assertThat(outcome.result().category()).isEqualTo(Category.MOVIE_DRAMA);
+        assertThat(outcome.result().category()).isEqualTo(Category.ENTERTAINMENT);
         assertThat(outcome.usage().inputTokens()).isEqualTo(120);
         assertThat(outcome.usage().outputTokens()).isEqualTo(20);
     }

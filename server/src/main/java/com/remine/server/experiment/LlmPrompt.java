@@ -36,11 +36,11 @@ public final class LlmPrompt {
     private static Map<Category, String> definitions() {
         Map<Category, String> map = new EnumMap<>(Category.class);
         map.put(Category.SHOPPING, "상품, 가격, 구매, 장바구니, 배송");
-        map.put(Category.MOVIE_DRAMA, "영화·드라마·OTT 작품 정보");
+        map.put(Category.ENTERTAINMENT, "영화·드라마·OTT·연극·뮤지컬·공연·전시·책·음악 등 보고 싶은 작품·콘텐츠");
         map.put(Category.PLACE, "맛집, 카페, 여행지, 주소, 영업시간");
         map.put(Category.INFO, "정보·꿀팁·뉴스·방법 설명");
         map.put(Category.CHAT, "메신저·댓글 대화");
-        map.put(Category.SCHEDULE, "일정, 예약, 티켓, 알림");
+        map.put(Category.SCHEDULE, "일정, 예약, 티켓, 알림. 작품 자체가 아니라 날짜·예약·티켓 오픈이 핵심이면 SCHEDULE");
         map.put(Category.ETC, "위에 해당하지 않거나 의미 있는 글자가 없음");
         return Collections.unmodifiableMap(map);
     }

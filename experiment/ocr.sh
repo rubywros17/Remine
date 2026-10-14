@@ -53,5 +53,5 @@ else
       basename "$img"
       done | sed 's/$/,/'
   } > labels.csv
-  echo "labels.csv 템플릿 생성: category 칸을 채워주세요 (SHOPPING MOVIE_DRAMA PLACE INFO CHAT SCHEDULE ETC)"
+  echo "labels.csv 템플릿 생성: category 칸을 채워주세요 (SHOPPING ENTERTAINMENT PLACE INFO CHAT SCHEDULE ETC)"
 fi
