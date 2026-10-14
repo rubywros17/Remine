@@ -156,6 +156,8 @@
 | GET | `/api/categories/summary` | 홈 화면용 카테고리별 개수·대표 태그 |
 | GET | `/api/interests` | 감지된 관심사 목록 |
 
+- 기기 등록(`POST /api/devices`)을 제외한 모든 API는 `X-Device-Id` 헤더로 기기를 식별한다. 미등록 기기는 404, 헤더 누락은 400. (로그인 없는 MVP의 임시 방식)
+
 ---
 
 ## 10. 일정 (혼자, 주 20시간 기준)

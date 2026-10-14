@@ -55,7 +55,7 @@ class ScreenshotServiceTest {
         when(tagRepository.findAllByNameIn(Set.of("구매"))).thenReturn(List.of());
         when(tagRepository.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
 
-        AnalyzeResponse response = service.analyze(request(new Item("a1", NOW, "쿠팡", "39,000원 구매")));
+        AnalyzeResponse response = service.analyze(1L, request(new Item("a1", NOW, "쿠팡", "39,000원 구매")));
 
         assertThat(response.analyzed()).hasSize(1);
         assertThat(response.analyzed().get(0).category()).isEqualTo(Category.SHOPPING);
@@ -69,7 +69,7 @@ class ScreenshotServiceTest {
         givenDevice();
         when(screenshotRepository.findExistingLocalAssetIds(any(), any())).thenReturn(Set.of("a1"));
 
-        AnalyzeResponse response = service.analyze(request(new Item("a1", NOW, null, "구매")));
+        AnalyzeResponse response = service.analyze(1L, request(new Item("a1", NOW, null, "구매")));
 
         assertThat(response.analyzed()).isEmpty();
         assertThat(response.skipped()).containsExactly("a1");
@@ -84,7 +84,7 @@ class ScreenshotServiceTest {
         when(classifier.classify("글"))
                 .thenReturn(new ClassificationResult(Category.ETC, List.of(), "글"));
 
-        AnalyzeResponse response = service.analyze(request(
+        AnalyzeResponse response = service.analyze(1L, request(
                 new Item("a1", NOW, null, "글"), new Item("a1", NOW, null, "글")));
 
         assertThat(response.analyzed()).hasSize(1);
@@ -96,7 +96,7 @@ class ScreenshotServiceTest {
         givenDevice();
         when(screenshotRepository.findExistingLocalAssetIds(any(), any())).thenReturn(Set.of());
 
-        AnalyzeResponse response = service.analyze(request(
+        AnalyzeResponse response = service.analyze(1L, request(
                 new Item("a1", NOW, null, "  "), new Item("a2", NOW, null, null)));
 
         assertThat(response.analyzed()).extracting(AnalyzeResponse.Result::category)
@@ -106,9 +106,9 @@ class ScreenshotServiceTest {
 
     @Test
     void 등록되지_않은_기기면_예외() {
-        AnalyzeRequest request = new AnalyzeRequest(99L, List.of(new Item("a1", NOW, null, "x")));
+        AnalyzeRequest request = request(new Item("a1", NOW, null, "x"));
 
-        assertThatThrownBy(() -> service.analyze(request)).isInstanceOf(DeviceNotFoundException.class);
+        assertThatThrownBy(() -> service.analyze(99L, request)).isInstanceOf(DeviceNotFoundException.class);
     }
 
     private void givenDevice() {
@@ -116,6 +116,6 @@ class ScreenshotServiceTest {
     }
 
     private AnalyzeRequest request(Item... items) {
-        return new AnalyzeRequest(1L, List.of(items));
+        return new AnalyzeRequest(List.of(items));
     }
 }

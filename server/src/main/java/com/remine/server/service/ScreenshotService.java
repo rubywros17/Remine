@@ -38,9 +38,9 @@ public class ScreenshotService {
     private final Classifier classifier;
 
     @Transactional
-    public AnalyzeResponse analyze(AnalyzeRequest request) {
-        Device device = deviceRepository.findById(request.deviceId())
-                .orElseThrow(() -> new DeviceNotFoundException(request.deviceId()));
+    public AnalyzeResponse analyze(Long deviceId, AnalyzeRequest request) {
+        Device device = deviceRepository.findById(deviceId)
+                .orElseThrow(() -> new DeviceNotFoundException(deviceId));
 
         List<String> assetIds = request.screenshots().stream()
                 .map(AnalyzeRequest.Item::localAssetId)
