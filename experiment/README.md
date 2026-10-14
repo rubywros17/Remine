@@ -31,12 +31,18 @@
 
    > **개인정보 주의**: Gemini API **무료 티어**에 보낸 입력은 Google 제품 개선에 쓰일 수 있다고 공식 문서에 명시돼 있다(유료 티어는 아님).
    > 스크린샷 OCR 텍스트는 개인 데이터이므로, 무료 티어로 보내도 괜찮은지 판단한 뒤 실행한다.
-5. **실행**
+5. **첫 실행은 소량으로 형식 검증** (3장만 호출)
    ```
    cd server
-   ./gradlew bootRun --args='--spring.profiles.active=experiment'
+   ./gradlew bootRun --args="--spring.profiles.active=experiment --experiment.limit=3"
    ```
-   끝나면 `experiment/results.md`가 갱신된다. 오답 상세는 `errors.local.md`(커밋 안 됨).
+   콘솔에 건별로 `status`, 예측 카테고리, 토큰 수, 응답 시간, 모델 원문 앞부분이 출력된다.
+   `status=OK`이고 토큰 수가 0이 아니면 요청·응답 형식이 맞는 것이다. 결과는 `results.limit.md`(커밋 안 됨)에 쓰고 `results.md`는 건드리지 않는다.
+6. **전체 실행**
+   ```
+   ./gradlew bootRun --args="--spring.profiles.active=experiment"
+   ```
+   끝나면 `experiment/results.md`가 갱신된다. 오답 상세와 모델 원문은 `errors.local.md`(커밋 안 됨).
 
 ## 후보 / 가격
 `candidates.json`에 모델 ID와 단가(USD / 1M tokens)를 둔다. 가격이 바뀌면 이 파일만 고치면 된다.

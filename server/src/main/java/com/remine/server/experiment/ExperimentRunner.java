@@ -31,23 +31,30 @@ class ExperimentRunner implements CommandLineRunner {
     private static final Logger log = LoggerFactory.getLogger(ExperimentRunner.class);
 
     private final Path dir;
+    private final int limit;
     private final JsonMapper mapper = JsonMapper.builder().build();
 
-    ExperimentRunner(@Value("${experiment.dir:../experiment}") String dir) {
+    /** limit: --experiment.limit=N. 0(기본)이면 전체 표본. 형식 검증용 소량 실행에 쓴다. */
+    ExperimentRunner(@Value("${experiment.dir:../experiment}") String dir,
+                     @Value("${experiment.limit:0}") int limit) {
         this.dir = Path.of(dir);
+        this.limit = limit;
     }
 
     @Override
     public void run(String... args) throws IOException {
         List<Candidate> candidates = loadCandidates();
-        List<Labeled> labeled = new ArrayList<>();
-        int unlabeled = loadLabels(labeled);
+        List<Labeled> all = new ArrayList<>();
+        int unlabeled = loadLabels(all);
+        List<Labeled> labeled = applyLimit(all, limit);
         if (labeled.isEmpty()) {
             log.warn("평가할 표본이 없습니다. ocr.sh를 실행하고 labels.csv의 category를 채우세요. (dir={})",
                     dir.toAbsolutePath());
             return;
         }
-        log.info("표본 {}장, 후보 {}개", labeled.size(), candidates.size());
+        boolean limited = limit > 0;
+        log.info("표본 {}장{}, 후보 {}개", labeled.size(),
+                limited ? " (전체 " + all.size() + "장 중 제한 실행)" : "", candidates.size());
 
         List<ExperimentStats.Report> reports = new ArrayList<>();
         List<String> skipped = new ArrayList<>();
@@ -62,8 +69,11 @@ class ExperimentRunner implements CommandLineRunner {
             LlmClassifier classifier = new LlmClassifier(candidate, provider.get(), mapper);
             List<Sample> samples = new ArrayList<>();
             for (Labeled item : labeled) {
-                samples.add(classify(classifier, item));
-                if (samples.size() % 10 == 0) {
+                Sample sample = classify(classifier, item);
+                samples.add(sample);
+                if (limited) {
+                    logSample(candidate, sample);
+                } else if (samples.size() % 10 == 0) {
                     log.info("{}: {}/{}", candidate.name(), samples.size(), labeled.size());
                 }
             }
@@ -71,12 +81,26 @@ class ExperimentRunner implements CommandLineRunner {
             appendErrors(errors, candidate, samples);
         }
 
-        Files.writeString(dir.resolve("results.md"),
+        // 제한 실행은 커밋되는 results.md를 덮어쓰지 않도록 별도 파일(gitignore)에 쓴다.
+        Path resultsFile = dir.resolve(limited ? "results.limit.md" : "results.md");
+        Files.writeString(resultsFile,
                 ResultsMarkdown.render(LocalDate.now(), labeled.size(), unlabeled, reports, skipped),
                 StandardCharsets.UTF_8);
         Files.writeString(dir.resolve("errors.local.md"), errors.toString(), StandardCharsets.UTF_8);
-        log.info("완료: {} (후보 {}개 평가, {}개 건너뜀)", dir.resolve("results.md").toAbsolutePath(),
+        log.info("완료: {} (후보 {}개 평가, {}개 건너뜀)", resultsFile.toAbsolutePath(),
                 reports.size(), skipped.size());
+    }
+
+    /** 앞에서부터 limit장. 0 이하면 전체, 표본보다 크면 전체. */
+    static <T> List<T> applyLimit(List<T> items, int limit) {
+        return limit > 0 && limit < items.size() ? items.subList(0, limit) : items;
+    }
+
+    // 형식 검증용: 건별 상태·토큰·시간·원문 앞부분을 콘솔에만 출력한다(파일에는 남기지 않음).
+    private void logSample(Candidate candidate, Sample s) {
+        log.info("[{}] {} → 예측 {} (정답 {}) status={} 토큰 {}/{} {}ms | {}",
+                candidate.name(), s.filename(), s.predicted(), s.expected(), s.status(),
+                s.usage().inputTokens(), s.usage().outputTokens(), s.usage().latencyMs(), oneLine(s.detail()));
     }
 
     // 서버와 같은 규칙: 글자가 없으면 LLM을 부르지 않고 ETC.
