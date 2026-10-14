@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
+import java.util.List;
 import java.util.Set;
 
 public interface ScreenshotRepository extends JpaRepository<Screenshot, Long> {
@@ -32,4 +33,27 @@ public interface ScreenshotRepository extends JpaRepository<Screenshot, Long> {
                             @Param("category") Category category,
                             @Param("tag") String tag,
                             Pageable pageable);
+
+    @Query("""
+            select new com.remine.server.domain.screenshot.CategoryCountRow(s.category, count(s))
+            from Screenshot s
+            where s.device.id = :deviceId and s.category is not null
+            group by s.category
+            """)
+    List<CategoryCountRow> countByCategory(@Param("deviceId") Long deviceId);
+
+    /**
+     * 카테고리별 최신 limit개의 localAssetId. 행: [category(String), localAssetId(String)]
+     * window 함수(row_number)로 카테고리 수와 무관하게 쿼리 1번. (H2 / PostgreSQL / MySQL 8 공통 문법)
+     */
+    @Query(value = """
+            select t.category, t.local_asset_id
+            from (select category, local_asset_id,
+                         row_number() over (partition by category order by taken_at desc, id desc) as rn
+                  from screenshot
+                  where device_id = :deviceId and category is not null) t
+            where t.rn <= :limit
+            order by t.category, t.rn
+            """, nativeQuery = true)
+    List<Object[]> findRecentAssetIdsByCategory(@Param("deviceId") Long deviceId, @Param("limit") int limit);
 }
