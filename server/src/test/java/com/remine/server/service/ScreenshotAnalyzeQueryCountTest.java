@@ -39,7 +39,7 @@ class ScreenshotAnalyzeQueryCountTest {
         Statistics statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
         statistics.clear();
 
-        service.analyze(new AnalyzeRequest(device.getId(), items));
+        service.analyze(device.getId(), new AnalyzeRequest(items));
 
         long count = statistics.getPrepareStatementCount();
         System.out.println("QUERY_COUNT=" + count);

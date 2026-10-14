@@ -9,6 +9,7 @@ import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
@@ -22,7 +23,10 @@ import java.time.LocalDateTime;
 @Entity
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-@Table(uniqueConstraints = @UniqueConstraint(columnNames = {"device_id", "local_asset_id"}))
+@Table(
+        uniqueConstraints = @UniqueConstraint(columnNames = {"device_id", "local_asset_id"}),
+        // 기기별 최신순 목록 조회용
+        indexes = @Index(columnList = "device_id, taken_at"))
 public class Screenshot {
 
     @Id
