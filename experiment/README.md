@@ -12,17 +12,7 @@
    bash experiment/ocr.sh
    ```
    `ocr/*.txt`와 `labels.csv` 템플릿이 생성된다.
-3. **정답 입력** — `labels.csv`의 `category` 칸을 아래 값 중 하나로 채운다.
-
-   | 값 | 의미 |
-   |---|---|
-   | `SHOPPING` | 쇼핑 |
-   | `MOVIE_DRAMA` | 영화/드라마 |
-   | `PLACE` | 맛집/장소 |
-   | `INFO` | 정보/꿀팁 |
-   | `CHAT` | 대화 |
-   | `SCHEDULE` | 일정/예약 |
-   | `ETC` | 기타 |
+3. **정답 입력** — `labels.csv`의 `category` 칸을 아래 값 중 하나로 채운다. ([라벨링 기준](#라벨링-기준) 참고)
 4. **API 키 설정** — Gemini만 지원한다 (PowerShell):
    ```
    $env:GEMINI_API_KEY = "..."
@@ -43,6 +33,24 @@
    ./gradlew bootRun --args="--spring.profiles.active=experiment"
    ```
    끝나면 `experiment/results.md`가 갱신된다. 오답 상세와 모델 원문은 `errors.local.md`(커밋 안 됨).
+
+## 라벨링 기준
+모델에게 주는 프롬프트의 카테고리 정의와 **동일한 문구**다. 이 기준으로 `labels.csv`를 채워야 정확도 비교가 공정하다.
+(`LlmPrompt.DEFINITIONS`와 일치하는지 단위 테스트가 검사한다.)
+
+| 값 | 포함하는 것 |
+|---|---|
+| `SHOPPING` | 상품, 가격, 구매, 장바구니, 배송 |
+| `MOVIE_DRAMA` | 영화·드라마·OTT 작품 정보 |
+| `PLACE` | 맛집, 카페, 여행지, 주소, 영업시간 |
+| `INFO` | 정보·꿀팁·뉴스·방법 설명 |
+| `CHAT` | 메신저·댓글 대화 |
+| `SCHEDULE` | 일정, 예약, 티켓, 알림 |
+| `ETC` | 위에 해당하지 않거나 의미 있는 글자가 없음 |
+
+- 모델은 **OCR 텍스트만** 본다(이미지를 보지 않는다). 사진·그림 위주라 글자가 없거나 OCR이 거의 비면 `ETC`로 라벨링한다.
+- 한 장이 여러 카테고리에 걸칠 때의 우선순위는 프롬프트에 **없다**. 라벨링할 때 임의 규칙을 만들지 말고, 정말 필요하면 프롬프트와 위 표를 함께 고친 뒤 실행한다.
+- `category` 값은 영문 대문자 그대로 적는다(잘못된 값의 행은 건너뛴다).
 
 ## 후보 / 가격
 `candidates.json`에 모델 ID와 단가(USD / 1M tokens)를 둔다. 가격이 바뀌면 이 파일만 고치면 된다.

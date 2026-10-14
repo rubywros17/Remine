@@ -6,26 +6,44 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /** 모든 후보가 같은 프롬프트를 쓰도록 한 곳에 둔다. 카테고리는 {@link Category} 7개로 고정. */
 public final class LlmPrompt {
 
     private static final int MAX_OCR_CHARS = 3000;
 
+    /**
+     * 카테고리 정의. 프롬프트와 experiment/README.md의 라벨링 기준 표가 모두 이 문구를 쓴다.
+     * 문구를 바꾸면 README 표도 같이 고쳐야 하며, 어긋나면 LlmPromptTest가 실패한다.
+     */
+    public static final Map<Category, String> DEFINITIONS = definitions();
+
     public static final String SYSTEM = """
             너는 스마트폰 스크린샷의 OCR 텍스트를 분류하는 분류기다.
             category는 아래 7개 중 정확히 하나만 고른다.
-            - SHOPPING: 상품, 가격, 구매, 장바구니, 배송
-            - MOVIE_DRAMA: 영화·드라마·OTT 작품 정보
-            - PLACE: 맛집, 카페, 여행지, 주소, 영업시간
-            - INFO: 정보·꿀팁·뉴스·방법 설명
-            - CHAT: 메신저·댓글 대화
-            - SCHEDULE: 일정, 예약, 티켓, 알림
-            - ETC: 위에 해당하지 않거나 의미 있는 글자가 없음
+            %s
             응답은 JSON 객체 하나만 출력한다. 설명, 마크다운, 코드블록은 쓰지 않는다.
             {"category": "<위 7개 중 하나>", "tags": ["짧은 명사 최대 3개"], "summary": "한 문장 요약(40자 이내)"}
-            """;
+            """.formatted(DEFINITIONS.entrySet().stream()
+            .map(e -> "- " + e.getKey() + ": " + e.getValue())
+            .collect(Collectors.joining("\n")));
+
+    private static Map<Category, String> definitions() {
+        Map<Category, String> map = new EnumMap<>(Category.class);
+        map.put(Category.SHOPPING, "상품, 가격, 구매, 장바구니, 배송");
+        map.put(Category.MOVIE_DRAMA, "영화·드라마·OTT 작품 정보");
+        map.put(Category.PLACE, "맛집, 카페, 여행지, 주소, 영업시간");
+        map.put(Category.INFO, "정보·꿀팁·뉴스·방법 설명");
+        map.put(Category.CHAT, "메신저·댓글 대화");
+        map.put(Category.SCHEDULE, "일정, 예약, 티켓, 알림");
+        map.put(Category.ETC, "위에 해당하지 않거나 의미 있는 글자가 없음");
+        return Collections.unmodifiableMap(map);
+    }
 
     private LlmPrompt() {
     }
