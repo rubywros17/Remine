@@ -15,9 +15,17 @@ public final class ExperimentStats {
     private ExperimentStats() {
     }
 
-    /** called=false는 글자 없는 스크린샷으로 LLM을 부르지 않고 ETC로 처리한 경우. */
+    /**
+     * called=false는 글자 없는 스크린샷으로 LLM을 부르지 않고 ETC로 처리한 경우.
+     * detail은 모델 원문/사유로 errors.local.md에만 쓰고 results.md에는 넣지 않는다.
+     */
     public record Sample(String filename, Category expected, Category predicted,
-                         LlmOutcome.Status status, boolean called, LlmUsage usage) {
+                         LlmOutcome.Status status, boolean called, LlmUsage usage, String detail) {
+
+        public Sample(String filename, Category expected, Category predicted,
+                      LlmOutcome.Status status, boolean called, LlmUsage usage) {
+            this(filename, expected, predicted, status, called, usage, "");
+        }
     }
 
     public record CategoryScore(int correct, int total) {

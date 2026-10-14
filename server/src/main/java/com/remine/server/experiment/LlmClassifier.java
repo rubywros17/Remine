@@ -43,7 +43,8 @@ public class LlmClassifier implements Classifier {
                 LlmUsage usage = new LlmUsage(reply.inputTokens(), reply.outputTokens(), latencyMs);
                 LlmPrompt.Parsed parsed = LlmPrompt.parse(mapper, reply.text());
                 return new LlmOutcome(parsed.result(), usage,
-                        parsed.ok() ? LlmOutcome.Status.OK : LlmOutcome.Status.PARSE_FAILED, reply.text());
+                        parsed.ok() ? LlmOutcome.Status.OK : LlmOutcome.Status.PARSE_FAILED,
+                        reply.note().isEmpty() ? reply.text() : "[" + reply.note() + "] " + reply.text());
             } catch (RuntimeException e) {
                 last = e;
                 sleepBeforeRetry(attempt);

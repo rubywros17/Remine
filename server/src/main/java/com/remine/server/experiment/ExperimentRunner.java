@@ -87,21 +87,28 @@ class ExperimentRunner implements CommandLineRunner {
         }
         LlmOutcome outcome = classifier.classifyWithUsage(item.ocrText());
         return new Sample(item.filename(), item.expected(), outcome.result().category(),
-                outcome.status(), true, outcome.usage());
+                outcome.status(), true, outcome.usage(), outcome.raw());
     }
 
     private void appendErrors(StringBuilder errors, Candidate candidate, List<Sample> samples) {
         errors.append("\n## ").append(candidate.name()).append('\n');
         for (Sample s : samples) {
             if (s.status() == LlmOutcome.Status.CALL_FAILED) {
-                errors.append("- ").append(s.filename()).append(": 호출 실패\n");
+                errors.append("- ").append(s.filename()).append(": 호출 실패 ").append(oneLine(s.detail())).append('\n');
             } else if (s.expected() != s.predicted()) {
                 errors.append("- ").append(s.filename()).append(": ")
-                        .append(s.expected()).append(" → ").append(s.predicted())
-                        .append(s.status() == LlmOutcome.Status.PARSE_FAILED ? " (파싱 실패)" : "")
-                        .append('\n');
+                        .append(s.expected()).append(" → ").append(s.predicted());
+                if (s.status() == LlmOutcome.Status.PARSE_FAILED) {
+                    errors.append(" (파싱 실패) ").append(oneLine(s.detail()));
+                }
+                errors.append('\n');
             }
         }
+    }
+
+    private static String oneLine(String text) {
+        String flat = text.replaceAll("\\s+", " ").trim();
+        return flat.length() > 200 ? flat.substring(0, 200) + "…" : flat;
     }
 
     private List<Candidate> loadCandidates() throws IOException {
