@@ -82,3 +82,11 @@ desktop.ini
 # 🤖 Claude Code 로컬 설정
 # =========================================================
 .claude/settings.local.json
+
+# =========================================================
+# 🧪 LLM 분류 실험 — 개인 스크린샷·OCR·정답 라벨은 커밋 금지
+# =========================================================
+experiment/images/
+experiment/ocr/
+experiment/labels.csv
+experiment/errors.local.md
