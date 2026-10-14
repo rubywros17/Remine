@@ -58,8 +58,8 @@ class ScreenshotServiceTest {
         when(screenshotRepository.findExistingLocalAssetIds(any(), any())).thenReturn(Set.of());
         when(classifier.classify("39,000원 구매"))
                 .thenReturn(new ClassificationResult(Category.SHOPPING, List.of("구매"), "요약"));
-        when(tagRepository.findByName("구매")).thenReturn(Optional.empty());
-        when(tagRepository.save(any(Tag.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(tagRepository.findAllByNameIn(Set.of("구매"))).thenReturn(List.of());
+        when(tagRepository.saveAll(any())).thenAnswer(inv -> inv.getArgument(0));
 
         AnalyzeResponse response = service.analyze(request(new Item("a1", NOW, "쿠팡", "39,000원 구매")));
 
@@ -67,7 +67,7 @@ class ScreenshotServiceTest {
         assertThat(response.analyzed().get(0).category()).isEqualTo(Category.SHOPPING);
         assertThat(response.skipped()).isEmpty();
         verify(screenshotRepository).save(any(Screenshot.class));
-        verify(screenshotTagRepository).save(any());
+        verify(screenshotTagRepository).saveAll(any());
     }
 
     @Test

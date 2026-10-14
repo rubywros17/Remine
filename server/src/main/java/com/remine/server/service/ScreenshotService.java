@@ -20,8 +20,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -46,6 +50,7 @@ public class ScreenshotService {
 
         List<AnalyzeResponse.Result> analyzed = new ArrayList<>();
         List<String> skipped = new ArrayList<>();
+        Map<Screenshot, List<String>> tagNamesByScreenshot = new LinkedHashMap<>();
 
         for (AnalyzeRequest.Item item : request.screenshots()) {
             if (!seen.add(item.localAssetId())) {
@@ -59,14 +64,37 @@ public class ScreenshotService {
             screenshot.applyAnalysis(result.category(), result.summary());
             screenshotRepository.save(screenshot);
 
-            for (String tagName : result.tags()) {
-                Tag tag = findOrCreateTag(tagName);
-                screenshotTagRepository.save(new ScreenshotTag(screenshot, tag));
-            }
+            tagNamesByScreenshot.put(screenshot, result.tags());
             analyzed.add(new AnalyzeResponse.Result(
                     item.localAssetId(), result.category(), result.tags(), result.summary()));
         }
+
+        linkTags(tagNamesByScreenshot);
         return new AnalyzeResponse(analyzed, skipped);
+    }
+
+    // 요청 전체의 태그 이름을 모아 1번 조회하고, 없는 태그만 한 번에 생성한다.
+    private void linkTags(Map<Screenshot, List<String>> tagNamesByScreenshot) {
+        Set<String> names = tagNamesByScreenshot.values().stream()
+                .flatMap(List::stream)
+                .collect(Collectors.toSet());
+        if (names.isEmpty()) {
+            return;
+        }
+        Map<String, Tag> tags = tagRepository.findAllByNameIn(names).stream()
+                .collect(Collectors.toMap(Tag::getName, Function.identity()));
+
+        List<Tag> missing = names.stream()
+                .filter(name -> !tags.containsKey(name))
+                .map(Tag::new)
+                .toList();
+        // TODO: 동시 요청이 같은 새 태그를 만들면 tag.name unique 충돌 가능. 충돌 시 재조회·재시도 처리.
+        tagRepository.saveAll(missing).forEach(tag -> tags.put(tag.getName(), tag));
+
+        List<ScreenshotTag> links = new ArrayList<>();
+        tagNamesByScreenshot.forEach((screenshot, tagNames) ->
+                tagNames.forEach(name -> links.add(new ScreenshotTag(screenshot, tags.get(name)))));
+        screenshotTagRepository.saveAll(links);
     }
 
     // 글자 없는 스크린샷은 LLM 호출 없이 '기타'로 처리한다. (spec 11장)
@@ -75,10 +103,5 @@ public class ScreenshotService {
             return new ClassificationResult(Category.ETC, List.of(), "");
         }
         return classifier.classify(ocrText);
-    }
-
-    // ponytail: 태그마다 조회하는 N+1, 동시 요청 시 unique 충돌 가능. 트래픽이 생기면 일괄 조회 + 재시도로.
-    private Tag findOrCreateTag(String name) {
-        return tagRepository.findByName(name).orElseGet(() -> tagRepository.save(new Tag(name)));
     }
 }
