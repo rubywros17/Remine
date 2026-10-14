@@ -16,8 +16,8 @@ docs/     기획·설계 문서
 
 ## 스택
 - 앱: Flutter (Dart), photo_manager, google_mlkit_text_recognition, firebase_messaging
-- 서버: Spring Boot (Java)
-- DB / LLM: 미정 → 정해지면 이 파일 갱신
+- 서버: Spring Boot 4.1.1 / Java 21 / H2(임시)
+- DB(운영) / LLM: 미정 → 정해지면 이 파일 갱신
 
 ## 핵심 원칙
 - **원본 이미지는 서버로 보내지 않는다.** 앱에서 OCR 후 텍스트와 메타데이터만 전송한다.

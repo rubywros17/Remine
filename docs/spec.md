@@ -143,7 +143,7 @@
 | `device` | id, fcm_token, created_at |
 | `screenshot` | id, device_id, local_asset_id, taken_at, source_app, ocr_text, category, summary, analyzed_at |
 | `tag` | id, name |
-| `screenshot_tag` | screenshot_id, tag_id |
+| `screenshot_tag` | id, screenshot_id, tag_id (unique: screenshot_id + tag_id) |
 | `interest_alert` | id, device_id, tag_id, alert_type, message, sent_at |
 
 ## 9. API (초안)
