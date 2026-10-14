@@ -152,8 +152,8 @@
 |---|---|---|
 | POST | `/api/devices` | 기기 등록 (FCM 토큰 포함) |
 | POST | `/api/screenshots/analyze` | OCR 텍스트 배치 전송 → 분류 결과 반환 |
-| GET | `/api/screenshots?category=&tag=` | 분류된 스크린샷 목록 |
-| GET | `/api/categories/summary` | 홈 화면용 카테고리별 개수·대표 태그 |
+| GET | `/api/screenshots?category=&tag=&page=&size=` | 분류된 스크린샷 목록. taken_at 최신순, page 기본 0 / size 기본 30·최대 100, 각 항목에 태그 포함 |
+| GET | `/api/categories/summary` | 홈 화면용. 7개 카테고리 전부 반환(0장은 count 0), 카테고리별 개수·대표 태그 상위 3개·최신 localAssetId 4개 |
 | GET | `/api/interests` | 감지된 관심사 목록 |
 
 - 기기 등록(`POST /api/devices`)을 제외한 모든 API는 `X-Device-Id` 헤더로 기기를 식별한다. 미등록 기기는 404, 헤더 누락은 400. (로그인 없는 MVP의 임시 방식)
