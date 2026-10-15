@@ -19,7 +19,7 @@ public class FakeClassifier implements Classifier {
 
     static {
         KEYWORDS.put(Category.SHOPPING, List.of("구매", "장바구니", "배송", "할인", "원"));
-        KEYWORDS.put(Category.MOVIE_DRAMA, List.of("영화", "드라마", "넷플릭스", "시즌", "에피소드"));
+        KEYWORDS.put(Category.ENTERTAINMENT, List.of("영화", "드라마", "넷플릭스", "시즌", "에피소드", "뮤지컬", "공연", "전시"));
         KEYWORDS.put(Category.PLACE, List.of("맛집", "카페", "영업시간", "주소", "메뉴"));
         KEYWORDS.put(Category.SCHEDULE, List.of("예약", "일정", "체크인"));
         KEYWORDS.put(Category.CHAT, List.of("ㅋㅋ", "ㅎㅎ"));

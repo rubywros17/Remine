@@ -38,3 +38,8 @@ dependencies {
 tasks.named('test') {
 	useJUnitPlatform()
 }
+
+// Windows 콘솔에서 한글 로그가 깨지지 않도록 bootRun JVM의 인코딩을 UTF-8로 고정한다.
+tasks.named('bootRun') {
+	jvmArgs '-Dfile.encoding=UTF-8', '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8'
+}

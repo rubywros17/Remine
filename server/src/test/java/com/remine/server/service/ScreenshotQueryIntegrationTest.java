@@ -35,7 +35,7 @@ class ScreenshotQueryIntegrationTest {
     // 인덱스 i % 7 에 해당하는 텍스트 → 카테고리
     private static final String[] TEXTS = {
             "니트 가디건 구매 할인 39,000원",  // 0 SHOPPING  (구매, 할인, 원)
-            "영화 드라마 시즌2",               // 1 MOVIE_DRAMA
+            "영화 드라마 시즌2",               // 1 ENTERTAINMENT
             "맛집 카페 영업시간",              // 2 PLACE
             "예약 일정 체크인",                // 3 SCHEDULE
             "ㅋㅋ ㅎㅎ",                      // 4 CHAT

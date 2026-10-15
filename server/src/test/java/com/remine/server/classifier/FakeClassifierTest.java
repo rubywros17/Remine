@@ -18,6 +18,12 @@ class FakeClassifierTest {
     }
 
     @Test
+    void 공연_전시_키워드는_문화생활로_분류한다() {
+        assertThat(classifier.classify("뮤지컬 캐스팅 안내").category()).isEqualTo(Category.ENTERTAINMENT);
+        assertThat(classifier.classify("전시 관람 후기").category()).isEqualTo(Category.ENTERTAINMENT);
+    }
+
+    @Test
     void 매칭되는_키워드가_없으면_기타() {
         ClassificationResult result = classifier.classify("lorem ipsum");
 

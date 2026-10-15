@@ -1,3 +1,7 @@
+logging:
+  charset:
+    console: UTF-8
+
 spring:
   application:
     name: server
