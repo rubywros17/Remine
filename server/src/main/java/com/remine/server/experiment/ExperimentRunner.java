@@ -16,12 +16,15 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 
 /**
  * experiment 프로필에서만 동작한다. ocr/*.txt + labels.csv로 후보별 분류를 돌려
- * results.md(집계)와 errors.local.md(오답 상세, gitignore)를 쓰고 종료한다.
+ * results.md(집계)와 errors.local.{실행시각}.md(오답 상세, gitignore)를 쓰고 종료한다.
+ * 평가한 후보가 0개면 어떤 파일도 쓰지 않는다.
  * 실행: ./gradlew bootRun --args="--spring.profiles.active=experiment"
  */
 @Component
@@ -81,14 +84,35 @@ class ExperimentRunner implements CommandLineRunner {
             appendErrors(errors, candidate, samples);
         }
 
+        // 평가한 후보가 하나도 없으면(키 없음 등) 빈 결과가 이전 결과 파일을 덮어쓰지 않도록 아무것도 쓰지 않는다.
+        if (reports.isEmpty()) {
+            log.warn("평가한 후보가 0개라 결과 파일을 쓰지 않았습니다. 건너뛴 후보: {}", skipped);
+            return;
+        }
+
         // 제한 실행은 커밋되는 results.md를 덮어쓰지 않도록 별도 파일(gitignore)에 쓴다.
         Path resultsFile = dir.resolve(limited ? "results.limit.md" : "results.md");
         Files.writeString(resultsFile,
                 ResultsMarkdown.render(LocalDate.now(), labeled.size(), unlabeled, reports, skipped),
                 StandardCharsets.UTF_8);
-        Files.writeString(dir.resolve("errors.local.md"), errors.toString(), StandardCharsets.UTF_8);
-        log.info("완료: {} (후보 {}개 평가, {}개 건너뜀)", resultsFile.toAbsolutePath(),
-                reports.size(), skipped.size());
+        Path errorsFile = uniqueErrorsFile(LocalDateTime.now());
+        Files.writeString(errorsFile, errors.toString(), StandardCharsets.UTF_8);
+        log.info("완료: {} (후보 {}개 평가, {}개 건너뜀), 오답 상세: {}", resultsFile.toAbsolutePath(),
+                reports.size(), skipped.size(), errorsFile.getFileName());
+    }
+
+    /** 실행 시각을 붙인 오답 상세 파일명. 예: errors.local.20261015-1426.md (gitignore 패턴 errors.local*.md) */
+    static String errorsFileName(LocalDateTime now) {
+        return "errors.local." + now.format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmm")) + ".md";
+    }
+
+    // 같은 분에 두 번 실행해도 덮어쓰지 않도록, 이미 있으면 초 단위까지 붙인다.
+    private Path uniqueErrorsFile(LocalDateTime now) {
+        Path file = dir.resolve(errorsFileName(now));
+        if (!Files.exists(file)) {
+            return file;
+        }
+        return dir.resolve("errors.local." + now.format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")) + ".md");
     }
 
     /** 앞에서부터 limit장. 0 이하면 전체, 표본보다 크면 전체. */

@@ -2,7 +2,7 @@
 
 2주차 `LlmClassifier` 선택을 위해 후보 LLM의 **분류 정확도 · 응답 속도 · 장당 비용**을 비교한다.
 
-> `images/`, `ocr/`, `labels.csv`, `errors.local.md`는 개인 데이터라 `.gitignore`로 커밋하지 않는다.
+> `images/`, `ocr/`, `labels.csv`, `errors.local.*.md`는 개인 데이터라 `.gitignore`로 커밋하지 않는다.
 > 커밋되는 것은 `results.md`(집계 수치만)와 이 폴더의 스크립트·설정뿐이다.
 
 ## 순서
@@ -32,7 +32,8 @@
    ```
    ./gradlew bootRun --args="--spring.profiles.active=experiment"
    ```
-   끝나면 `experiment/results.md`가 갱신된다. 오답 상세와 모델 원문은 `errors.local.md`(커밋 안 됨).
+   끝나면 `experiment/results.md`가 갱신된다. 오답 상세와 모델 원문은 실행 시각이 붙은 `errors.local.20261015-1426.md` 같은 파일에 매번 새로 저장된다(커밋 안 됨, 이전 실행 기록을 덮어쓰지 않음).
+   평가한 후보가 0개(API 키 없음 등)이면 결과 파일을 **아무것도 쓰지 않으므로** 이전 결과가 지워지지 않는다.
 
 ## 라벨링 기준
 모델에게 주는 프롬프트의 카테고리 정의와 **동일한 문구**다. 이 기준으로 `labels.csv`를 채워야 정확도 비교가 공정하다.

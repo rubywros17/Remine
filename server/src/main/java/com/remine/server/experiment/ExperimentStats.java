@@ -18,7 +18,7 @@ public final class ExperimentStats {
     /**
      * called=false는 글자 없는 스크린샷으로 LLM을 부르지 않고 ETC로 처리한 경우.
      * alt는 labels.csv의 허용 정답(없으면 null). 있으면 그 표본은 "애매한 표본"이다.
-     * detail은 모델 원문/사유로 errors.local.md에만 쓰고 results.md에는 넣지 않는다.
+     * detail은 모델 원문/사유로 errors.local.*.md에만 쓰고 results.md에는 넣지 않는다.
      */
     public record Sample(String filename, Category expected, Category alt, Category predicted,
                          LlmOutcome.Status status, boolean called, LlmUsage usage, String detail) {

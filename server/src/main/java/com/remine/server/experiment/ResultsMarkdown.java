@@ -85,7 +85,7 @@ public final class ResultsMarkdown {
                     .collect(Collectors.joining(", "));
             md.append("- ").append(r.candidate().name()).append(": ").append(top.isEmpty() ? "없음" : top).append('\n');
         }
-        md.append("\n> 오답 상세(파일명 포함)는 `errors.local.md`에 있으며 커밋되지 않는다.\n");
+        md.append("\n> 오답 상세(파일명 포함)는 `errors.local.{실행시각}.md`에 있으며 커밋되지 않는다.\n");
         return md.toString();
     }
 }
