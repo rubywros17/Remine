@@ -8,7 +8,7 @@ import java.util.Map;
 
 /**
  * POST /v1beta/models/{model}:generateContent — 형식은 공식 문서(2026-10-14) 기준.
- * 요청: contents[].parts[].text, systemInstruction, generationConfig.{responseMimeType, maxOutputTokens}
+ * 요청: contents[].parts[].text, systemInstruction, generationConfig.{responseMimeType, maxOutputTokens, temperature}
  * 응답: candidates[].content.parts[].text / finishReason, usageMetadata.{promptTokenCount,
  * candidatesTokenCount, thoughtsTokenCount}, 후보가 없으면 promptFeedback.blockReason.
  * thinkingConfig는 문서에서 필드명을 확인하지 못해 보내지 않고 모델 기본값으로 둔다.
@@ -20,21 +20,29 @@ class GeminiProvider extends JsonHttpProvider {
     private static final int MAX_OUTPUT_TOKENS = 4096;
 
     private final String apiKey;
+    private final double temperature;
 
-    GeminiProvider(String apiKey, JsonMapper mapper) {
+    GeminiProvider(String apiKey, double temperature, JsonMapper mapper) {
         super(mapper);
         this.apiKey = apiKey;
+        this.temperature = temperature;
     }
 
     @Override
     public LlmReply call(String model, String systemPrompt, String userText) {
-        Map<String, Object> body = Map.of(
+        Map<String, Object> body = requestBody(systemPrompt, userText, temperature);
+        return parse(post(URL.formatted(model), Map.of("x-goog-api-key", apiKey), body));
+    }
+
+    /** generationConfig.temperature는 후보별 설정값(기본 0)이다. 분류 결과의 재현성을 위해 항상 보낸다. */
+    static Map<String, Object> requestBody(String systemPrompt, String userText, double temperature) {
+        return Map.of(
                 "systemInstruction", Map.of("parts", List.of(Map.of("text", systemPrompt))),
                 "contents", List.of(Map.of("role", "user", "parts", List.of(Map.of("text", userText)))),
                 "generationConfig", Map.of(
                         "responseMimeType", "application/json",
-                        "maxOutputTokens", MAX_OUTPUT_TOKENS));
-        return parse(post(URL.formatted(model), Map.of("x-goog-api-key", apiKey), body));
+                        "maxOutputTokens", MAX_OUTPUT_TOKENS,
+                        "temperature", temperature));
     }
 
     /**

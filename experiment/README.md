@@ -82,6 +82,8 @@ Screenshot_B.jpg,SHOPPING,          # 명확 → alt 비움
 | `gemini-3.5-flash-lite` | 0.30 / 2.50 | 있음 | Flash-Lite, 사고 기본 minimal |
 | `gemini-3.8-flash` | 0.75 / 3.75 | 있음 | 일반 Flash, 사고 기본 medium. **2027-01-01부터 1.50 / 7.50으로 인상 예정** |
 
+- **temperature**: 분류 결과의 재현성을 위해 기본 0으로 보낸다. 후보별로 `candidates.json`의 `"temperature"`로 바꿀 수 있다.
+  다만 Gemini 3 문서는 기본값 1.0 유지를 권장하며 낮추면 반복·품질 저하가 생길 수 있다고 경고한다. 파싱 실패가 늘면 1.0으로 비교해 본다.
 - 사고(thinking) 토큰은 출력 토큰으로 과금된다. 결과의 "출력 토큰"과 장당 비용에는 사고 토큰이 포함된다.
 - 무료 티어의 숫자 한도는 문서에 없고 AI Studio에서 확인한다. 한도에 걸리면 호출 실패로 집계된다.
 

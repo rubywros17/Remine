@@ -61,7 +61,7 @@ class ExperimentRunner implements CommandLineRunner {
         StringBuilder errors = new StringBuilder("# 오답 상세 (개인 데이터, 커밋 금지)\n");
 
         for (Candidate candidate : candidates) {
-            var provider = LlmProviders.create(candidate.provider(), mapper);
+            var provider = LlmProviders.create(candidate, mapper);
             if (provider.isEmpty()) {
                 skipped.add(candidate.name() + " (" + LlmProviders.envName(candidate.provider()) + ")");
                 continue;
@@ -143,7 +143,8 @@ class ExperimentRunner implements CommandLineRunner {
         List<Candidate> candidates = new ArrayList<>();
         root.path("candidates").forEach(node -> candidates.add(new Candidate(
                 node.path("name").asString(), node.path("provider").asString(), node.path("model").asString(),
-                node.path("inputPerMTok").asDouble(), node.path("outputPerMTok").asDouble())));
+                node.path("inputPerMTok").asDouble(), node.path("outputPerMTok").asDouble(),
+                node.path("temperature").asDouble(Candidate.DEFAULT_TEMPERATURE))));
         return candidates;
     }
 

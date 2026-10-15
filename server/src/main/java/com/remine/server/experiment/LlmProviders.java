@@ -20,14 +20,14 @@ final class LlmProviders {
         };
     }
 
-    static Optional<LlmProvider> create(String provider, JsonMapper mapper) {
-        String key = System.getenv(envName(provider));
+    static Optional<LlmProvider> create(Candidate candidate, JsonMapper mapper) {
+        String key = System.getenv(envName(candidate.provider()));
         if (key == null || key.isBlank()) {
             return Optional.empty();
         }
-        return Optional.of(switch (provider) {
-            case "gemini" -> new GeminiProvider(key, mapper);
-            default -> throw new IllegalArgumentException("지원하지 않는 제공사: " + provider);
+        return Optional.of(switch (candidate.provider()) {
+            case "gemini" -> new GeminiProvider(key, candidate.temperature(), mapper);
+            default -> throw new IllegalArgumentException("지원하지 않는 제공사: " + candidate.provider());
         });
     }
 }

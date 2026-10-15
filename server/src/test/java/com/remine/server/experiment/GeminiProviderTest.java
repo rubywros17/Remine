@@ -1,6 +1,7 @@
 package com.remine.server.experiment;
 
 import org.junit.jupiter.api.Test;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -12,6 +13,32 @@ class GeminiProviderTest {
 
     private LlmReply parse(String json) {
         return GeminiProvider.parse(mapper.readTree(json));
+    }
+
+    @Test
+    void 요청에_temperature가_generationConfig로_들어간다() {
+        JsonNode body = mapper.valueToTree(GeminiProvider.requestBody("시스템", "OCR 텍스트", 0.0));
+
+        JsonNode config = body.path("generationConfig");
+        assertThat(config.path("temperature").isNumber()).isTrue();
+        assertThat(config.path("temperature").asDouble(-1)).isEqualTo(0.0);
+        assertThat(config.path("responseMimeType").asString()).isEqualTo("application/json");
+        assertThat(config.path("maxOutputTokens").asInt()).isEqualTo(4096);
+        assertThat(body.path("contents").path(0).path("parts").path(0).path("text").asString())
+                .isEqualTo("OCR 텍스트");
+    }
+
+    @Test
+    void 후보에서_지정한_temperature가_그대로_전달된다() {
+        JsonNode body = mapper.valueToTree(GeminiProvider.requestBody("s", "u", 1.0));
+
+        assertThat(body.path("generationConfig").path("temperature").asDouble(-1)).isEqualTo(1.0);
+    }
+
+    @Test
+    void 후보의_temperature_기본값은_0이다() {
+        assertThat(new Candidate("c", "gemini", "m", 1, 1).temperature()).isEqualTo(0.0);
+        assertThat(new Candidate("c", "gemini", "m", 1, 1, 0.7).temperature()).isEqualTo(0.7);
     }
 
     @Test
