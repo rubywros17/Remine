@@ -1,15 +1,15 @@
 {
   "pricedAt": "2026-10-14",
   "source": "https://ai.google.dev/gemini-api/docs/pricing (페이지 갱신 2026-10-13). 가격이 바뀌면 이 파일만 고친다.",
-  "temperatureNote": "temperature는 후보별로 지정할 수 있고 생략하면 0이다(분류 결과 재현성). Gemini 3 문서는 기본값 1.0 유지를 권장하므로, 파싱 실패가 늘거나 품질이 떨어지면 해당 후보에 1.0을 지정해 비교한다.",
+  "temperatureNote": "Gemini 3 공식 문서가 기본값 1.0 유지를 강하게 권장해 두 후보 모두 1.0으로 둔다(낮추면 반복·품질 저하 가능). 후보별로 바꿀 수 있고 생략하면 0이다.",
   "candidates": [
     {
       "name": "gemini-3.5-flash-lite",
       "provider": "gemini",
       "model": "gemini-3.5-flash-lite",
-      "inputPerMTok": 0.30,
-      "outputPerMTok": 2.50,
-      "temperature": 0,
+      "inputPerMTok": 0.3,
+      "outputPerMTok": 2.5,
+      "temperature": 1.0,
       "note": "Flash-Lite 계열. 문서가 신규 프로젝트에 권장. 사고 기본값 minimal. 무료 티어 있음."
     },
     {
@@ -18,7 +18,7 @@
       "model": "gemini-3.8-flash",
       "inputPerMTok": 0.75,
       "outputPerMTok": 3.75,
-      "temperature": 0,
+      "temperature": 1.0,
       "note": "일반 Flash 계열. 사고 기본값 medium. 2027-01-01부터 1.50/7.50으로 인상 예정. 무료 티어 있음."
     }
   ]

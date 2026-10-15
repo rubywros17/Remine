@@ -83,8 +83,11 @@ Screenshot_B.jpg,SHOPPING,          # 명확 → alt 비움
 | `gemini-3.5-flash-lite` | 0.30 / 2.50 | 있음 | Flash-Lite, 사고 기본 minimal |
 | `gemini-3.8-flash` | 0.75 / 3.75 | 있음 | 일반 Flash, 사고 기본 medium. **2027-01-01부터 1.50 / 7.50으로 인상 예정** |
 
-- **temperature**: 분류 결과의 재현성을 위해 기본 0으로 보낸다. 후보별로 `candidates.json`의 `"temperature"`로 바꿀 수 있다.
-  다만 Gemini 3 문서는 기본값 1.0 유지를 권장하며 낮추면 반복·품질 저하가 생길 수 있다고 경고한다. 파싱 실패가 늘면 1.0으로 비교해 본다.
+- **temperature = 1.0 (두 후보 모두)**: Gemini 3 공식 문서가 "모든 Gemini 3 모델은 temperature를 기본값 1.0으로 유지하길 강하게 권장하며,
+  1.0 미만으로 낮추면 반복(looping)이나 성능 저하가 생길 수 있다"고 하므로 권장값에 맞춘다.
+  후보별로 `candidates.json`의 `"temperature"`로 바꿀 수 있고(코드 기본값은 0), 생략하면 0이 전송된다.
+  - 대가: temperature 1.0에서는 같은 입력도 실행마다 결과가 조금씩 달라질 수 있다. 정확도 차이가 몇 장 수준이면 재실행 편차일 수 있으니 순위를 단정하지 않는다.
+  - 1차 실행(`results.v1-baseline.md`)은 temperature 전송 기능이 생기기 **전**에 돌려서 요청에 값이 없었다(모델 기본값).
 - 사고(thinking) 토큰은 출력 토큰으로 과금된다. 결과의 "출력 토큰"과 장당 비용에는 사고 토큰이 포함된다.
 - 무료 티어의 숫자 한도는 문서에 없고 AI Studio에서 확인한다. 한도에 걸리면 호출 실패로 집계된다.
 
