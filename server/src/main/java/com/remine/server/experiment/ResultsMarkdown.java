@@ -91,6 +91,26 @@ public final class ResultsMarkdown {
                     avgChars(r.charsCorrect()), avgChars(r.charsWrong()), avgChars(r.charsEtcWrong())));
         }
 
+        md.append("\n## OCR 글자 수 구간별 정확도\n\n");
+        md.append("- 구간은 공백 제외 글자 수 기준이며 `50자 미만` / `50자 이상 150자 미만` / `150자 이상`이다.\n");
+        md.append("- 각 칸은 `엄격 정확도 (맞음/전체) · 허용 정확도`이다. 호출 실패·글자 수 미상 표본은 제외한다.\n");
+        md.append("- 구간별 표본이 몇 장 안 되므로 비율보다 건수를 함께 본다.\n\n");
+        md.append("| 후보 |");
+        for (ExperimentStats.LengthBin bin : ExperimentStats.LengthBin.values()) {
+            md.append(' ').append(bin.label()).append(" |");
+        }
+        md.append("\n|---|").append("---|".repeat(ExperimentStats.LengthBin.values().length)).append('\n');
+        for (ExperimentStats.Report r : reports) {
+            md.append("| ").append(r.candidate().name()).append(" |");
+            for (ExperimentStats.LengthBin bin : ExperimentStats.LengthBin.values()) {
+                ExperimentStats.BinScore s = r.byLength().get(bin);
+                md.append(' ').append(s == null || s.total() == 0 ? "-" : String.format("%.1f%% (%d/%d) · 허용 %.1f%%",
+                        100.0 * s.strictCorrect() / s.total(), s.strictCorrect(), s.total(),
+                        100.0 * s.lenientCorrect() / s.total())).append(" |");
+            }
+            md.append('\n');
+        }
+
         md.append("\n## 자주 틀린 조합 (정답→예측: 건수)\n\n");
         for (ExperimentStats.Report r : reports) {
             String top = r.confusions().entrySet().stream()

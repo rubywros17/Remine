@@ -61,6 +61,29 @@ public final class ExperimentStats {
     public record AvgChars(int count, double average) {
     }
 
+    /** OCR 글자 수(공백 제외) 구간. 경계는 50, 150이며 하한 포함·상한 미포함이다. */
+    public enum LengthBin {
+        SHORT("50자 미만"), MEDIUM("50자 이상 150자 미만"), LONG("150자 이상");
+
+        private final String label;
+
+        LengthBin(String label) {
+            this.label = label;
+        }
+
+        public String label() {
+            return label;
+        }
+
+        public static LengthBin of(int chars) {
+            return chars < 50 ? SHORT : chars < 150 ? MEDIUM : LONG;
+        }
+    }
+
+    /** 구간 안의 엄격 정답 수, 허용 정답 수, 표본 수. */
+    public record BinScore(int strictCorrect, int lenientCorrect, int total) {
+    }
+
     public record Report(
             Candidate candidate,
             int evaluated,            // CALL_FAILED를 뺀 평가 대상 수
@@ -80,7 +103,8 @@ public final class ExperimentStats {
             Map<String, Integer> confusions,
             AvgChars charsCorrect,    // 정답(허용 기준)
             AvgChars charsWrong,      // 오답(허용 기준)
-            AvgChars charsEtcWrong) { // 오답 중 ETC로 예측한 것
+            AvgChars charsEtcWrong,   // 오답 중 ETC로 예측한 것
+            Map<LengthBin, BinScore> byLength) {
 
         /** 엄격 정확도: category만 정답. */
         public double accuracy() {
@@ -120,6 +144,7 @@ public final class ExperimentStats {
         long[] charsCorrect = new long[2];
         long[] charsWrong = new long[2];
         long[] charsEtcWrong = new long[2];
+        Map<LengthBin, int[]> byLength = new EnumMap<>(LengthBin.class); // [엄격 정답, 허용 정답, 전체]
 
         for (Sample sample : samples) {
             if (sample.status() == LlmOutcome.Status.CALL_FAILED) {
@@ -150,6 +175,14 @@ public final class ExperimentStats {
                 }
             }
             if (sample.ocrChars() >= 0) {
+                int[] bin = byLength.computeIfAbsent(LengthBin.of(sample.ocrChars()), b -> new int[3]);
+                bin[2]++;
+                if (sample.strictCorrect()) {
+                    bin[0]++;
+                }
+                if (sample.lenientCorrect()) {
+                    bin[1]++;
+                }
                 long[] group = sample.lenientCorrect() ? charsCorrect : charsWrong;
                 group[0]++;
                 group[1] += sample.ocrChars();
@@ -176,7 +209,13 @@ public final class ExperimentStats {
                 parseFailed, callFailed, scores,
                 calls == 0 ? 0 : Math.round(latencies.stream().mapToLong(Long::longValue).average().orElse(0)),
                 percentile95(latencies), avgIn, avgOut, candidate.costUsd(avgIn, avgOut), confusions,
-                avgChars(charsCorrect), avgChars(charsWrong), avgChars(charsEtcWrong));
+                avgChars(charsCorrect), avgChars(charsWrong), avgChars(charsEtcWrong), binScores(byLength));
+    }
+
+    private static Map<LengthBin, BinScore> binScores(Map<LengthBin, int[]> raw) {
+        Map<LengthBin, BinScore> scores = new EnumMap<>(LengthBin.class);
+        raw.forEach((bin, v) -> scores.put(bin, new BinScore(v[0], v[1], v[2])));
+        return scores;
     }
 
     private static AvgChars avgChars(long[] countAndSum) {

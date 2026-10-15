@@ -199,6 +199,47 @@ class ExperimentStatsTest {
     }
 
     @Test
+    void 구간_경계는_50자와_150자이고_하한_포함_상한_미포함() {
+        assertThat(ExperimentStats.LengthBin.of(0)).isEqualTo(ExperimentStats.LengthBin.SHORT);
+        assertThat(ExperimentStats.LengthBin.of(49)).isEqualTo(ExperimentStats.LengthBin.SHORT);
+        assertThat(ExperimentStats.LengthBin.of(50)).isEqualTo(ExperimentStats.LengthBin.MEDIUM);
+        assertThat(ExperimentStats.LengthBin.of(149)).isEqualTo(ExperimentStats.LengthBin.MEDIUM);
+        assertThat(ExperimentStats.LengthBin.of(150)).isEqualTo(ExperimentStats.LengthBin.LONG);
+    }
+
+    @Test
+    void 글자_수_구간별_엄격_허용_정확도를_센다() {
+        Report report = ExperimentStats.summarize(candidate, List.of(
+                withChars(Category.INFO, null, Category.ETC, 10),                       // SHORT 오답
+                withChars(Category.INFO, null, Category.INFO, 30),                      // SHORT 정답
+                withChars(Category.PLACE, Category.SCHEDULE, Category.SCHEDULE, 50),   // MEDIUM alt만 일치
+                withChars(Category.SHOPPING, null, Category.SHOPPING, 149),             // MEDIUM 정답
+                withChars(Category.SHOPPING, null, Category.SHOPPING, 150),             // LONG 정답
+                withChars(Category.CHAT, null, Category.CHAT, 400)));                   // LONG 정답
+
+        ExperimentStats.BinScore shortBin = report.byLength().get(ExperimentStats.LengthBin.SHORT);
+        ExperimentStats.BinScore mediumBin = report.byLength().get(ExperimentStats.LengthBin.MEDIUM);
+        ExperimentStats.BinScore longBin = report.byLength().get(ExperimentStats.LengthBin.LONG);
+
+        assertThat(shortBin).isEqualTo(new ExperimentStats.BinScore(1, 1, 2));
+        assertThat(mediumBin).isEqualTo(new ExperimentStats.BinScore(1, 2, 2));
+        assertThat(longBin).isEqualTo(new ExperimentStats.BinScore(2, 2, 2));
+    }
+
+    @Test
+    void 구간별_표에_구간_라벨과_건수가_표시되고_빈_구간은_대시() {
+        Report report = ExperimentStats.summarize(candidate, List.of(
+                withChars(Category.INFO, null, Category.INFO, 10),
+                withChars(Category.INFO, null, Category.ETC, 20)));
+
+        String md = ResultsMarkdown.render(LocalDate.of(2026, 10, 15), 2, 0, List.of(report), List.of());
+
+        assertThat(md).contains("OCR 글자 수 구간별 정확도", "50자 미만", "50자 이상 150자 미만", "150자 이상")
+                .contains("50.0% (1/2) · 허용 50.0%");
+        assertThat(md).contains("| gemini |".replace("gemini", "test")).contains("| - | - |");
+    }
+
+    @Test
     void 글자_수는_공백과_줄바꿈을_뺀_개수() {
         assertThat(Sample.countChars("가나 다\n라\t마")).isEqualTo(5);
         assertThat(Sample.countChars("   \n ")).isZero();
