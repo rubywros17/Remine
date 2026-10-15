@@ -2,8 +2,8 @@
   "pricedAt": "2026-10-14",
   "source": "https://ai.google.dev/gemini-api/docs/pricing (페이지 갱신 2026-10-13). 가격이 바뀌면 이 파일만 고친다.",
   "temperatureNote": "Gemini 3 공식 문서가 기본값 1.0 유지를 강하게 권장해 두 후보 모두 1.0으로 둔다(낮추면 반복·품질 저하 가능). 후보별로 바꿀 수 있고 생략하면 0이다.",
-  "minIntervalNote": "minIntervalMs는 이 후보의 연속 호출 시작 사이 최소 간격(ms)이다. 1차 실행의 429(쿼터 초과)를 피하려는 추정값이며 공식 한도가 아니다. AI Studio의 Rate limit 화면에서 실제 RPM을 확인해 조정한다. 생략하면 0(제한 없음).",
-  "inputNote": "input은 \"text\"(OCR 텍스트만, 기본) 또는 \"text+image\"(OCR 텍스트 + 축소한 원본 이미지)이다. text+image는 실험 러너 전용이며 앱은 원본 이미지를 서버로 보내지 않는다.",
+  "minIntervalNote": "minIntervalMs는 이 후보의 연속 호출 시작 사이 최소 간격(ms)이다. AI Studio 확인값(2026-10-15)인 무료 등급 RPM(flash-lite 15, flash 5)을 넘지 않게 정한 값이다(4500ms ≈ 13 RPM, 13000ms ≈ 4.6 RPM). 한도가 바뀌면 AI Studio의 비율 제한 화면을 확인해 조정한다. 생략하면 0(제한 없음).",
+  "inputNote": "input은 \"text\"(OCR 텍스트만, 기본) 또는 \"text+image\"(OCR 텍스트 + 축소한 원본 이미지)이다. text+image는 실험 러너에서 쓰는 후보이며, 서비스의 이미지 전송 조건(동의, 민감 캡처 제외, 저장 안 함)은 docs/spec.md의 개인정보 원칙을 따른다.",
   "candidates": [
     {
       "name": "gemini-3.5-flash-lite",
