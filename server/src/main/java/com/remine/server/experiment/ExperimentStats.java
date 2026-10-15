@@ -17,14 +17,29 @@ public final class ExperimentStats {
 
     /**
      * called=false는 글자 없는 스크린샷으로 LLM을 부르지 않고 ETC로 처리한 경우.
+     * alt는 labels.csv의 허용 정답(없으면 null). 있으면 그 표본은 "애매한 표본"이다.
      * detail은 모델 원문/사유로 errors.local.md에만 쓰고 results.md에는 넣지 않는다.
      */
-    public record Sample(String filename, Category expected, Category predicted,
+    public record Sample(String filename, Category expected, Category alt, Category predicted,
                          LlmOutcome.Status status, boolean called, LlmUsage usage, String detail) {
 
         public Sample(String filename, Category expected, Category predicted,
                       LlmOutcome.Status status, boolean called, LlmUsage usage) {
-            this(filename, expected, predicted, status, called, usage, "");
+            this(filename, expected, null, predicted, status, called, usage, "");
+        }
+
+        /** category만 정답으로 인정. */
+        boolean strictCorrect() {
+            return predicted == expected;
+        }
+
+        /** category 또는 alt를 정답으로 인정. */
+        boolean lenientCorrect() {
+            return strictCorrect() || (alt != null && predicted == alt);
+        }
+
+        boolean ambiguous() {
+            return alt != null;
         }
     }
 
@@ -34,7 +49,11 @@ public final class ExperimentStats {
     public record Report(
             Candidate candidate,
             int evaluated,            // CALL_FAILED를 뺀 평가 대상 수
-            int correct,
+            int correct,              // 엄격: category와 일치
+            int lenientCorrect,       // 허용: category 또는 alt와 일치
+            int clearEvaluated,       // alt가 없는(명확한) 표본 수
+            int clearCorrect,         // 명확한 표본 중 category와 일치
+            int ambiguous,            // alt가 있는(애매한) 표본 수
             int parseFailed,
             int callFailed,
             Map<Category, CategoryScore> perCategory,
@@ -45,8 +64,23 @@ public final class ExperimentStats {
             double costPerImageUsd,
             Map<String, Integer> confusions) {
 
+        /** 엄격 정확도: category만 정답. */
         public double accuracy() {
-            return evaluated == 0 ? 0 : (double) correct / evaluated;
+            return ratio(correct, evaluated);
+        }
+
+        /** 허용 정확도: category 또는 alt가 정답. */
+        public double lenientAccuracy() {
+            return ratio(lenientCorrect, evaluated);
+        }
+
+        /** 명확한 표본(alt 없음)만의 정확도. */
+        public double clearAccuracy() {
+            return ratio(clearCorrect, clearEvaluated);
+        }
+
+        private static double ratio(int numerator, int denominator) {
+            return denominator == 0 ? 0 : (double) numerator / denominator;
         }
     }
 
@@ -54,6 +88,10 @@ public final class ExperimentStats {
         int callFailed = 0;
         int parseFailed = 0;
         int correct = 0;
+        int lenientCorrect = 0;
+        int clearEvaluated = 0;
+        int clearCorrect = 0;
+        int ambiguous = 0;
         int evaluated = 0;
         Map<Category, int[]> perCategory = new EnumMap<>(Category.class);
         Map<String, Integer> confusions = new LinkedHashMap<>();
@@ -72,11 +110,22 @@ public final class ExperimentStats {
             }
             int[] score = perCategory.computeIfAbsent(sample.expected(), c -> new int[2]);
             score[1]++;
-            if (sample.expected() == sample.predicted()) {
+            if (sample.strictCorrect()) {
                 correct++;
                 score[0]++;
             } else {
                 confusions.merge(sample.expected() + "→" + sample.predicted(), 1, Integer::sum);
+            }
+            if (sample.lenientCorrect()) {
+                lenientCorrect++;
+            }
+            if (sample.ambiguous()) {
+                ambiguous++;
+            } else {
+                clearEvaluated++;
+                if (sample.strictCorrect()) {
+                    clearCorrect++;
+                }
             }
             if (sample.called()) {
                 latencies.add(sample.usage().latencyMs());
@@ -92,7 +141,8 @@ public final class ExperimentStats {
         Map<Category, CategoryScore> scores = new EnumMap<>(Category.class);
         perCategory.forEach((category, s) -> scores.put(category, new CategoryScore(s[0], s[1])));
 
-        return new Report(candidate, evaluated, correct, parseFailed, callFailed, scores,
+        return new Report(candidate, evaluated, correct, lenientCorrect, clearEvaluated, clearCorrect, ambiguous,
+                parseFailed, callFailed, scores,
                 calls == 0 ? 0 : Math.round(latencies.stream().mapToLong(Long::longValue).average().orElse(0)),
                 percentile95(latencies), avgIn, avgOut, candidate.costUsd(avgIn, avgOut), confusions);
     }

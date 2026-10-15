@@ -106,11 +106,11 @@ class ExperimentRunner implements CommandLineRunner {
     // 서버와 같은 규칙: 글자가 없으면 LLM을 부르지 않고 ETC.
     private Sample classify(LlmClassifier classifier, Labeled item) {
         if (item.ocrText().isBlank()) {
-            return new Sample(item.filename(), item.expected(), Category.ETC,
-                    LlmOutcome.Status.OK, false, LlmUsage.NONE);
+            return new Sample(item.filename(), item.expected(), item.alt(), Category.ETC,
+                    LlmOutcome.Status.OK, false, LlmUsage.NONE, "");
         }
         LlmOutcome outcome = classifier.classifyWithUsage(item.ocrText());
-        return new Sample(item.filename(), item.expected(), outcome.result().category(),
+        return new Sample(item.filename(), item.expected(), item.alt(), outcome.result().category(),
                 outcome.status(), true, outcome.usage(), outcome.raw());
     }
 
@@ -122,6 +122,9 @@ class ExperimentRunner implements CommandLineRunner {
             } else if (s.expected() != s.predicted()) {
                 errors.append("- ").append(s.filename()).append(": ")
                         .append(s.expected()).append(" → ").append(s.predicted());
+                if (s.lenientCorrect()) {
+                    errors.append(" (alt ").append(s.alt()).append("와 일치, 허용 정답)");
+                }
                 if (s.status() == LlmOutcome.Status.PARSE_FAILED) {
                     errors.append(" (파싱 실패) ").append(oneLine(s.detail()));
                 }
@@ -152,29 +155,44 @@ class ExperimentRunner implements CommandLineRunner {
         }
         int unlabeled = 0;
         List<String> lines = Files.readAllLines(labels, StandardCharsets.UTF_8);
-        for (String line : lines.stream().skip(1).filter(l -> l.contains(",")).toList()) {
-            int comma = line.lastIndexOf(',');
-            String filename = line.substring(0, comma).trim();
-            String category = line.substring(comma + 1).trim();
-            if (category.isEmpty()) {
+        for (String line : lines.stream().skip(1).toList()) {
+            LabelsCsv.Row row = LabelsCsv.parseLine(line);
+            if (row == null) {
+                continue;
+            }
+            if (row.category().isEmpty()) {
                 unlabeled++;
                 continue;
             }
-            Path ocr = dir.resolve("ocr").resolve(filename.replaceFirst("\\.[^.]+$", "") + ".txt");
+            Path ocr = dir.resolve("ocr").resolve(row.filename().replaceFirst("\\.[^.]+$", "") + ".txt");
             if (!Files.exists(ocr)) {
-                log.warn("OCR 파일 없음, 건너뜀: {}", filename);
+                log.warn("OCR 파일 없음, 건너뜀: {}", row.filename());
                 continue;
             }
+            Category expected;
             try {
-                out.add(new Labeled(filename, Category.valueOf(category.toUpperCase()),
-                        Files.readString(ocr, StandardCharsets.UTF_8).trim()));
+                expected = LabelsCsv.parseCategory(row.category());
             } catch (IllegalArgumentException e) {
-                log.warn("알 수 없는 카테고리 '{}', 건너뜀: {}", category, filename);
+                log.warn("알 수 없는 카테고리 '{}', 건너뜀: {}", row.category(), row.filename());
+                continue;
             }
+            out.add(new Labeled(row.filename(), expected, parseAlt(row, expected),
+                    Files.readString(ocr, StandardCharsets.UTF_8).trim()));
         }
         return unlabeled;
     }
 
-    private record Labeled(String filename, Category expected, String ocrText) {
+    // alt가 비었거나 category와 같으면 애매한 표본이 아니다. 알 수 없는 값은 경고 후 무시한다.
+    private Category parseAlt(LabelsCsv.Row row, Category expected) {
+        try {
+            Category alt = LabelsCsv.parseCategory(row.alt());
+            return alt == expected ? null : alt;
+        } catch (IllegalArgumentException e) {
+            log.warn("알 수 없는 alt '{}', 무시함: {}", row.alt(), row.filename());
+            return null;
+        }
+    }
+
+    private record Labeled(String filename, Category expected, Category alt, String ocrText) {
     }
 }

@@ -87,6 +87,71 @@ class ExperimentStatsTest {
         assertThat(report.avgInputTokens()).isEqualTo(500);
     }
 
+    private Sample withAlt(Category expected, Category alt, Category predicted) {
+        return new Sample("f", expected, alt, predicted, LlmOutcome.Status.OK, true, new LlmUsage(10, 5, 50), "");
+    }
+
+    @Test
+    void 엄격_허용_명확한_표본_정확도와_애매한_표본_수를_따로_센다() {
+        Report report = ExperimentStats.summarize(candidate, List.of(
+                // 명확한 표본 2장: 1 맞음, 1 틀림
+                called(Category.SHOPPING, Category.SHOPPING, 100, 10, 1),
+                called(Category.INFO, Category.ETC, 100, 10, 1),
+                // 애매한 표본 3장: category 일치 / alt 일치 / 둘 다 불일치
+                withAlt(Category.PLACE, Category.SCHEDULE, Category.PLACE),
+                withAlt(Category.PLACE, Category.SCHEDULE, Category.SCHEDULE),
+                withAlt(Category.PLACE, Category.SCHEDULE, Category.CHAT)));
+
+        assertThat(report.evaluated()).isEqualTo(5);
+        assertThat(report.correct()).isEqualTo(2);          // SHOPPING, PLACE(category 일치)
+        assertThat(report.lenientCorrect()).isEqualTo(3);   // + alt 일치 1장
+        assertThat(report.clearEvaluated()).isEqualTo(2);
+        assertThat(report.clearCorrect()).isEqualTo(1);
+        assertThat(report.ambiguous()).isEqualTo(3);
+        assertThat(report.accuracy()).isCloseTo(0.4, within(1e-9));
+        assertThat(report.lenientAccuracy()).isCloseTo(0.6, within(1e-9));
+        assertThat(report.clearAccuracy()).isCloseTo(0.5, within(1e-9));
+    }
+
+    @Test
+    void alt가_없는_2칸_형식_데이터는_엄격과_허용이_같다() {
+        Report report = ExperimentStats.summarize(candidate, List.of(
+                called(Category.CHAT, Category.CHAT, 100, 10, 1),
+                called(Category.CHAT, Category.ETC, 100, 10, 1)));
+
+        assertThat(report.ambiguous()).isZero();
+        assertThat(report.lenientAccuracy()).isEqualTo(report.accuracy());
+        assertThat(report.clearEvaluated()).isEqualTo(report.evaluated());
+    }
+
+    @Test
+    void 호출_실패한_애매한_표본은_모든_분모에서_빠진다() {
+        Sample failed = new Sample("f", Category.PLACE, Category.SCHEDULE, Category.ETC,
+                LlmOutcome.Status.CALL_FAILED, true, LlmUsage.NONE, "");
+
+        Report report = ExperimentStats.summarize(candidate, List.of(
+                failed, called(Category.PLACE, Category.PLACE, 100, 10, 1)));
+
+        assertThat(report.evaluated()).isEqualTo(1);
+        assertThat(report.ambiguous()).isZero();
+        assertThat(report.callFailed()).isEqualTo(1);
+    }
+
+    @Test
+    void results_md에_엄격_허용_명확한_표본_애매한_표본_수가_표시된다() {
+        Report report = ExperimentStats.summarize(candidate, List.of(
+                called(Category.SHOPPING, Category.SHOPPING, 100, 10, 1),
+                withAlt(Category.PLACE, Category.SCHEDULE, Category.SCHEDULE)));
+
+        String md = ResultsMarkdown.render(LocalDate.of(2026, 10, 15), 2, 0, List.of(report), List.of());
+
+        assertThat(md).contains("엄격 정확도", "허용 정확도", "명확한 표본 정확도", "애매한 표본 수");
+        assertThat(md).contains("50.0% (1/2)")      // 엄격
+                .contains("100.0% (2/2)")           // 허용
+                .contains("100.0% (1/1)")           // 명확한 표본
+                .contains("1 / 2장");               // 애매한 표본 수
+    }
+
     @Test
     void results_md에는_파일명이_들어가지_않는다() {
         Sample sample = new Sample("secret_screenshot.jpg", Category.SHOPPING, Category.ETC,

@@ -48,10 +48,11 @@ if [ -e labels.csv ]; then
   echo "labels.csv가 이미 있어 건드리지 않았습니다."
 else
   {
-    echo "filename,category"
+    echo "filename,category,alt"
     for img in "${images[@]}"; do
       basename "$img"
-      done | sed 's/$/,/'
+      done | sed 's/$/,,/'
   } > labels.csv
   echo "labels.csv 템플릿 생성: category 칸을 채워주세요 (SHOPPING ENTERTAINMENT PLACE INFO CHAT SCHEDULE ETC)"
+  echo "  경계가 애매한 표본만 alt 칸에 허용 정답을 적습니다 (비워 두면 명확한 표본)."
 fi
