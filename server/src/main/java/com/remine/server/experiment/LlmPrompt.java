@@ -53,6 +53,11 @@ public final class LlmPrompt {
         return "OCR 텍스트:\n" + text;
     }
 
+    /** text+image 후보용. 시스템 프롬프트는 그대로이고 이미지가 함께 있다는 한 줄만 더한다. */
+    public static String userWithImage(String ocrText) {
+        return user(ocrText) + "\n\n위 텍스트는 첨부한 스크린샷 이미지의 OCR 결과다. 이미지도 함께 참고해 분류하라.";
+    }
+
     /** ok=false면 JSON이 아니거나 카테고리가 7개 밖이다. 이 경우 결과는 ETC로 둔다. */
     public record Parsed(ClassificationResult result, boolean ok) {
     }

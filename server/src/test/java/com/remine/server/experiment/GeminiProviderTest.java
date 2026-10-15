@@ -29,6 +29,30 @@ class GeminiProviderTest {
     }
 
     @Test
+    void 이미지가_없으면_parts에_텍스트만_들어간다() {
+        JsonNode body = mapper.valueToTree(GeminiProvider.requestBody("s", "u", 1.0));
+
+        JsonNode parts = body.path("contents").path(0).path("parts");
+        assertThat(parts.size()).isEqualTo(1);
+        assertThat(parts.path(0).has("inlineData")).isFalse();
+    }
+
+    @Test
+    void 이미지가_있으면_텍스트_다음에_inlineData_JPEG_base64가_붙는다() {
+        byte[] jpeg = {(byte) 0xFF, (byte) 0xD8, 1, 2, 3};
+
+        JsonNode body = mapper.valueToTree(GeminiProvider.requestBody("s", "OCR", 1.0, jpeg));
+
+        JsonNode parts = body.path("contents").path(0).path("parts");
+        assertThat(parts.size()).isEqualTo(2);
+        assertThat(parts.path(0).path("text").asString()).isEqualTo("OCR"); // 텍스트가 이미지 앞
+        assertThat(parts.path(1).path("inlineData").path("mimeType").asString()).isEqualTo("image/jpeg");
+        assertThat(parts.path(1).path("inlineData").path("data").asString())
+                .isEqualTo(java.util.Base64.getEncoder().encodeToString(jpeg));
+        assertThat(body.path("generationConfig").path("temperature").asDouble(-1)).isEqualTo(1.0);
+    }
+
+    @Test
     void 후보에서_지정한_temperature가_그대로_전달된다() {
         JsonNode body = mapper.valueToTree(GeminiProvider.requestBody("s", "u", 1.0));
 

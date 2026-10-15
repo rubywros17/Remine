@@ -67,6 +67,13 @@ class LlmPromptTest {
     }
 
     @Test
+    void 이미지_변형의_user_메시지는_기존_메시지에_한_줄만_더한다() {
+        String base = LlmPrompt.user("텍스트");
+
+        assertThat(LlmPrompt.userWithImage("텍스트")).startsWith(base).hasSizeGreaterThan(base.length());
+    }
+
+    @Test
     void OCR_텍스트는_길이를_제한한다() {
         String user = LlmPrompt.user("가".repeat(10_000));
 

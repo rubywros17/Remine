@@ -43,6 +43,39 @@ class ExperimentRunnerSelectionTest {
     }
 
     @Test
+    void 후보_이름이_정확히_같으면_그_후보만_고른다() {
+        Candidate liteImage = new Candidate("gemini-3.5-flash-lite+image", "gemini", "gemini-3.5-flash-lite",
+                0.3, 2.5, 1.0, 0, InputMode.TEXT_IMAGE);
+        List<Candidate> withImage = List.of(lite, liteImage, flash);
+
+        assertThat(ExperimentRunner.filterCandidates(withImage, "gemini-3.5-flash-lite"))
+                .containsExactly(lite);
+        assertThat(ExperimentRunner.filterCandidates(withImage, "gemini-3.5-flash-lite+image"))
+                .containsExactly(liteImage);
+        assertThat(ExperimentRunner.filterCandidates(withImage, "gemini-3.5-flash-lite,gemini-3.5-flash-lite+image"))
+                .containsExactly(lite, liteImage);
+    }
+
+    @Test
+    void 이름이_아닌_모델_ID는_같은_모델의_변형을_모두_고른다() {
+        Candidate textA = new Candidate("lite-text", "gemini", "gemini-3.5-flash-lite", 0.3, 2.5);
+        Candidate imageA = new Candidate("lite-image", "gemini", "gemini-3.5-flash-lite",
+                0.3, 2.5, 1.0, 0, InputMode.TEXT_IMAGE);
+
+        assertThat(ExperimentRunner.filterCandidates(List.of(textA, imageA, flash), "gemini-3.5-flash-lite"))
+                .containsExactly(textA, imageA);
+    }
+
+    @Test
+    void 파일명_구분자는_이름의_플러스와_겹치지_않는다() {
+        Candidate liteImage = new Candidate("gemini-3.5-flash-lite+image", "gemini", "gemini-3.5-flash-lite",
+                0.3, 2.5, 1.0, 0, InputMode.TEXT_IMAGE);
+        assertThat(ExperimentRunner.resultsFileName(false, true,
+                List.of(reportOf(lite), reportOf(liteImage))))
+                .isEqualTo("results.gemini-3.5-flash-lite__gemini-3.5-flash-lite+image.md");
+    }
+
+    @Test
     void 결과_파일명은_제한_실행_후보_지정_실행_전체_실행에_따라_다르다() {
         List<ExperimentStats.Report> one = List.of(reportOf(flash));
 

@@ -19,7 +19,9 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -38,6 +40,7 @@ class ExperimentRunner implements CommandLineRunner {
     private final int limit;
     private final String candidatesFilter;
     private final JsonMapper mapper = JsonMapper.builder().build();
+    private final Map<String, byte[]> imageCache = new HashMap<>();
 
     /**
      * limit: --experiment.limit=N. 0(기본)이면 전체 표본. 형식 검증용 소량 실행에 쓴다.
@@ -139,12 +142,17 @@ class ExperimentRunner implements CommandLineRunner {
             return "results.limit.md";
         }
         if (filtered) {
-            return "results." + reports.stream().map(r -> r.candidate().name()).collect(Collectors.joining("+")) + ".md";
+            // 이름에 "+image"가 들어갈 수 있어 구분자는 "__"를 쓴다.
+            return "results." + reports.stream().map(r -> r.candidate().name()).collect(Collectors.joining("__")) + ".md";
         }
         return "results.md";
     }
 
-    /** filter는 쉼표로 구분한 모델 ID(또는 후보 이름). 비어 있으면 전체. 모르는 ID가 있으면 예외. */
+    /**
+     * filter는 쉼표로 구분한 모델 ID 또는 후보 이름. 비어 있으면 전체. 모르는 값이 있으면 예외.
+     * 후보 이름과 정확히 같으면 그 후보만(예: gemini-3.5-flash-lite → 텍스트 변형,
+     * gemini-3.5-flash-lite+image → 이미지 변형), 이름이 아니면 모델 ID가 같은 변형을 모두 고른다.
+     */
     static List<Candidate> filterCandidates(List<Candidate> available, String filter) {
         if (filter == null || filter.isBlank()) {
             return available;
@@ -156,14 +164,15 @@ class ExperimentRunner implements CommandLineRunner {
             if (wanted.isEmpty()) {
                 continue;
             }
-            available.stream()
-                    .filter(c -> c.model().equalsIgnoreCase(wanted) || c.name().equalsIgnoreCase(wanted))
-                    .findFirst()
-                    .ifPresentOrElse(c -> {
-                        if (!selected.contains(c)) {
-                            selected.add(c);
-                        }
-                    }, () -> unknown.add(wanted));
+            // 후보 이름이 정확히 같으면 그 후보만, 없으면 모델 ID가 같은 후보(텍스트·이미지 변형)를 모두 고른다.
+            List<Candidate> byName = available.stream().filter(c -> c.name().equalsIgnoreCase(wanted)).toList();
+            List<Candidate> matches = !byName.isEmpty() ? byName : available.stream()
+                    .filter(c -> c.model().equalsIgnoreCase(wanted))
+                    .toList();
+            if (matches.isEmpty()) {
+                unknown.add(wanted);
+            }
+            matches.stream().filter(c -> !selected.contains(c)).forEach(selected::add);
         }
         if (!unknown.isEmpty() || selected.isEmpty()) {
             throw new IllegalArgumentException("알 수 없는 후보: " + unknown + " / 사용 가능: "
@@ -198,15 +207,36 @@ class ExperimentRunner implements CommandLineRunner {
                 s.usage().inputTokens(), s.usage().outputTokens(), s.usage().latencyMs(), oneLine(s.detail()));
     }
 
-    // 서버와 같은 규칙: 글자가 없으면 LLM을 부르지 않고 ETC.
     private Sample classify(LlmClassifier classifier, Labeled item) {
-        if (item.ocrText().isBlank()) {
+        int ocrChars = Sample.countChars(item.ocrText());
+        byte[] image = null;
+        if (classifier.candidate().usesImage()) {
+            // text+image 후보: 실험 러너 전용. 글자가 없는 스크린샷도 이미지를 보고 분류해 볼 수 있으므로 호출한다.
+            try {
+                image = resizedImage(item.filename());
+            } catch (IOException e) {
+                return new Sample(item.filename(), item.expected(), item.alt(), Category.ETC,
+                        LlmOutcome.Status.CALL_FAILED, false, LlmUsage.NONE, "이미지 로드 실패: " + e.getMessage(),
+                        ocrChars);
+            }
+        } else if (item.ocrText().isBlank()) {
+            // 서버와 같은 규칙: 글자가 없으면 LLM을 부르지 않고 ETC.
             return new Sample(item.filename(), item.expected(), item.alt(), Category.ETC,
                     LlmOutcome.Status.OK, false, LlmUsage.NONE, "", 0);
         }
-        LlmOutcome outcome = classifier.classifyWithUsage(item.ocrText());
+        LlmOutcome outcome = classifier.classifyWithUsage(item.ocrText(), image);
         return new Sample(item.filename(), item.expected(), item.alt(), outcome.result().category(),
-                outcome.status(), true, outcome.usage(), outcome.raw(), Sample.countChars(item.ocrText()));
+                outcome.status(), true, outcome.usage(), outcome.raw(), ocrChars);
+    }
+
+    // 같은 이미지를 여러 후보·재시도에서 다시 줄이지 않도록 한 번만 줄여 둔다.
+    private byte[] resizedImage(String filename) throws IOException {
+        byte[] cached = imageCache.get(filename);
+        if (cached == null) {
+            cached = ImageResizer.toJpeg(dir.resolve("images").resolve(filename), ImageResizer.DEFAULT_MAX_LONG_SIDE);
+            imageCache.put(filename, cached);
+        }
+        return cached;
     }
 
     private void appendErrors(StringBuilder errors, Candidate candidate, List<Sample> samples) {
@@ -246,7 +276,8 @@ class ExperimentRunner implements CommandLineRunner {
                 node.path("name").asString(), node.path("provider").asString(), node.path("model").asString(),
                 node.path("inputPerMTok").asDouble(), node.path("outputPerMTok").asDouble(),
                 node.path("temperature").asDouble(Candidate.DEFAULT_TEMPERATURE),
-                node.path("minIntervalMs").asLong(0))));
+                node.path("minIntervalMs").asLong(0),
+                InputMode.parse(node.path("input").asString("")))));
         return candidates;
     }
 

@@ -161,6 +161,46 @@ class LlmClassifierTest {
     }
 
     @Test
+    void 이미지가_있으면_이미지_호출을_쓰고_user_메시지에_이미지_참고_문구가_붙는다() {
+        byte[] jpeg = {1, 2, 3};
+        List<String> users = new ArrayList<>();
+        List<byte[]> images = new ArrayList<>();
+        LlmProvider provider = new LlmProvider() {
+            @Override
+            public LlmReply call(String model, String system, String user) {
+                throw new AssertionError("이미지 호출이어야 한다");
+            }
+
+            @Override
+            public LlmReply call(String model, String system, String user, byte[] jpegImage) {
+                users.add(user);
+                images.add(jpegImage);
+                return new LlmReply(OK_REPLY, 2400, 20);
+            }
+        };
+
+        LlmOutcome outcome = new LlmClassifier(candidate, provider, mapper).classifyWithUsage("OCR 텍스트", jpeg);
+
+        assertThat(outcome.status()).isEqualTo(LlmOutcome.Status.OK);
+        assertThat(outcome.usage().inputTokens()).isEqualTo(2400);
+        assertThat(images).containsExactly(jpeg);
+        assertThat(users.get(0)).startsWith(LlmPrompt.user("OCR 텍스트")).contains("이미지");
+    }
+
+    @Test
+    void 이미지_없는_호출은_기존_프롬프트를_그대로_쓴다() {
+        List<String> users = new ArrayList<>();
+        LlmProvider provider = (model, system, user) -> {
+            users.add(user);
+            return new LlmReply(OK_REPLY, 5, 5);
+        };
+
+        new LlmClassifier(candidate, provider, mapper).classifyWithUsage("OCR 텍스트");
+
+        assertThat(users).containsExactly(LlmPrompt.user("OCR 텍스트"));
+    }
+
+    @Test
     void 응답_시간에는_호출_간격_대기와_재시도_대기가_포함되지_않는다() {
         long[] now = {0};
         AtomicInteger calls = new AtomicInteger();

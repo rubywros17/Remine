@@ -30,6 +30,13 @@ public final class ResultsMarkdown {
         md.append("- **OCR은 앱의 ML Kit이 아니라 Tesseract(kor+eng) 결과라 근사치다.** ")
                 .append("실제 앱 텍스트 품질과 다를 수 있다.\n");
         md.append("- 모든 후보가 같은 프롬프트(카테고리 7개 고정, JSON 응답)를 사용했다.\n");
+        List<String> imageCandidates = reports.stream().map(r -> r.candidate())
+                .filter(Candidate::usesImage).map(Candidate::name).toList();
+        if (!imageCandidates.isEmpty()) {
+            md.append("- **이미지 입력 후보**: ").append(String.join(", ", imageCandidates))
+                    .append(" — OCR 텍스트와 함께 원본 스크린샷을 긴 변 1024px로 줄여 보냈다(실험 러너 전용, 서비스 경로는 이미지를 서버로 보내지 않는다).")
+                    .append(" 입력 토큰에 이미지 토큰이 포함되어 있고 글자 없는 스크린샷도 호출했다.\n");
+        }
         md.append("- 표본이 적어 카테고리별 수치는 편차가 크다. 순위보다 큰 격차와 실패 양상을 본다.\n\n");
 
         md.append("## 정확도\n\n");

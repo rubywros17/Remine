@@ -3,16 +3,29 @@
   "source": "https://ai.google.dev/gemini-api/docs/pricing (페이지 갱신 2026-10-13). 가격이 바뀌면 이 파일만 고친다.",
   "temperatureNote": "Gemini 3 공식 문서가 기본값 1.0 유지를 강하게 권장해 두 후보 모두 1.0으로 둔다(낮추면 반복·품질 저하 가능). 후보별로 바꿀 수 있고 생략하면 0이다.",
   "minIntervalNote": "minIntervalMs는 이 후보의 연속 호출 시작 사이 최소 간격(ms)이다. 1차 실행의 429(쿼터 초과)를 피하려는 추정값이며 공식 한도가 아니다. AI Studio의 Rate limit 화면에서 실제 RPM을 확인해 조정한다. 생략하면 0(제한 없음).",
+  "inputNote": "input은 \"text\"(OCR 텍스트만, 기본) 또는 \"text+image\"(OCR 텍스트 + 축소한 원본 이미지)이다. text+image는 실험 러너 전용이며 앱은 원본 이미지를 서버로 보내지 않는다.",
   "candidates": [
     {
       "name": "gemini-3.5-flash-lite",
       "provider": "gemini",
       "model": "gemini-3.5-flash-lite",
+      "input": "text",
       "inputPerMTok": 0.3,
       "outputPerMTok": 2.5,
       "temperature": 1.0,
       "minIntervalMs": 4500,
       "note": "Flash-Lite 계열. 문서가 신규 프로젝트에 권장. 사고 기본값 minimal. 무료 티어 있음. 1차 실행에서 호출 실패 3건."
+    },
+    {
+      "name": "gemini-3.5-flash-lite+image",
+      "provider": "gemini",
+      "model": "gemini-3.5-flash-lite",
+      "input": "text+image",
+      "inputPerMTok": 0.3,
+      "outputPerMTok": 2.5,
+      "temperature": 1.0,
+      "minIntervalMs": 4500,
+      "note": "gemini-3.5-flash-lite와 같은 모델·단가에 OCR 텍스트 + 원본 이미지(긴 변 1024px로 축소)를 함께 보내는 변형. 실험 러너 전용. 입력 토큰에 이미지 토큰이 포함된다. 글자 없는 스크린샷도 호출한다."
     },
     {
       "name": "gemini-3.8-flash",

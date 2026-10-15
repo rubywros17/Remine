@@ -57,7 +57,15 @@ public class LlmClassifier implements Classifier {
      * 응답 시간은 성공한 호출만 잰다(간격·재시도 대기 제외).
      */
     public LlmOutcome classifyWithUsage(String ocrText) {
-        String user = LlmPrompt.user(ocrText);
+        return classifyWithUsage(ocrText, null);
+    }
+
+    /**
+     * jpegImage가 null이 아니면 OCR 텍스트와 함께 이미지를 보낸다(실험 전용, text+image 후보).
+     * 프롬프트는 동일하고 user 메시지에 "이미지도 참고하라"는 한 줄만 더한다.
+     */
+    public LlmOutcome classifyWithUsage(String ocrText, byte[] jpegImage) {
+        String user = jpegImage == null ? LlmPrompt.user(ocrText) : LlmPrompt.userWithImage(ocrText);
         RuntimeException last = null;
         int attempts = 0;
         String stopReason = "";
@@ -67,7 +75,9 @@ public class LlmClassifier implements Classifier {
             // 호출 간격 대기(awaitTurn)와 재시도 대기(sleepMillis)는 이 시각 밖이다. 순수 API 응답 시간만 잰다.
             long start = nanoClock.getAsLong();
             try {
-                LlmReply reply = provider.call(candidate.model(), LlmPrompt.SYSTEM, user);
+                LlmReply reply = jpegImage == null
+                        ? provider.call(candidate.model(), LlmPrompt.SYSTEM, user)
+                        : provider.call(candidate.model(), LlmPrompt.SYSTEM, user, jpegImage);
                 long latencyMs = (nanoClock.getAsLong() - start) / 1_000_000;
                 LlmUsage usage = new LlmUsage(reply.inputTokens(), reply.outputTokens(), latencyMs);
                 LlmPrompt.Parsed parsed = LlmPrompt.parse(mapper, reply.text());

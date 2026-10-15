@@ -3,6 +3,8 @@ package com.remine.server.experiment;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 
@@ -30,15 +32,37 @@ class GeminiProvider extends JsonHttpProvider {
 
     @Override
     public LlmReply call(String model, String systemPrompt, String userText) {
-        Map<String, Object> body = requestBody(systemPrompt, userText, temperature);
-        return parse(post(URL.formatted(model), Map.of("x-goog-api-key", apiKey), body));
+        return parse(post(URL.formatted(model), Map.of("x-goog-api-key", apiKey),
+                requestBody(systemPrompt, userText, temperature)));
+    }
+
+    @Override
+    public LlmReply call(String model, String systemPrompt, String userText, byte[] jpegImage) {
+        return parse(post(URL.formatted(model), Map.of("x-goog-api-key", apiKey),
+                requestBody(systemPrompt, userText, temperature, jpegImage)));
     }
 
     /** generationConfig.temperature는 후보별 설정값(기본 0)이다. 분류 결과의 재현성을 위해 항상 보낸다. */
     static Map<String, Object> requestBody(String systemPrompt, String userText, double temperature) {
+        return requestBody(systemPrompt, userText, temperature, null);
+    }
+
+    /**
+     * jpegImage가 있으면 같은 user 메시지의 parts에 텍스트 다음으로 inlineData(JPEG, base64)를 붙인다.
+     * (문서는 이미지 한 장과 텍스트를 함께 줄 때 텍스트를 이미지 앞에 두라고 권장한다.)
+     */
+    static Map<String, Object> requestBody(String systemPrompt, String userText, double temperature,
+                                           byte[] jpegImage) {
+        List<Object> parts = new ArrayList<>();
+        parts.add(Map.of("text", userText));
+        if (jpegImage != null) {
+            parts.add(Map.of("inlineData", Map.of(
+                    "mimeType", "image/jpeg",
+                    "data", Base64.getEncoder().encodeToString(jpegImage))));
+        }
         return Map.of(
                 "systemInstruction", Map.of("parts", List.of(Map.of("text", systemPrompt))),
-                "contents", List.of(Map.of("role", "user", "parts", List.of(Map.of("text", userText)))),
+                "contents", List.of(Map.of("role", "user", "parts", parts)),
                 "generationConfig", Map.of(
                         "responseMimeType", "application/json",
                         "maxOutputTokens", MAX_OUTPUT_TOKENS,
