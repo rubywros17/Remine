@@ -19,13 +19,24 @@ public final class ExperimentStats {
      * called=false는 글자 없는 스크린샷으로 LLM을 부르지 않고 ETC로 처리한 경우.
      * alt는 labels.csv의 허용 정답(없으면 null). 있으면 그 표본은 "애매한 표본"이다.
      * detail은 모델 원문/사유로 errors.local.*.md에만 쓰고 results.md에는 넣지 않는다.
+     * ocrChars는 OCR 텍스트의 공백 제외 글자 수. 모르면 -1이고 글자 수 평균에서 빠진다.
      */
     public record Sample(String filename, Category expected, Category alt, Category predicted,
-                         LlmOutcome.Status status, boolean called, LlmUsage usage, String detail) {
+                         LlmOutcome.Status status, boolean called, LlmUsage usage, String detail, int ocrChars) {
+
+        public Sample(String filename, Category expected, Category alt, Category predicted,
+                      LlmOutcome.Status status, boolean called, LlmUsage usage, String detail) {
+            this(filename, expected, alt, predicted, status, called, usage, detail, -1);
+        }
 
         public Sample(String filename, Category expected, Category predicted,
                       LlmOutcome.Status status, boolean called, LlmUsage usage) {
-            this(filename, expected, null, predicted, status, called, usage, "");
+            this(filename, expected, null, predicted, status, called, usage, "", -1);
+        }
+
+        /** 공백(줄바꿈 포함)을 뺀 글자 수. */
+        public static int countChars(String ocrText) {
+            return (int) ocrText.codePoints().filter(cp -> !Character.isWhitespace(cp)).count();
         }
 
         /** category만 정답으로 인정. */
@@ -46,6 +57,10 @@ public final class ExperimentStats {
     public record CategoryScore(int correct, int total) {
     }
 
+    /** 표본 수와 평균 OCR 글자 수. count가 0이면 평균은 0이고 표시하지 않는다. */
+    public record AvgChars(int count, double average) {
+    }
+
     public record Report(
             Candidate candidate,
             int evaluated,            // CALL_FAILED를 뺀 평가 대상 수
@@ -62,7 +77,10 @@ public final class ExperimentStats {
             double avgInputTokens,
             double avgOutputTokens,
             double costPerImageUsd,
-            Map<String, Integer> confusions) {
+            Map<String, Integer> confusions,
+            AvgChars charsCorrect,    // 정답(허용 기준)
+            AvgChars charsWrong,      // 오답(허용 기준)
+            AvgChars charsEtcWrong) { // 오답 중 ETC로 예측한 것
 
         /** 엄격 정확도: category만 정답. */
         public double accuracy() {
@@ -98,6 +116,10 @@ public final class ExperimentStats {
         List<Long> latencies = new ArrayList<>();
         long inputTokens = 0;
         long outputTokens = 0;
+        // [표본 수, 글자 수 합] — 정답 / 오답 / ETC로 예측한 오답
+        long[] charsCorrect = new long[2];
+        long[] charsWrong = new long[2];
+        long[] charsEtcWrong = new long[2];
 
         for (Sample sample : samples) {
             if (sample.status() == LlmOutcome.Status.CALL_FAILED) {
@@ -127,6 +149,15 @@ public final class ExperimentStats {
                     clearCorrect++;
                 }
             }
+            if (sample.ocrChars() >= 0) {
+                long[] group = sample.lenientCorrect() ? charsCorrect : charsWrong;
+                group[0]++;
+                group[1] += sample.ocrChars();
+                if (!sample.lenientCorrect() && sample.predicted() == Category.ETC) {
+                    charsEtcWrong[0]++;
+                    charsEtcWrong[1] += sample.ocrChars();
+                }
+            }
             if (sample.called()) {
                 latencies.add(sample.usage().latencyMs());
                 inputTokens += sample.usage().inputTokens();
@@ -144,7 +175,13 @@ public final class ExperimentStats {
         return new Report(candidate, evaluated, correct, lenientCorrect, clearEvaluated, clearCorrect, ambiguous,
                 parseFailed, callFailed, scores,
                 calls == 0 ? 0 : Math.round(latencies.stream().mapToLong(Long::longValue).average().orElse(0)),
-                percentile95(latencies), avgIn, avgOut, candidate.costUsd(avgIn, avgOut), confusions);
+                percentile95(latencies), avgIn, avgOut, candidate.costUsd(avgIn, avgOut), confusions,
+                avgChars(charsCorrect), avgChars(charsWrong), avgChars(charsEtcWrong));
+    }
+
+    private static AvgChars avgChars(long[] countAndSum) {
+        int count = (int) countAndSum[0];
+        return new AvgChars(count, count == 0 ? 0 : (double) countAndSum[1] / count);
     }
 
     // nearest-rank 방식 p95

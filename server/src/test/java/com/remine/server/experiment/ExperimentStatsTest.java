@@ -152,6 +152,71 @@ class ExperimentStatsTest {
                 .contains("1 / 2장");               // 애매한 표본 수
     }
 
+    private Sample withChars(Category expected, Category alt, Category predicted, int chars) {
+        return new Sample("f", expected, alt, predicted, LlmOutcome.Status.OK, true,
+                new LlmUsage(10, 5, 50), "", chars);
+    }
+
+    @Test
+    void 정답_오답_ETC로_예측한_오답별_평균_OCR_글자_수() {
+        Report report = ExperimentStats.summarize(candidate, List.of(
+                withChars(Category.SHOPPING, null, Category.SHOPPING, 300),   // 정답
+                withChars(Category.PLACE, null, Category.PLACE, 100),         // 정답
+                withChars(Category.INFO, null, Category.SHOPPING, 40),        // 오답
+                withChars(Category.INFO, null, Category.ETC, 10),            // 오답 + ETC 예측
+                withChars(Category.SHOPPING, null, Category.ETC, 20),        // 오답 + ETC 예측
+                withChars(Category.PLACE, Category.SCHEDULE, Category.SCHEDULE, 60))); // alt 일치 → 정답(허용)
+
+        assertThat(report.charsCorrect().count()).isEqualTo(3);
+        assertThat(report.charsCorrect().average()).isCloseTo((300 + 100 + 60) / 3.0, within(1e-9));
+        assertThat(report.charsWrong().count()).isEqualTo(3);
+        assertThat(report.charsWrong().average()).isCloseTo((40 + 10 + 20) / 3.0, within(1e-9));
+        assertThat(report.charsEtcWrong().count()).isEqualTo(2);
+        assertThat(report.charsEtcWrong().average()).isCloseTo(15.0, within(1e-9));
+    }
+
+    @Test
+    void 글자_수를_모르는_표본과_호출_실패_표본은_글자_수_평균에서_빠진다() {
+        Sample unknownChars = called(Category.CHAT, Category.CHAT, 100, 10, 1); // ocrChars = -1
+        Sample failed = new Sample("f", Category.CHAT, null, Category.ETC,
+                LlmOutcome.Status.CALL_FAILED, true, LlmUsage.NONE, "", 500);
+
+        Report report = ExperimentStats.summarize(candidate, List.of(unknownChars, failed));
+
+        assertThat(report.charsCorrect().count()).isZero();
+        assertThat(report.charsWrong().count()).isZero();
+    }
+
+    @Test
+    void 글자_없는_표본은_0자로_ETC로_예측한_오답에_들어간다() {
+        Sample noText = new Sample("f", Category.SHOPPING, null, Category.ETC,
+                LlmOutcome.Status.OK, false, LlmUsage.NONE, "", 0);
+
+        Report report = ExperimentStats.summarize(candidate, List.of(noText));
+
+        assertThat(report.charsEtcWrong().count()).isEqualTo(1);
+        assertThat(report.charsEtcWrong().average()).isZero();
+    }
+
+    @Test
+    void 글자_수는_공백과_줄바꿈을_뺀_개수() {
+        assertThat(Sample.countChars("가나 다\n라\t마")).isEqualTo(5);
+        assertThat(Sample.countChars("   \n ")).isZero();
+    }
+
+    @Test
+    void results_md에_오답_분석_표가_표시된다() {
+        Report report = ExperimentStats.summarize(candidate, List.of(
+                withChars(Category.SHOPPING, null, Category.SHOPPING, 200),
+                withChars(Category.INFO, null, Category.ETC, 12)));
+
+        String md = ResultsMarkdown.render(LocalDate.of(2026, 10, 15), 2, 0, List.of(report), List.of());
+
+        assertThat(md).contains("평균 OCR 글자 수", "ETC로 예측한 오답")
+                .contains("평균 200자 (1건)")
+                .contains("평균 12자 (1건)");
+    }
+
     @Test
     void results_md에는_파일명이_들어가지_않는다() {
         Sample sample = new Sample("secret_screenshot.jpg", Category.SHOPPING, Category.ETC,

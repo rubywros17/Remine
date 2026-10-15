@@ -202,11 +202,11 @@ class ExperimentRunner implements CommandLineRunner {
     private Sample classify(LlmClassifier classifier, Labeled item) {
         if (item.ocrText().isBlank()) {
             return new Sample(item.filename(), item.expected(), item.alt(), Category.ETC,
-                    LlmOutcome.Status.OK, false, LlmUsage.NONE, "");
+                    LlmOutcome.Status.OK, false, LlmUsage.NONE, "", 0);
         }
         LlmOutcome outcome = classifier.classifyWithUsage(item.ocrText());
         return new Sample(item.filename(), item.expected(), item.alt(), outcome.result().category(),
-                outcome.status(), true, outcome.usage(), outcome.raw());
+                outcome.status(), true, outcome.usage(), outcome.raw(), Sample.countChars(item.ocrText()));
     }
 
     private void appendErrors(StringBuilder errors, Candidate candidate, List<Sample> samples) {

@@ -13,6 +13,10 @@ public final class ResultsMarkdown {
     private ResultsMarkdown() {
     }
 
+    private static String avgChars(ExperimentStats.AvgChars chars) {
+        return chars.count() == 0 ? "-" : String.format("평균 %.0f자 (%d건)", chars.average(), chars.count());
+    }
+
     public static String render(LocalDate date, int sampleCount, int skippedUnlabeled,
                                 List<ExperimentStats.Report> reports, List<String> skippedCandidates) {
         StringBuilder md = new StringBuilder();
@@ -74,6 +78,17 @@ public final class ResultsMarkdown {
         for (ExperimentStats.Report r : reports) {
             md.append(String.format("| %s | %.0f | %.0f |%n",
                     r.candidate().name(), r.avgInputTokens(), r.avgOutputTokens()));
+        }
+
+        md.append("\n## 오답 분석: 평균 OCR 글자 수\n\n");
+        md.append("- OCR 텍스트의 **공백 제외 글자 수** 평균이다. 정답·오답은 **허용 기준**(`category` 또는 `alt` 일치)이다.\n");
+        md.append("- `ETC로 예측한 오답`은 오답 중 모델이 ETC로 분류한 것(글자가 없어 모델을 부르지 않은 표본 포함)이다.\n");
+        md.append("- 오답이 정답보다 글자 수가 뚜렷이 적으면 OCR 품질·글자량이 오답의 원인일 가능성이 크다.\n");
+        md.append("- 호출 실패 표본은 제외한다. 표본 수는 괄호 안에 표시한다.\n\n");
+        md.append("| 후보 | 정답 | 오답 | ETC로 예측한 오답 |\n|---|---|---|---|\n");
+        for (ExperimentStats.Report r : reports) {
+            md.append(String.format("| %s | %s | %s | %s |%n", r.candidate().name(),
+                    avgChars(r.charsCorrect()), avgChars(r.charsWrong()), avgChars(r.charsEtcWrong())));
         }
 
         md.append("\n## 자주 틀린 조합 (정답→예측: 건수)\n\n");
