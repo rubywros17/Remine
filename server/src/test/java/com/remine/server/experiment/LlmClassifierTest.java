@@ -161,6 +161,30 @@ class LlmClassifierTest {
     }
 
     @Test
+    void 응답_시간에는_호출_간격_대기와_재시도_대기가_포함되지_않는다() {
+        long[] now = {0};
+        AtomicInteger calls = new AtomicInteger();
+        Candidate paced = new Candidate("c", "gemini", "m", 1, 1, 1.0, 5000);
+        // 두 번째 분류의 첫 시도는 429로 실패(0.2초) → 백오프 대기 → 재시도는 성공(0.8초 소요)
+        LlmProvider provider = (model, system, user) -> {
+            if (calls.incrementAndGet() == 2) {
+                now[0] += 200_000_000L;
+                throw error(HttpStatus.TOO_MANY_REQUESTS, "{}", new HttpHeaders());
+            }
+            now[0] += 800_000_000L;
+            return new LlmReply(OK_REPLY, 5, 5);
+        };
+        LlmClassifier classifier = new LlmClassifier(paced, provider, mapper, ms -> now[0] += ms * 1_000_000L,
+                () -> now[0]);
+
+        classifier.classifyWithUsage("앞선 호출로 간격 기준 시각을 만든다");
+        LlmOutcome outcome = classifier.classifyWithUsage("x");
+
+        assertThat(outcome.status()).isEqualTo(LlmOutcome.Status.OK);
+        assertThat(outcome.usage().latencyMs()).isEqualTo(800); // 간격 대기·백오프 대기 제외
+    }
+
+    @Test
     void 후보의_호출_간격만큼_연속_호출_사이에_기다린다() {
         List<Long> sleeps = new ArrayList<>();
         long[] now = {0};

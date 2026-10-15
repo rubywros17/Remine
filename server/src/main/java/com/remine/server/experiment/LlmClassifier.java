@@ -25,6 +25,7 @@ public class LlmClassifier implements Classifier {
     private final JsonMapper mapper;
     private final LongConsumer sleepMillis;
     private final CallPacer pacer;
+    private final LongSupplier nanoClock;
 
     public LlmClassifier(Candidate candidate, LlmProvider provider, JsonMapper mapper) {
         this(candidate, provider, mapper, LlmClassifier::sleep, System::nanoTime);
@@ -37,6 +38,7 @@ public class LlmClassifier implements Classifier {
         this.provider = provider;
         this.mapper = mapper;
         this.sleepMillis = sleepMillis;
+        this.nanoClock = nanoClock;
         this.pacer = new CallPacer(candidate.minIntervalMs(), nanoClock, sleepMillis);
     }
 
@@ -62,10 +64,11 @@ public class LlmClassifier implements Classifier {
         for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
             pacer.awaitTurn();
             attempts = attempt;
-            long start = System.nanoTime();
+            // 호출 간격 대기(awaitTurn)와 재시도 대기(sleepMillis)는 이 시각 밖이다. 순수 API 응답 시간만 잰다.
+            long start = nanoClock.getAsLong();
             try {
                 LlmReply reply = provider.call(candidate.model(), LlmPrompt.SYSTEM, user);
-                long latencyMs = (System.nanoTime() - start) / 1_000_000;
+                long latencyMs = (nanoClock.getAsLong() - start) / 1_000_000;
                 LlmUsage usage = new LlmUsage(reply.inputTokens(), reply.outputTokens(), latencyMs);
                 LlmPrompt.Parsed parsed = LlmPrompt.parse(mapper, reply.text());
                 return new LlmOutcome(parsed.result(), usage,
