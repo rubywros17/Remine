@@ -4,6 +4,13 @@ import com.remine.server.domain.screenshot.Category;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.client.HttpClientErrorException;
+
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -36,19 +43,138 @@ class LlmClassifierTest {
         assertThat(outcome.result().category()).isEqualTo(Category.ETC);
     }
 
+    private static final String OK_REPLY = "{\"category\":\"CHAT\",\"tags\":[],\"summary\":\"\"}";
+
+    private HttpClientErrorException error(HttpStatus status, String body, HttpHeaders headers) {
+        return HttpClientErrorException.create(status, status.getReasonPhrase(), headers,
+                body.getBytes(StandardCharsets.UTF_8), StandardCharsets.UTF_8);
+    }
+
+    private LlmClassifier classifier(LlmProvider provider, Candidate c, List<Long> sleeps) {
+        return new LlmClassifier(c, provider, mapper, sleeps::add, System::nanoTime);
+    }
+
     @Test
     void 호출이_한_번_실패해도_재시도해서_성공하면_OK() {
         AtomicInteger calls = new AtomicInteger();
+        List<Long> sleeps = new ArrayList<>();
         LlmProvider provider = (model, system, user) -> {
             if (calls.incrementAndGet() == 1) {
-                throw new IllegalStateException("429");
+                throw new IllegalStateException("timeout");
             }
-            return new LlmReply("{\"category\":\"CHAT\",\"tags\":[],\"summary\":\"\"}", 5, 5);
+            return new LlmReply(OK_REPLY, 5, 5);
         };
 
-        LlmOutcome outcome = new LlmClassifier(candidate, provider, mapper).classifyWithUsage("ㅋㅋ");
+        LlmOutcome outcome = classifier(provider, candidate, sleeps).classifyWithUsage("ㅋㅋ");
 
         assertThat(outcome.status()).isEqualTo(LlmOutcome.Status.OK);
         assertThat(calls.get()).isEqualTo(2);
+        assertThat(sleeps).containsExactly(2000L);
+    }
+
+    @Test
+    void 서버가_알려_준_대기_시간을_따른다() {
+        AtomicInteger calls = new AtomicInteger();
+        List<Long> sleeps = new ArrayList<>();
+        String body = "{\"error\":{\"details\":[{\"@type\":\"x.RetryInfo\",\"retryDelay\":\"30s\"}]}}";
+        LlmProvider provider = (model, system, user) -> {
+            if (calls.incrementAndGet() == 1) {
+                throw error(HttpStatus.TOO_MANY_REQUESTS, body, new HttpHeaders());
+            }
+            return new LlmReply(OK_REPLY, 5, 5);
+        };
+
+        LlmOutcome outcome = classifier(provider, candidate, sleeps).classifyWithUsage("x");
+
+        assertThat(outcome.status()).isEqualTo(LlmOutcome.Status.OK);
+        assertThat(sleeps).containsExactly(31_000L); // 30초 + 여유 1초
+    }
+
+    @Test
+    void Retry_After_헤더를_따른다() {
+        AtomicInteger calls = new AtomicInteger();
+        List<Long> sleeps = new ArrayList<>();
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(HttpHeaders.RETRY_AFTER, "5");
+        LlmProvider provider = (model, system, user) -> {
+            if (calls.incrementAndGet() == 1) {
+                throw error(HttpStatus.TOO_MANY_REQUESTS, "{}", headers);
+            }
+            return new LlmReply(OK_REPLY, 5, 5);
+        };
+
+        classifier(provider, candidate, sleeps).classifyWithUsage("x");
+
+        assertThat(sleeps).containsExactly(6_000L);
+    }
+
+    @Test
+    void 서버_제안이_없으면_지수_백오프로_재시도하다_5회_후_실패() {
+        AtomicInteger calls = new AtomicInteger();
+        List<Long> sleeps = new ArrayList<>();
+        LlmProvider provider = (model, system, user) -> {
+            calls.incrementAndGet();
+            throw error(HttpStatus.TOO_MANY_REQUESTS, "{\"error\":{\"message\":\"quota\"}}", new HttpHeaders());
+        };
+
+        LlmOutcome outcome = classifier(provider, candidate, sleeps).classifyWithUsage("x");
+
+        assertThat(outcome.status()).isEqualTo(LlmOutcome.Status.CALL_FAILED);
+        assertThat(calls.get()).isEqualTo(LlmClassifier.MAX_ATTEMPTS);
+        assertThat(sleeps).containsExactly(2000L, 4000L, 8000L, 16000L);
+        assertThat(outcome.raw()).contains("시도 5회").contains("429").contains("quota");
+    }
+
+    @Test
+    void 서버가_너무_오래_기다리라고_하면_기다리지_않고_포기한다() {
+        AtomicInteger calls = new AtomicInteger();
+        List<Long> sleeps = new ArrayList<>();
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(HttpHeaders.RETRY_AFTER, "3600");
+        LlmProvider provider = (model, system, user) -> {
+            calls.incrementAndGet();
+            throw error(HttpStatus.TOO_MANY_REQUESTS, "{}", headers);
+        };
+
+        LlmOutcome outcome = classifier(provider, candidate, sleeps).classifyWithUsage("x");
+
+        assertThat(calls.get()).isEqualTo(1);
+        assertThat(sleeps).isEmpty();
+        assertThat(outcome.status()).isEqualTo(LlmOutcome.Status.CALL_FAILED);
+        assertThat(outcome.raw()).contains("3600초");
+    }
+
+    @Test
+    void 재시도해도_소용없는_4xx는_한_번만_호출한다() {
+        AtomicInteger calls = new AtomicInteger();
+        List<Long> sleeps = new ArrayList<>();
+        LlmProvider provider = (model, system, user) -> {
+            calls.incrementAndGet();
+            throw error(HttpStatus.BAD_REQUEST, "{\"error\":{\"message\":\"bad field\"}}", new HttpHeaders());
+        };
+
+        LlmOutcome outcome = classifier(provider, candidate, sleeps).classifyWithUsage("x");
+
+        assertThat(calls.get()).isEqualTo(1);
+        assertThat(sleeps).isEmpty();
+        assertThat(outcome.raw()).contains("400").contains("bad field");
+    }
+
+    @Test
+    void 후보의_호출_간격만큼_연속_호출_사이에_기다린다() {
+        List<Long> sleeps = new ArrayList<>();
+        long[] now = {0};
+        Candidate paced = new Candidate("c", "gemini", "m", 1, 1, 1.0, 3000);
+        LlmProvider provider = (model, system, user) -> new LlmReply(OK_REPLY, 5, 5);
+        LlmClassifier classifier = new LlmClassifier(paced, provider, mapper, ms -> {
+            sleeps.add(ms);
+            now[0] += ms * 1_000_000L;
+        }, () -> now[0]);
+
+        classifier.classifyWithUsage("a");
+        classifier.classifyWithUsage("b");
+        classifier.classifyWithUsage("c");
+
+        assertThat(sleeps).containsExactly(3000L, 3000L);
     }
 }

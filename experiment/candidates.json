@@ -2,6 +2,7 @@
   "pricedAt": "2026-10-14",
   "source": "https://ai.google.dev/gemini-api/docs/pricing (페이지 갱신 2026-10-13). 가격이 바뀌면 이 파일만 고친다.",
   "temperatureNote": "Gemini 3 공식 문서가 기본값 1.0 유지를 강하게 권장해 두 후보 모두 1.0으로 둔다(낮추면 반복·품질 저하 가능). 후보별로 바꿀 수 있고 생략하면 0이다.",
+  "minIntervalNote": "minIntervalMs는 이 후보의 연속 호출 시작 사이 최소 간격(ms)이다. 1차 실행의 429(쿼터 초과)를 피하려는 추정값이며 공식 한도가 아니다. AI Studio의 Rate limit 화면에서 실제 RPM을 확인해 조정한다. 생략하면 0(제한 없음).",
   "candidates": [
     {
       "name": "gemini-3.5-flash-lite",
@@ -10,7 +11,8 @@
       "inputPerMTok": 0.3,
       "outputPerMTok": 2.5,
       "temperature": 1.0,
-      "note": "Flash-Lite 계열. 문서가 신규 프로젝트에 권장. 사고 기본값 minimal. 무료 티어 있음."
+      "minIntervalMs": 4500,
+      "note": "Flash-Lite 계열. 문서가 신규 프로젝트에 권장. 사고 기본값 minimal. 무료 티어 있음. 1차 실행에서 호출 실패 3건."
     },
     {
       "name": "gemini-3.8-flash",
@@ -19,7 +21,8 @@
       "inputPerMTok": 0.75,
       "outputPerMTok": 3.75,
       "temperature": 1.0,
-      "note": "일반 Flash 계열. 사고 기본값 medium. 2027-01-01부터 1.50/7.50으로 인상 예정. 무료 티어 있음."
+      "minIntervalMs": 13000,
+      "note": "일반 Flash 계열. 사고 기본값 medium. 2027-01-01부터 1.50/7.50으로 인상 예정. 무료 티어 있음. 1차 실행에서 43장 중 31건이 429로 실패."
     }
   ]
 }

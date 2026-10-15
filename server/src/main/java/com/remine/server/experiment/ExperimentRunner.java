@@ -20,6 +20,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * experiment 프로필에서만 동작한다. ocr/*.txt + labels.csv로 후보별 분류를 돌려
@@ -35,18 +36,32 @@ class ExperimentRunner implements CommandLineRunner {
 
     private final Path dir;
     private final int limit;
+    private final String candidatesFilter;
     private final JsonMapper mapper = JsonMapper.builder().build();
 
-    /** limit: --experiment.limit=N. 0(기본)이면 전체 표본. 형식 검증용 소량 실행에 쓴다. */
+    /**
+     * limit: --experiment.limit=N. 0(기본)이면 전체 표본. 형식 검증용 소량 실행에 쓴다.
+     * candidatesFilter: --experiment.candidates=모델ID[,모델ID]. 비어 있으면 candidates.json의 전체 후보.
+     */
     ExperimentRunner(@Value("${experiment.dir:../experiment}") String dir,
-                     @Value("${experiment.limit:0}") int limit) {
+                     @Value("${experiment.limit:0}") int limit,
+                     @Value("${experiment.candidates:}") String candidatesFilter) {
         this.dir = Path.of(dir);
         this.limit = limit;
+        this.candidatesFilter = candidatesFilter;
     }
 
     @Override
     public void run(String... args) throws IOException {
-        List<Candidate> candidates = loadCandidates();
+        List<Candidate> available = loadCandidates();
+        List<Candidate> candidates;
+        try {
+            candidates = filterCandidates(available, candidatesFilter);
+        } catch (IllegalArgumentException e) {
+            log.error(e.getMessage());
+            return;
+        }
+        boolean filtered = candidates.size() < available.size();
         List<Labeled> all = new ArrayList<>();
         int unlabeled = loadLabels(all);
         List<Labeled> labeled = applyLimit(all, limit);
@@ -62,6 +77,7 @@ class ExperimentRunner implements CommandLineRunner {
         List<ExperimentStats.Report> reports = new ArrayList<>();
         List<String> skipped = new ArrayList<>();
         StringBuilder errors = new StringBuilder("# 오답 상세 (개인 데이터, 커밋 금지)\n");
+        boolean attempted = false;
 
         for (Candidate candidate : candidates) {
             var provider = LlmProviders.create(candidate, mapper);
@@ -80,18 +96,31 @@ class ExperimentRunner implements CommandLineRunner {
                     log.info("{}: {}/{}", candidate.name(), samples.size(), labeled.size());
                 }
             }
-            reports.add(ExperimentStats.summarize(candidate, samples));
+            attempted = true;
+            ExperimentStats.Report report = ExperimentStats.summarize(candidate, samples);
             appendErrors(errors, candidate, samples);
+            if (report.evaluated() == 0) {
+                // 호출이 전부 실패해 평가된 표본이 없다. 빈 표가 결과 파일에 들어가지 않게 제외한다.
+                skipped.add(candidate.name() + " (호출 " + report.callFailed() + "건 전부 실패)");
+                continue;
+            }
+            reports.add(report);
         }
 
-        // 평가한 후보가 하나도 없으면(키 없음 등) 빈 결과가 이전 결과 파일을 덮어쓰지 않도록 아무것도 쓰지 않는다.
+        // 평가한 후보가 하나도 없으면(키 없음, 호출 전부 실패 등) 결과 파일을 쓰지 않아 이전 결과를 지키지 않는다.
+        // 호출을 시도했다면 실패 원인을 볼 수 있도록 시각이 붙은 오답 상세 파일만 남긴다.
         if (reports.isEmpty()) {
             log.warn("평가한 후보가 0개라 결과 파일을 쓰지 않았습니다. 건너뛴 후보: {}", skipped);
+            if (attempted) {
+                Path errorsFile = uniqueErrorsFile(LocalDateTime.now());
+                Files.writeString(errorsFile, errors.toString(), StandardCharsets.UTF_8);
+                log.warn("호출 실패 원인은 {} 에서 확인하세요.", errorsFile.getFileName());
+            }
             return;
         }
 
-        // 제한 실행은 커밋되는 results.md를 덮어쓰지 않도록 별도 파일(gitignore)에 쓴다.
-        Path resultsFile = dir.resolve(limited ? "results.limit.md" : "results.md");
+        // 제한·후보 지정 실행은 커밋되는 results.md를 덮어쓰지 않도록 별도 파일에 쓴다.
+        Path resultsFile = dir.resolve(resultsFileName(limited, filtered, reports));
         Files.writeString(resultsFile,
                 ResultsMarkdown.render(LocalDate.now(), labeled.size(), unlabeled, reports, skipped),
                 StandardCharsets.UTF_8);
@@ -99,6 +128,48 @@ class ExperimentRunner implements CommandLineRunner {
         Files.writeString(errorsFile, errors.toString(), StandardCharsets.UTF_8);
         log.info("완료: {} (후보 {}개 평가, {}개 건너뜀), 오답 상세: {}", resultsFile.toAbsolutePath(),
                 reports.size(), skipped.size(), errorsFile.getFileName());
+    }
+
+    /**
+     * 결과 파일명. 전체 실행은 results.md, 표본 제한 실행은 results.limit.md(gitignore),
+     * 후보 지정 실행은 results.{후보}.md라서 다른 후보의 기존 결과(results.md)를 지우지 않는다.
+     */
+    static String resultsFileName(boolean limited, boolean filtered, List<ExperimentStats.Report> reports) {
+        if (limited) {
+            return "results.limit.md";
+        }
+        if (filtered) {
+            return "results." + reports.stream().map(r -> r.candidate().name()).collect(Collectors.joining("+")) + ".md";
+        }
+        return "results.md";
+    }
+
+    /** filter는 쉼표로 구분한 모델 ID(또는 후보 이름). 비어 있으면 전체. 모르는 ID가 있으면 예외. */
+    static List<Candidate> filterCandidates(List<Candidate> available, String filter) {
+        if (filter == null || filter.isBlank()) {
+            return available;
+        }
+        List<Candidate> selected = new ArrayList<>();
+        List<String> unknown = new ArrayList<>();
+        for (String id : filter.split(",")) {
+            String wanted = id.trim();
+            if (wanted.isEmpty()) {
+                continue;
+            }
+            available.stream()
+                    .filter(c -> c.model().equalsIgnoreCase(wanted) || c.name().equalsIgnoreCase(wanted))
+                    .findFirst()
+                    .ifPresentOrElse(c -> {
+                        if (!selected.contains(c)) {
+                            selected.add(c);
+                        }
+                    }, () -> unknown.add(wanted));
+        }
+        if (!unknown.isEmpty() || selected.isEmpty()) {
+            throw new IllegalArgumentException("알 수 없는 후보: " + unknown + " / 사용 가능: "
+                    + available.stream().map(Candidate::model).toList());
+        }
+        return selected;
     }
 
     /** 실행 시각을 붙인 오답 상세 파일명. 예: errors.local.20261015-1426.md (gitignore 패턴 errors.local*.md) */
@@ -142,7 +213,9 @@ class ExperimentRunner implements CommandLineRunner {
         errors.append("\n## ").append(candidate.name()).append('\n');
         for (Sample s : samples) {
             if (s.status() == LlmOutcome.Status.CALL_FAILED) {
-                errors.append("- ").append(s.filename()).append(": 호출 실패 ").append(oneLine(s.detail())).append('\n');
+                // 원인 파악을 위해 호출 실패 사유는 더 길게 남긴다(상태 코드, 한도 메시지, 재시도 정보).
+                errors.append("- ").append(s.filename()).append(": 호출 실패 ")
+                        .append(oneLine(s.detail(), 1500)).append('\n');
             } else if (s.expected() != s.predicted()) {
                 errors.append("- ").append(s.filename()).append(": ")
                         .append(s.expected()).append(" → ").append(s.predicted());
@@ -158,8 +231,12 @@ class ExperimentRunner implements CommandLineRunner {
     }
 
     private static String oneLine(String text) {
+        return oneLine(text, 200);
+    }
+
+    private static String oneLine(String text, int max) {
         String flat = text.replaceAll("\\s+", " ").trim();
-        return flat.length() > 200 ? flat.substring(0, 200) + "…" : flat;
+        return flat.length() > max ? flat.substring(0, max) + "…" : flat;
     }
 
     private List<Candidate> loadCandidates() throws IOException {
@@ -168,7 +245,8 @@ class ExperimentRunner implements CommandLineRunner {
         root.path("candidates").forEach(node -> candidates.add(new Candidate(
                 node.path("name").asString(), node.path("provider").asString(), node.path("model").asString(),
                 node.path("inputPerMTok").asDouble(), node.path("outputPerMTok").asDouble(),
-                node.path("temperature").asDouble(Candidate.DEFAULT_TEMPERATURE))));
+                node.path("temperature").asDouble(Candidate.DEFAULT_TEMPERATURE),
+                node.path("minIntervalMs").asLong(0))));
         return candidates;
     }
 

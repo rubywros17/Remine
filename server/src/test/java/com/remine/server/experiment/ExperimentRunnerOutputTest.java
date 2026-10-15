@@ -36,8 +36,8 @@ class ExperimentRunnerOutputTest {
         Files.createDirectory(dir.resolve("ocr"));
         Files.writeString(dir.resolve("ocr").resolve("a.txt"), "맛집 카페", StandardCharsets.UTF_8);
 
-        new ExperimentRunner(dir.toString(), 0).run();
-        new ExperimentRunner(dir.toString(), 1).run();
+        new ExperimentRunner(dir.toString(), 0, "").run();
+        new ExperimentRunner(dir.toString(), 1, "").run();
 
         assertThat(listNames(dir))
                 .doesNotContain("results.md", "results.limit.md")
@@ -53,7 +53,7 @@ class ExperimentRunnerOutputTest {
         Files.writeString(dir.resolve("results.md"), "이전 결과", StandardCharsets.UTF_8);
         Files.writeString(dir.resolve("errors.local.20260101-0000.md"), "이전 오답", StandardCharsets.UTF_8);
 
-        new ExperimentRunner(dir.toString(), 0).run();
+        new ExperimentRunner(dir.toString(), 0, "").run();
 
         assertThat(Files.readString(dir.resolve("results.md"), StandardCharsets.UTF_8)).isEqualTo("이전 결과");
         assertThat(Files.readString(dir.resolve("errors.local.20260101-0000.md"), StandardCharsets.UTF_8))
