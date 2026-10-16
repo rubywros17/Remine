@@ -131,7 +131,7 @@
 | 푸시 | Firebase Cloud Messaging (`firebase_messaging`) | |
 | 서버 | **Spring Boot** (Java) | 백엔드 포트폴리오 핵심 |
 | DB | 미정 (PostgreSQL 또는 MySQL) | |
-| LLM | **`gemini-3.5-flash-lite` 확정**, temperature **1.0** | 실험(43장)에서 텍스트만 41.9% / 텍스트+이미지 74.4% / 하이브리드 79.1%. 선택 이유(무료 한도·비용)와 한계는 `experiment/SUMMARY.md`. 운영은 **유료 등급** |
+| LLM | **`gemini-3.5-flash-lite` 확정**, temperature **1.0** | 실험(43장, 같은 프롬프트를 이틀에 걸쳐 두 번 측정)에서 텍스트만 41.9~44.2% / 텍스트+이미지 74.4% / 하이브리드 76.7~79.1%(실행 간 편차 ±1장 포함). 선택 이유(무료 한도·비용)와 한계는 `experiment/SUMMARY.md`. 운영은 **유료 등급** |
 | 분류 입력 | **하이브리드** (OCR 기준값 이상 텍스트만 / 미만 텍스트 + 축소 이미지) | 기준값은 설정(기본 150자), 이미지는 동의한 경우에만 |
 
 ### 개발 환경
