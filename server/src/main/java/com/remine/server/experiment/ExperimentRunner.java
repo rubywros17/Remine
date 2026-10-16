@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;
+import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -69,8 +70,12 @@ class ExperimentRunner implements CommandLineRunner {
                      @Value("${experiment.limit:0}") int limit,
                      @Value("${experiment.candidates:}") String candidatesFilter,
                      @Value("${experiment.prompt:}") String promptOption,
-                     @Value("${experiment.compare:}") String compareOption) {
-        this(dir, limit, candidatesFilter, promptOption, compareOption, LlmProviders::create);
+                     @Value("${experiment.compare:}") String compareOption,
+                     Environment environment) {
+        // 키는 System.getenv가 아니라 스프링 Environment에서 읽는다: 환경변수(우선) 또는 ~/.remine.env
+        // (application-experiment.yaml의 spring.config.import). 값은 출력하지 않는다.
+        this(dir, limit, candidatesFilter, promptOption, compareOption,
+                (candidate, mapper) -> LlmProviders.create(candidate, mapper, environment::getProperty));
     }
 
     ExperimentRunner(String dir, int limit, String candidatesFilter, String promptOption, String compareOption,
@@ -105,6 +110,22 @@ class ExperimentRunner implements CommandLineRunner {
             return;
         }
         boolean filtered = candidates.size() < available.size();
+
+        // 표본·이미지를 읽거나 API를 부르기 전에 키부터 확인한다. 키 값이나 길이는 출력하지 않는다.
+        Map<Candidate, LlmProvider> providers = new LinkedHashMap<>();
+        List<String> skipped = new ArrayList<>();
+        for (Candidate candidate : candidates) {
+            providerFactory.create(candidate, mapper).ifPresentOrElse(
+                    provider -> providers.put(candidate, provider),
+                    () -> skipped.add(candidate.name() + " (" + LlmProviders.envName(candidate.provider()) + ")"));
+        }
+        if (providers.isEmpty()) {
+            log.error("API 키가 없거나 비어 있어 실행하지 않습니다. 환경변수 또는 ~/.remine.env 파일에 설정하세요: {}",
+                    candidates.stream().map(c -> LlmProviders.envName(c.provider())).distinct().toList());
+            return;
+        }
+        log.info("API 키 확인: 후보 {}개 중 {}개에 키가 있습니다.", candidates.size(), providers.size());
+
         List<Labeled> all = new ArrayList<>();
         int unlabeled = loadLabels(all);
         List<Labeled> labeled = applyLimit(all, limit);
@@ -118,17 +139,12 @@ class ExperimentRunner implements CommandLineRunner {
                 limited ? " (전체 " + all.size() + "장 중 제한 실행)" : "", candidates.size());
 
         List<ExperimentStats.Report> reports = new ArrayList<>();
-        List<String> skipped = new ArrayList<>();
         StringBuilder errors = new StringBuilder("# 오답 상세 (개인 데이터, 커밋 금지)\n");
         boolean attempted = false;
 
-        for (Candidate candidate : candidates) {
-            var provider = providerFactory.create(candidate, mapper);
-            if (provider.isEmpty()) {
-                skipped.add(candidate.name() + " (" + LlmProviders.envName(candidate.provider()) + ")");
-                continue;
-            }
-            LlmClassifier classifier = new LlmClassifier(candidate, provider.get(), mapper, promptVersion);
+        for (Map.Entry<Candidate, LlmProvider> entry : providers.entrySet()) {
+            Candidate candidate = entry.getKey();
+            LlmClassifier classifier = new LlmClassifier(candidate, entry.getValue(), mapper, promptVersion);
             List<Sample> samples = new ArrayList<>();
             int calls = 0;
             int failedCalls = 0;

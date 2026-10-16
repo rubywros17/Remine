@@ -1,3 +1,7 @@
 spring:
   main:
     web-application-type: none   # 실험 러너는 서버를 띄우지 않고 끝나면 종료한다
+  config:
+    # API 키를 셸 export 없이 읽는다. 파일은 레포 밖(사용자 홈)이라 커밋되지 않는다.
+    # 내용 예: GEMINI_API_KEY=키값 (따옴표 없이, BOM 없는 UTF-8). 같은 이름의 환경변수가 있으면 환경변수가 우선한다.
+    import: optional:file:${user.home}/.remine.env[.properties]

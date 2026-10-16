@@ -10,11 +10,15 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** --experiment.compare 모드: API 호출 없이 저장된 실행끼리 비교해 리포트를 쓴다. */
 class ExperimentRunnerCompareTest {
+
+    // 이 테스트들은 API를 부르지 않으므로 키가 없는 것으로 둔다.
+    private static final ExperimentRunner.ProviderFactory NO_KEYS = (candidate, mapper) -> Optional.empty();
 
     private static final String CANDIDATES = """
             {"candidates": [
@@ -44,7 +48,7 @@ class ExperimentRunnerCompareTest {
         write(dir, "20261016-110100", PromptVersion.V2, "m+image",
                 sample("secret1.jpg", Category.INFO, Category.INFO, 20), sample("secret2.jpg", Category.INFO, Category.INFO, 300));
 
-        new ExperimentRunner(dir.toString(), 0, "", "", "v1,v2").run();
+        new ExperimentRunner(dir.toString(), 0, "", "", "v1,v2", NO_KEYS).run();
 
         String summary = Files.readString(dir.resolve("results.compare.prompt-v1-vs-prompt-v2.md"), StandardCharsets.UTF_8);
         String local = Files.readString(dir.resolve("compare.local.prompt-v1-vs-prompt-v2.md"), StandardCharsets.UTF_8);
@@ -60,7 +64,7 @@ class ExperimentRunnerCompareTest {
         Files.writeString(dir.resolve("candidates.json"), CANDIDATES, StandardCharsets.UTF_8);
         write(dir, "20261016-100000", PromptVersion.V1, "m", sample("a.jpg", Category.INFO, Category.INFO, 20));
 
-        new ExperimentRunner(dir.toString(), 0, "", "", "v1,v2").run();
+        new ExperimentRunner(dir.toString(), 0, "", "", "v1,v2", NO_KEYS).run();
 
         try (var files = Files.list(dir)) {
             assertThat(files.map(p -> p.getFileName().toString()).toList())
@@ -72,8 +76,8 @@ class ExperimentRunnerCompareTest {
     void 잘못된_비교_인자는_파일을_쓰지_않고_끝난다(@TempDir Path dir) throws IOException {
         Files.writeString(dir.resolve("candidates.json"), CANDIDATES, StandardCharsets.UTF_8);
 
-        new ExperimentRunner(dir.toString(), 0, "", "", "v1").run();
-        new ExperimentRunner(dir.toString(), 0, "", "", "v1,v9").run();
+        new ExperimentRunner(dir.toString(), 0, "", "", "v1", NO_KEYS).run();
+        new ExperimentRunner(dir.toString(), 0, "", "", "v1,v9", NO_KEYS).run();
 
         try (var files = Files.list(dir)) {
             assertThat(files.map(p -> p.getFileName().toString()).toList()).containsExactly("candidates.json");
