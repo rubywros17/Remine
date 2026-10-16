@@ -4,6 +4,7 @@ import com.remine.server.domain.screenshot.Category;
 import com.remine.server.experiment.ExperimentStats.Sample;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;
@@ -23,6 +24,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -42,8 +44,19 @@ class ExperimentRunner implements CommandLineRunner {
     private final String candidatesFilter;
     private final String promptOption;
     private final String compareOption;
+    private final ProviderFactory providerFactory;
     private final JsonMapper mapper = JsonMapper.builder().build();
     private final Map<String, byte[]> imageCache = new HashMap<>();
+
+    /** 후보의 API 호출 구현을 만든다. 키가 없으면 비어 있다. 테스트에서 가짜로 바꿔 끼운다. */
+    interface ProviderFactory {
+        Optional<LlmProvider> create(Candidate candidate, JsonMapper mapper);
+    }
+
+    /** 호출 실패 비율이 이를 넘으면 그 후보의 실행은 불완전하다고 보고 결과를 쓰지 않는다. */
+    static final double MAX_FAILED_CALL_RATIO = 0.10;
+    /** 다시 시도해도 소용없는 실패(잘못된 키 등)가 연속으로 이만큼 나오면 그 후보를 바로 중단한다. */
+    static final int MAX_CONSECUTIVE_GIVE_UPS = 3;
 
     /**
      * limit: --experiment.limit=N. 0(기본)이면 전체 표본. 형식 검증용 소량 실행에 쓴다.
@@ -51,16 +64,23 @@ class ExperimentRunner implements CommandLineRunner {
      * promptOption: --experiment.prompt=v1|v2. 비어 있으면 v1.
      * compareOption: --experiment.compare=v1,v2. 지정하면 API를 호출하지 않고 저장된 실행(runs/)끼리 비교만 한다.
      */
+    @Autowired
     ExperimentRunner(@Value("${experiment.dir:../experiment}") String dir,
                      @Value("${experiment.limit:0}") int limit,
                      @Value("${experiment.candidates:}") String candidatesFilter,
                      @Value("${experiment.prompt:}") String promptOption,
                      @Value("${experiment.compare:}") String compareOption) {
+        this(dir, limit, candidatesFilter, promptOption, compareOption, LlmProviders::create);
+    }
+
+    ExperimentRunner(String dir, int limit, String candidatesFilter, String promptOption, String compareOption,
+                     ProviderFactory providerFactory) {
         this.dir = Path.of(dir);
         this.limit = limit;
         this.candidatesFilter = candidatesFilter;
         this.promptOption = promptOption;
         this.compareOption = compareOption;
+        this.providerFactory = providerFactory;
     }
 
     @Override
@@ -103,25 +123,52 @@ class ExperimentRunner implements CommandLineRunner {
         boolean attempted = false;
 
         for (Candidate candidate : candidates) {
-            var provider = LlmProviders.create(candidate, mapper);
+            var provider = providerFactory.create(candidate, mapper);
             if (provider.isEmpty()) {
                 skipped.add(candidate.name() + " (" + LlmProviders.envName(candidate.provider()) + ")");
                 continue;
             }
             LlmClassifier classifier = new LlmClassifier(candidate, provider.get(), mapper, promptVersion);
             List<Sample> samples = new ArrayList<>();
+            int calls = 0;
+            int failedCalls = 0;
+            int consecutiveGiveUps = 0;
+            boolean aborted = false;
             for (Labeled item : labeled) {
-                Sample sample = classify(classifier, item);
+                Classified classified = classify(classifier, item);
+                Sample sample = classified.sample();
                 samples.add(sample);
+                if (sample.called()) {
+                    calls++;
+                    if (sample.status() == LlmOutcome.Status.CALL_FAILED) {
+                        failedCalls++;
+                        consecutiveGiveUps = classified.giveUp() ? consecutiveGiveUps + 1 : 0;
+                    } else {
+                        consecutiveGiveUps = 0;
+                    }
+                }
                 if (limited) {
                     logSample(candidate, sample);
                 } else if (samples.size() % 10 == 0) {
                     log.info("{}: {}/{}", candidate.name(), samples.size(), labeled.size());
                 }
+                if (consecutiveGiveUps >= MAX_CONSECUTIVE_GIVE_UPS) {
+                    // 같은 이유로 계속 실패할 호출(잘못된 키, 소진된 쿼터)을 남은 표본만큼 반복하지 않는다.
+                    aborted = true;
+                    log.error("{}: 재시도해도 소용없는 호출 실패가 연속 {}건 발생해 중단합니다. 원인은 오답 상세 파일에서 확인하세요.",
+                            candidate.name(), consecutiveGiveUps);
+                    break;
+                }
             }
             attempted = true;
             ExperimentStats.Report report = ExperimentStats.summarize(candidate, samples);
             appendErrors(errors, candidate, samples);
+            String incomplete = incompleteReason(calls, failedCalls, aborted);
+            if (incomplete != null) {
+                // 호출 대부분이 실패한 실행은 정확도에 쓸 수 없고, 비교(compare)의 "최신 실행"을 오염시키므로 결과·기록을 쓰지 않는다.
+                skipped.add(candidate.name() + " (" + incomplete + ")");
+                continue;
+            }
             if (report.evaluated() == 0) {
                 // 호출이 전부 실패해 평가된 표본이 없다. 빈 표가 결과 파일에 들어가지 않게 제외한다.
                 skipped.add(candidate.name() + " (호출 " + report.callFailed() + "건 전부 실패)");
@@ -295,6 +342,21 @@ class ExperimentRunner implements CommandLineRunner {
         return limit > 0 && limit < items.size() ? items.subList(0, limit) : items;
     }
 
+    /**
+     * 불완전한 실행이면 그 사유, 아니면 null. 실제로 API를 부른 표본(calls) 기준이다.
+     * 중단됐거나 호출 실패가 10%를 넘으면 불완전하다. (OCR이 비어 호출하지 않은 표본은 세지 않는다)
+     */
+    static String incompleteReason(int calls, int failedCalls, boolean aborted) {
+        if (aborted) {
+            return "재시도 불가 오류가 연속 " + MAX_CONSECUTIVE_GIVE_UPS + "건 발생해 중단, 호출 실패 "
+                    + failedCalls + "/" + calls + "건";
+        }
+        if (calls > 0 && failedCalls > calls * MAX_FAILED_CALL_RATIO) {
+            return "호출 실패 " + failedCalls + "/" + calls + "건(10% 초과)으로 불완전한 실행";
+        }
+        return null;
+    }
+
     // 형식 검증용: 건별 상태·토큰·시간·원문 앞부분을 콘솔에만 출력한다(파일에는 남기지 않음).
     private void logSample(Candidate candidate, Sample s) {
         log.info("[{}] {} → 예측 {} (정답 {}) status={} 토큰 {}/{} {}ms | {}",
@@ -302,7 +364,11 @@ class ExperimentRunner implements CommandLineRunner {
                 s.usage().inputTokens(), s.usage().outputTokens(), s.usage().latencyMs(), oneLine(s.detail()));
     }
 
-    private Sample classify(LlmClassifier classifier, Labeled item) {
+    /** 분류 한 건의 표본 결과와, 다시 시도해도 소용없는 실패(giveUp)였는지. */
+    private record Classified(Sample sample, boolean giveUp) {
+    }
+
+    private Classified classify(LlmClassifier classifier, Labeled item) {
         int ocrChars = Sample.countChars(item.ocrText());
         byte[] image = null;
         if (classifier.candidate().usesImage()) {
@@ -310,18 +376,18 @@ class ExperimentRunner implements CommandLineRunner {
             try {
                 image = resizedImage(item.filename());
             } catch (IOException e) {
-                return new Sample(item.filename(), item.expected(), item.alt(), Category.ETC,
+                return new Classified(new Sample(item.filename(), item.expected(), item.alt(), Category.ETC,
                         LlmOutcome.Status.CALL_FAILED, false, LlmUsage.NONE, "이미지 로드 실패: " + e.getMessage(),
-                        ocrChars);
+                        ocrChars), false);
             }
         } else if (item.ocrText().isBlank()) {
             // 서버와 같은 규칙: 글자가 없으면 LLM을 부르지 않고 ETC.
-            return new Sample(item.filename(), item.expected(), item.alt(), Category.ETC,
-                    LlmOutcome.Status.OK, false, LlmUsage.NONE, "", 0);
+            return new Classified(new Sample(item.filename(), item.expected(), item.alt(), Category.ETC,
+                    LlmOutcome.Status.OK, false, LlmUsage.NONE, "", 0), false);
         }
         LlmOutcome outcome = classifier.classifyWithUsage(item.ocrText(), image);
-        return new Sample(item.filename(), item.expected(), item.alt(), outcome.result().category(),
-                outcome.status(), true, outcome.usage(), outcome.raw(), ocrChars);
+        return new Classified(new Sample(item.filename(), item.expected(), item.alt(), outcome.result().category(),
+                outcome.status(), true, outcome.usage(), outcome.raw(), ocrChars), outcome.giveUp());
     }
 
     // 같은 이미지를 여러 후보·재시도에서 다시 줄이지 않도록 한 번만 줄여 둔다.

@@ -69,7 +69,7 @@ public final class ResultsMarkdown {
                     r.costPerImageUsd(), r.costPerImageUsd() * 1000, r.parseFailed(), r.callFailed()));
         }
         if (!skippedCandidates.isEmpty()) {
-            md.append("\n키가 없어 제외한 후보: ").append(String.join(", ", skippedCandidates)).append('\n');
+            md.append("\n제외한 후보(키 없음, 호출 실패 등): ").append(String.join(", ", skippedCandidates)).append('\n');
         }
 
         md.append("\n## 카테고리별 정확도 (엄격, 맞음/전체)\n\n");

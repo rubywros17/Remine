@@ -118,7 +118,7 @@ public class LlmClassifier implements Classifier {
         String detail = "시도 " + attempts + "회" + (stopReason.isEmpty() ? "" : ", " + stopReason)
                 + " | " + RetryAdvice.describe(last);
         return new LlmOutcome(new ClassificationResult(Category.ETC, List.of(), ""), LlmUsage.NONE,
-                LlmOutcome.Status.CALL_FAILED, detail);
+                LlmOutcome.Status.CALL_FAILED, detail, !stopReason.isEmpty());
     }
 
     private static void sleep(long millis) {
