@@ -135,6 +135,17 @@ Screenshot_B.jpg,SHOPPING,          # 명확 → alt 비움
 결과 파일명에 버전이 들어간다: 전체 실행은 `results.prompt-v2.md`, 후보 지정 실행은 `results.prompt-v2.gemini-3.5-flash-lite.md`.
 **버전 접두어가 없는 기존 `results.*.md`는 프롬프트 버전 도입 전(v1)의 결과**이고, `results.v1-baseline.md`는 프롬프트 버전이 아니라 1차 실행(temperature 미전송)이라는 뜻이다.
 
+### 프롬프트 버전 비교
+전체 실행(`--experiment.limit` 없이)은 표본별 결과를 `experiment/runs/`(gitignore, 파일명 포함)에 남긴다.
+같은 후보를 두 프롬프트 버전으로 각각 돌린 뒤, API 호출 없이 최신 실행끼리 비교한다.
+```
+./gradlew bootRun --args="--spring.profiles.active=experiment --experiment.compare=v1,v2"
+```
+- `results.compare.prompt-v1-vs-prompt-v2.md`(커밋 가능, 파일명 없음): 전체·카테고리별·글자 수 구간별 정확도, 고쳐진 것/새로 틀린 것의 유형별 건수, 하이브리드(150자) 정확도.
+- `compare.local.prompt-v1-vs-prompt-v2.md`(gitignore): 고쳐진/새로 틀린 표본의 파일명 목록.
+- 텍스트 후보와 같은 모델의 `+image` 후보 실행이 둘 다 있으면 하이브리드를 표본별로 합산한다(SUMMARY의 79.1%와 같은 방식).
+- temperature 1.0이라 같은 프롬프트도 실행마다 몇 장은 달라진다. 개선 폭을 해석하려면 같은 버전을 두 번 돌린 편차를 함께 본다.
+
 ### 특정 후보만 실행
 ```
 ./gradlew bootRun --args="--spring.profiles.active=experiment --experiment.candidates=gemini-3.8-flash"

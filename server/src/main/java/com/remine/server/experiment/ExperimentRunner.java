@@ -20,6 +20,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -40,6 +41,7 @@ class ExperimentRunner implements CommandLineRunner {
     private final int limit;
     private final String candidatesFilter;
     private final String promptOption;
+    private final String compareOption;
     private final JsonMapper mapper = JsonMapper.builder().build();
     private final Map<String, byte[]> imageCache = new HashMap<>();
 
@@ -47,19 +49,26 @@ class ExperimentRunner implements CommandLineRunner {
      * limit: --experiment.limit=N. 0(기본)이면 전체 표본. 형식 검증용 소량 실행에 쓴다.
      * candidatesFilter: --experiment.candidates=모델ID[,모델ID]. 비어 있으면 candidates.json의 전체 후보.
      * promptOption: --experiment.prompt=v1|v2. 비어 있으면 v1.
+     * compareOption: --experiment.compare=v1,v2. 지정하면 API를 호출하지 않고 저장된 실행(runs/)끼리 비교만 한다.
      */
     ExperimentRunner(@Value("${experiment.dir:../experiment}") String dir,
                      @Value("${experiment.limit:0}") int limit,
                      @Value("${experiment.candidates:}") String candidatesFilter,
-                     @Value("${experiment.prompt:}") String promptOption) {
+                     @Value("${experiment.prompt:}") String promptOption,
+                     @Value("${experiment.compare:}") String compareOption) {
         this.dir = Path.of(dir);
         this.limit = limit;
         this.candidatesFilter = candidatesFilter;
         this.promptOption = promptOption;
+        this.compareOption = compareOption;
     }
 
     @Override
     public void run(String... args) throws IOException {
+        if (!compareOption.isBlank()) {
+            compareRuns();
+            return;
+        }
         PromptVersion promptVersion;
         try {
             promptVersion = PromptVersion.parse(promptOption);
@@ -119,6 +128,11 @@ class ExperimentRunner implements CommandLineRunner {
                 continue;
             }
             reports.add(report);
+            if (!limited) {
+                // 표본별 결과를 남겨 두면 나중에 다른 프롬프트 버전과 표본 단위로 비교할 수 있다(gitignore).
+                RunCsv.write(dir.resolve("runs").resolve(
+                        RunCsv.fileName(LocalDateTime.now(), promptVersion, candidate.name())), samples);
+            }
         }
 
         // 평가한 후보가 하나도 없으면(키 없음, 호출 전부 실패 등) 결과 파일을 쓰지 않아 이전 결과를 지키지 않는다.
@@ -142,6 +156,72 @@ class ExperimentRunner implements CommandLineRunner {
         Files.writeString(errorsFile, errors.toString(), StandardCharsets.UTF_8);
         log.info("완료: {} (후보 {}개 평가, {}개 건너뜀), 오답 상세: {}", resultsFile.toAbsolutePath(),
                 reports.size(), skipped.size(), errorsFile.getFileName());
+    }
+
+    /**
+     * 저장된 실행(runs/)에서 후보별 최신 실행을 두 프롬프트 버전끼리 비교해 리포트를 쓴다. API 호출은 없다.
+     * 텍스트 후보와 같은 모델의 이미지 후보가 둘 다 있으면 하이브리드도 계산한다.
+     */
+    private void compareRuns() throws IOException {
+        String[] versions = compareOption.split(",");
+        PromptVersion base;
+        PromptVersion next;
+        try {
+            if (versions.length != 2) {
+                throw new IllegalArgumentException("--experiment.compare=v1,v2 형식이어야 합니다: '" + compareOption + "'");
+            }
+            base = PromptVersion.parse(versions[0]);
+            next = PromptVersion.parse(versions[1]);
+        } catch (IllegalArgumentException e) {
+            log.error(e.getMessage());
+            return;
+        }
+
+        List<Candidate> candidates = loadCandidates();
+        Path runsDir = dir.resolve("runs");
+        Map<String, RunCsv.Run[]> runs = new LinkedHashMap<>();
+        Map<String, Candidate> byName = new HashMap<>();
+        for (Candidate candidate : candidates) {
+            var baseRun = RunCsv.latest(runsDir, base, candidate.name());
+            var nextRun = RunCsv.latest(runsDir, next, candidate.name());
+            if (baseRun.isPresent() && nextRun.isPresent()) {
+                runs.put(candidate.name(), new RunCsv.Run[]{baseRun.get(), nextRun.get()});
+                byName.put(candidate.name(), candidate);
+            } else if (baseRun.isPresent() || nextRun.isPresent()) {
+                log.warn("{}: {} / {} 중 한쪽 실행만 있어 비교에서 제외했습니다.", candidate.name(), base.label(), next.label());
+            }
+        }
+        if (runs.isEmpty()) {
+            log.warn("비교할 실행이 없습니다. {} / {} 를 같은 후보로 각각 한 번 이상 돌려야 합니다. (dir={})",
+                    base.label(), next.label(), runsDir.toAbsolutePath());
+            return;
+        }
+
+        List<RunComparison.Pair> overall = new ArrayList<>();
+        runs.forEach((name, pair) -> overall.add(new RunComparison.Pair(
+                (byName.get(name).usesImage() ? "텍스트 + 이미지 " : "텍스트만 ") + "(" + name + ")",
+                RunComparison.accuracy(pair[0]), RunComparison.accuracy(pair[1]))));
+        for (Candidate text : candidates) {
+            candidates.stream()
+                    .filter(image -> text.input() == InputMode.TEXT && image.usesImage()
+                            && image.model().equals(text.model())
+                            && runs.containsKey(text.name()) && runs.containsKey(image.name()))
+                    .findFirst()
+                    .ifPresent(image -> overall.add(new RunComparison.Pair(
+                            "하이브리드 " + RunComparison.HYBRID_THRESHOLD_CHARS + "자 (" + text.model() + ")",
+                            RunComparison.hybrid(runs.get(text.name())[0], runs.get(image.name())[0],
+                                    RunComparison.HYBRID_THRESHOLD_CHARS),
+                            RunComparison.hybrid(runs.get(text.name())[1], runs.get(image.name())[1],
+                                    RunComparison.HYBRID_THRESHOLD_CHARS))));
+        }
+
+        String suffix = "prompt-" + base.label() + "-vs-prompt-" + next.label();
+        Path summaryFile = dir.resolve("results.compare." + suffix + ".md");
+        Path localFile = dir.resolve("compare.local." + suffix + ".md");
+        Files.writeString(summaryFile, RunComparison.renderSummary(base, next, overall, runs,
+                RunComparison.HYBRID_THRESHOLD_CHARS), StandardCharsets.UTF_8);
+        Files.writeString(localFile, RunComparison.renderLocal(base, next, runs), StandardCharsets.UTF_8);
+        log.info("비교 완료: {} (표본별 목록: {})", summaryFile.toAbsolutePath(), localFile.getFileName());
     }
 
     /**
