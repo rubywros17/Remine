@@ -17,6 +17,7 @@ class PromptVersionTest {
     @Test
     void 대소문자와_공백을_무시한다() {
         assertThat(PromptVersion.parse(" V1 ")).isEqualTo(PromptVersion.V1);
+        assertThat(PromptVersion.parse(" V2 ")).isEqualTo(PromptVersion.V2);
     }
 
     @Test

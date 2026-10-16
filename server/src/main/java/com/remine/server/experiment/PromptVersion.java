@@ -8,7 +8,8 @@ import java.util.stream.Collectors;
  * 결과 파일명에 label이 들어간다(예: results.prompt-v1.md).
  */
 public enum PromptVersion {
-    V1("v1");
+    V1("v1"),
+    V2("v2");
 
     private final String label;
 
