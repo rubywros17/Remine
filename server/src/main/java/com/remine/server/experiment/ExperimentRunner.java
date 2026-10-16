@@ -39,23 +39,34 @@ class ExperimentRunner implements CommandLineRunner {
     private final Path dir;
     private final int limit;
     private final String candidatesFilter;
+    private final String promptOption;
     private final JsonMapper mapper = JsonMapper.builder().build();
     private final Map<String, byte[]> imageCache = new HashMap<>();
 
     /**
      * limit: --experiment.limit=N. 0(기본)이면 전체 표본. 형식 검증용 소량 실행에 쓴다.
      * candidatesFilter: --experiment.candidates=모델ID[,모델ID]. 비어 있으면 candidates.json의 전체 후보.
+     * promptOption: --experiment.prompt=v1|v2. 비어 있으면 v1.
      */
     ExperimentRunner(@Value("${experiment.dir:../experiment}") String dir,
                      @Value("${experiment.limit:0}") int limit,
-                     @Value("${experiment.candidates:}") String candidatesFilter) {
+                     @Value("${experiment.candidates:}") String candidatesFilter,
+                     @Value("${experiment.prompt:}") String promptOption) {
         this.dir = Path.of(dir);
         this.limit = limit;
         this.candidatesFilter = candidatesFilter;
+        this.promptOption = promptOption;
     }
 
     @Override
     public void run(String... args) throws IOException {
+        PromptVersion promptVersion;
+        try {
+            promptVersion = PromptVersion.parse(promptOption);
+        } catch (IllegalArgumentException e) {
+            log.error(e.getMessage());
+            return;
+        }
         List<Candidate> available = loadCandidates();
         List<Candidate> candidates;
         try {
@@ -74,7 +85,7 @@ class ExperimentRunner implements CommandLineRunner {
             return;
         }
         boolean limited = limit > 0;
-        log.info("표본 {}장{}, 후보 {}개", labeled.size(),
+        log.info("프롬프트 {}, 표본 {}장{}, 후보 {}개", promptVersion.label(), labeled.size(),
                 limited ? " (전체 " + all.size() + "장 중 제한 실행)" : "", candidates.size());
 
         List<ExperimentStats.Report> reports = new ArrayList<>();
@@ -88,7 +99,7 @@ class ExperimentRunner implements CommandLineRunner {
                 skipped.add(candidate.name() + " (" + LlmProviders.envName(candidate.provider()) + ")");
                 continue;
             }
-            LlmClassifier classifier = new LlmClassifier(candidate, provider.get(), mapper);
+            LlmClassifier classifier = new LlmClassifier(candidate, provider.get(), mapper, promptVersion);
             List<Sample> samples = new ArrayList<>();
             for (Labeled item : labeled) {
                 Sample sample = classify(classifier, item);
@@ -122,10 +133,10 @@ class ExperimentRunner implements CommandLineRunner {
             return;
         }
 
-        // 제한·후보 지정 실행은 커밋되는 results.md를 덮어쓰지 않도록 별도 파일에 쓴다.
-        Path resultsFile = dir.resolve(resultsFileName(limited, filtered, reports));
+        // 프롬프트 버전이 파일명에 들어가므로 다른 버전의 결과를 덮어쓰지 않는다.
+        Path resultsFile = dir.resolve(resultsFileName(promptVersion, limited, filtered, reports));
         Files.writeString(resultsFile,
-                ResultsMarkdown.render(LocalDate.now(), labeled.size(), unlabeled, reports, skipped),
+                ResultsMarkdown.render(promptVersion, LocalDate.now(), labeled.size(), unlabeled, reports, skipped),
                 StandardCharsets.UTF_8);
         Path errorsFile = uniqueErrorsFile(LocalDateTime.now());
         Files.writeString(errorsFile, errors.toString(), StandardCharsets.UTF_8);
@@ -134,18 +145,22 @@ class ExperimentRunner implements CommandLineRunner {
     }
 
     /**
-     * 결과 파일명. 전체 실행은 results.md, 표본 제한 실행은 results.limit.md(gitignore),
-     * 후보 지정 실행은 results.{후보}.md라서 다른 후보의 기존 결과(results.md)를 지우지 않는다.
+     * 결과 파일명에는 프롬프트 버전이 들어간다. 전체 실행은 results.prompt-v2.md,
+     * 후보 지정 실행은 results.prompt-v2.{후보}.md라서 다른 후보·다른 버전의 결과를 지우지 않는다.
+     * 표본 제한 실행은 버전과 무관하게 results.limit.md(gitignore)다.
+     * 버전 접두어가 없는 기존 results.*.md는 프롬프트 버전 도입 전(v1) 결과다.
      */
-    static String resultsFileName(boolean limited, boolean filtered, List<ExperimentStats.Report> reports) {
+    static String resultsFileName(PromptVersion version, boolean limited, boolean filtered,
+                                  List<ExperimentStats.Report> reports) {
         if (limited) {
             return "results.limit.md";
         }
+        String prefix = "results.prompt-" + version.label();
         if (filtered) {
             // 이름에 "+image"가 들어갈 수 있어 구분자는 "__"를 쓴다.
-            return "results." + reports.stream().map(r -> r.candidate().name()).collect(Collectors.joining("__")) + ".md";
+            return prefix + "." + reports.stream().map(r -> r.candidate().name()).collect(Collectors.joining("__")) + ".md";
         }
-        return "results.md";
+        return prefix + ".md";
     }
 
     /**

@@ -33,6 +33,13 @@ public final class LlmPrompt {
             .map(e -> "- " + e.getKey() + ": " + e.getValue())
             .collect(Collectors.joining("\n")));
 
+    /** 버전별 시스템 프롬프트. v1은 처음 실험에서 쓴 프롬프트이며 바뀌면 안 된다(LlmPromptTest의 스냅샷). */
+    public static String system(PromptVersion version) {
+        return switch (version) {
+            case V1 -> SYSTEM;
+        };
+    }
+
     private static Map<Category, String> definitions() {
         Map<Category, String> map = new EnumMap<>(Category.class);
         map.put(Category.SHOPPING, "상품, 가격, 구매, 장바구니, 배송. 가격·할인·장바구니·배송이 보이면 대개 SHOPPING");

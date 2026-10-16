@@ -19,9 +19,15 @@ public final class ResultsMarkdown {
 
     public static String render(LocalDate date, int sampleCount, int skippedUnlabeled,
                                 List<ExperimentStats.Report> reports, List<String> skippedCandidates) {
+        return render(PromptVersion.V1, date, sampleCount, skippedUnlabeled, reports, skippedCandidates);
+    }
+
+    public static String render(PromptVersion promptVersion, LocalDate date, int sampleCount, int skippedUnlabeled,
+                                List<ExperimentStats.Report> reports, List<String> skippedCandidates) {
         StringBuilder md = new StringBuilder();
         md.append("# LLM 분류 실험 결과\n\n");
         md.append("- 실행일: ").append(date).append('\n');
+        md.append("- 프롬프트 버전: ").append(promptVersion.label()).append('\n');
         md.append("- 표본: ").append(sampleCount).append("장");
         if (skippedUnlabeled > 0) {
             md.append(" (정답 미입력으로 제외 ").append(skippedUnlabeled).append("장)");

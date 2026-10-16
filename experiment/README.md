@@ -120,6 +120,11 @@ Screenshot_B.jpg,SHOPPING,          # 명확 → alt 비움
   이미지 후보는 무료 티어로 개인 스크린샷을 보내도 괜찮은지 판단한 뒤 실행한다. 이미지 후보를 빼려면 `--experiment.candidates`로 텍스트 후보만 지정한다.
 - 이미지 파일을 읽을 수 없으면 그 표본은 호출 실패로 집계된다.
 
+### 프롬프트 버전
+`--experiment.prompt=v1|v2`로 분류 프롬프트 버전을 고른다(기본 v1). 이전 버전은 지우지 않고 남겨 같은 표본에서 버전끼리 비교한다.
+결과 파일명에 버전이 들어간다: 전체 실행은 `results.prompt-v2.md`, 후보 지정 실행은 `results.prompt-v2.gemini-3.5-flash-lite.md`.
+**버전 접두어가 없는 기존 `results.*.md`는 프롬프트 버전 도입 전(v1)의 결과**이고, `results.v1-baseline.md`는 프롬프트 버전이 아니라 1차 실행(temperature 미전송)이라는 뜻이다.
+
 ### 특정 후보만 실행
 ```
 ./gradlew bootRun --args="--spring.profiles.active=experiment --experiment.candidates=gemini-3.8-flash"
