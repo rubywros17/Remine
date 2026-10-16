@@ -62,7 +62,7 @@ class ExperimentRunner implements CommandLineRunner {
     /**
      * limit: --experiment.limit=N. 0(기본)이면 전체 표본. 형식 검증용 소량 실행에 쓴다.
      * candidatesFilter: --experiment.candidates=모델ID[,모델ID]. 비어 있으면 candidates.json의 전체 후보.
-     * promptOption: --experiment.prompt=v1|v2. 비어 있으면 v1.
+     * promptOption: --experiment.prompt=v1|v2. 비어 있으면 v1(운영 프롬프트). v2는 채택 안 됨(SHOPPING 회귀)이라 실험 옵션이다.
      * compareOption: --experiment.compare=v1,v2. 지정하면 API를 호출하지 않고 저장된 실행(runs/)끼리 비교만 한다.
      */
     @Autowired

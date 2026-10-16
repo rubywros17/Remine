@@ -8,7 +8,13 @@ import java.util.stream.Collectors;
  * 결과 파일명에 label이 들어간다(예: results.prompt-v1.md).
  */
 public enum PromptVersion {
+    /** 운영 프롬프트이자 기본값. 처음 실험에서 쓴 문구이며 바뀌면 안 된다. */
     V1("v1"),
+    /**
+     * 경계 규칙 2개를 더한 실험용 프롬프트. <b>채택 안 됨(사유: SHOPPING 회귀)</b> — 같은 43장에서 하이브리드가
+     * −3장(편차 기준선 −1장), 이미지 후보의 SHOPPING→INFO 오답이 3→8건이었다. 재현·비교용 옵션으로만 남긴다.
+     * 근거: experiment/SUMMARY.md의 "프롬프트 v2 실험".
+     */
     V2("v2");
 
     private final String label;

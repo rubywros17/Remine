@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
  */
 final class RunComparison {
 
-    /** 하이브리드 기본 기준값(공백 제외 OCR 글자 수). SUMMARY의 79.1%와 같은 방식이다. */
+    /** 하이브리드 기본 기준값(공백 제외 OCR 글자 수). SUMMARY의 하이브리드 76.7~79.1%와 같은 방식이다. */
     static final int HYBRID_THRESHOLD_CHARS = 150;
 
     private RunComparison() {

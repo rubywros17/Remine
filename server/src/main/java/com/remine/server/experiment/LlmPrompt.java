@@ -24,7 +24,9 @@ public final class LlmPrompt {
     public static final Map<Category, String> DEFINITIONS = definitions();
 
     /**
-     * v2 경계 규칙. 카테고리 정의(DEFINITIONS)는 v1과 같게 두고, 경계가 애매할 때만 적용되는 일반 원칙을 따로 둔다.
+     * v2 경계 규칙. <b>채택 안 됨(사유: SHOPPING 회귀)</b> — 규칙 1이 정의의 "가격이 보이면 대개 SHOPPING"과 충돌해
+     * 이미지 후보의 SHOPPING 정답이 13→8/16으로 떨어졌다(experiment/SUMMARY.md). 실험 옵션으로만 남기며 기본은 v1이다.
+     * 카테고리 정의(DEFINITIONS)는 v1과 같게 두고, 경계가 애매할 때만 적용되는 일반 원칙을 따로 둔다.
      * 정의를 바꾸지 않으므로 같은 labels.csv로 v1과 공정하게 비교된다. 특정 캡처·앱을 겨냥한 문구는 넣지 않는다.
      * experiment/README.md의 "프롬프트 v2 경계 규칙" 절과 같은 문구여야 한다(LlmPromptTest가 검사).
      */
