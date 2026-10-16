@@ -67,6 +67,41 @@ class LlmPromptTest {
     }
 
     @Test
+    void v2는_v1에_경계_규칙_블록만_더한_프롬프트다() {
+        String v1 = LlmPrompt.system(PromptVersion.V1);
+        String v2 = LlmPrompt.system(PromptVersion.V2);
+
+        LlmPrompt.RULES_V2.forEach(rule -> assertThat(v2).contains("- " + rule));
+        LlmPrompt.DEFINITIONS.forEach((category, definition) ->
+                assertThat(v2).contains("- " + category + ": " + definition));
+        // 규칙 블록을 빼면 v1과 완전히 같다 (정의·응답 형식은 건드리지 않았다)
+        String ruleBlock = "경계가 애매할 때는 위 정의보다 아래 규칙을 우선한다.\n"
+                + String.join("\n", LlmPrompt.RULES_V2.stream().map(r -> "- " + r).toList()) + "\n";
+        assertThat(v2.replace(ruleBlock, "")).isEqualTo(v1);
+        // 규칙은 정의 뒤, 응답 형식 앞에 온다
+        assertThat(v2.indexOf("- ETC:")).isLessThan(v2.indexOf("경계가 애매할 때는"));
+        assertThat(v2.indexOf("경계가 애매할 때는")).isLessThan(v2.indexOf("응답은 JSON"));
+    }
+
+    @Test
+    void v2_규칙은_특정_앱이나_캡처를_겨냥하지_않는다() {
+        String rules = String.join(" ", LlmPrompt.RULES_V2);
+
+        assertThat(rules).doesNotContainIgnoringCase("instagram")
+                .doesNotContain("인스타")
+                .doesNotContain("쿠팡")
+                .doesNotContain("네이버");
+    }
+
+    @Test
+    void README의_v2_경계_규칙이_프롬프트_규칙과_같다() throws IOException {
+        String readme = Files.readString(Path.of("../experiment/README.md"), StandardCharsets.UTF_8);
+
+        assertThat(readme).contains("프롬프트 v2 경계 규칙");
+        LlmPrompt.RULES_V2.forEach(rule -> assertThat(readme).contains("- " + rule));
+    }
+
+    @Test
     void 이미지_변형의_user_메시지는_기존_메시지에_한_줄만_더한다() {
         String base = LlmPrompt.user("텍스트");
 

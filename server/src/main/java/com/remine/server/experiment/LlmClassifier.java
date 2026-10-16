@@ -23,20 +23,31 @@ public class LlmClassifier implements Classifier {
     private final Candidate candidate;
     private final LlmProvider provider;
     private final JsonMapper mapper;
+    private final String systemPrompt;
     private final LongConsumer sleepMillis;
     private final CallPacer pacer;
     private final LongSupplier nanoClock;
 
     public LlmClassifier(Candidate candidate, LlmProvider provider, JsonMapper mapper) {
-        this(candidate, provider, mapper, LlmClassifier::sleep, System::nanoTime);
+        this(candidate, provider, mapper, PromptVersion.V1);
+    }
+
+    public LlmClassifier(Candidate candidate, LlmProvider provider, JsonMapper mapper, PromptVersion promptVersion) {
+        this(candidate, provider, mapper, promptVersion, LlmClassifier::sleep, System::nanoTime);
     }
 
     // 테스트에서 대기와 시계를 바꿔 끼울 수 있게 한다.
     LlmClassifier(Candidate candidate, LlmProvider provider, JsonMapper mapper,
                   LongConsumer sleepMillis, LongSupplier nanoClock) {
+        this(candidate, provider, mapper, PromptVersion.V1, sleepMillis, nanoClock);
+    }
+
+    LlmClassifier(Candidate candidate, LlmProvider provider, JsonMapper mapper, PromptVersion promptVersion,
+                  LongConsumer sleepMillis, LongSupplier nanoClock) {
         this.candidate = candidate;
         this.provider = provider;
         this.mapper = mapper;
+        this.systemPrompt = LlmPrompt.system(promptVersion);
         this.sleepMillis = sleepMillis;
         this.nanoClock = nanoClock;
         this.pacer = new CallPacer(candidate.minIntervalMs(), nanoClock, sleepMillis);
@@ -76,8 +87,8 @@ public class LlmClassifier implements Classifier {
             long start = nanoClock.getAsLong();
             try {
                 LlmReply reply = jpegImage == null
-                        ? provider.call(candidate.model(), LlmPrompt.SYSTEM, user)
-                        : provider.call(candidate.model(), LlmPrompt.SYSTEM, user, jpegImage);
+                        ? provider.call(candidate.model(), systemPrompt, user)
+                        : provider.call(candidate.model(), systemPrompt, user, jpegImage);
                 long latencyMs = (nanoClock.getAsLong() - start) / 1_000_000;
                 LlmUsage usage = new LlmUsage(reply.inputTokens(), reply.outputTokens(), latencyMs);
                 LlmPrompt.Parsed parsed = LlmPrompt.parse(mapper, reply.text());
@@ -107,7 +118,7 @@ public class LlmClassifier implements Classifier {
         String detail = "시도 " + attempts + "회" + (stopReason.isEmpty() ? "" : ", " + stopReason)
                 + " | " + RetryAdvice.describe(last);
         return new LlmOutcome(new ClassificationResult(Category.ETC, List.of(), ""), LlmUsage.NONE,
-                LlmOutcome.Status.CALL_FAILED, detail);
+                LlmOutcome.Status.CALL_FAILED, detail, !stopReason.isEmpty());
     }
 
     private static void sleep(long millis) {
