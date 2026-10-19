@@ -19,7 +19,8 @@ public record RemineProperties(
         /* 어떤 분류기를 쓸지. 기본 fake, 실제 LLM은 gemini. */
         @DefaultValue("fake") ClassifierType classifier,
         @Valid @DefaultValue Llm llm,
-        @Valid @DefaultValue Analyze analyze) {
+        @Valid @DefaultValue Analyze analyze,
+        @Valid @DefaultValue Image image) {
 
     public enum ClassifierType { FAKE, GEMINI }
 
@@ -38,6 +39,20 @@ public record RemineProperties(
             @DefaultValue("60s") Duration readTimeout,
             /* 연속 호출 시작 사이 최소 간격(ms). 4500 = 무료 등급 RPM 15 기준. 유료 등급이면 낮추거나 0. */
             @Min(0) @DefaultValue("4500") long minIntervalMs) {
+    }
+
+    /** 분석용 이미지 입력 정책. 앱에는 GET /api/config로 알린다(단일 출처). */
+    public record Image(
+            /* 장당 최대 바이트. 초과하면 그 캡처만 IMAGE_TOO_LARGE. */
+            @Min(1) @DefaultValue("1048576") long maxBytes,
+            /* 서버가 이 길이(px)보다 긴 이미지는 긴 변 기준으로 줄인다. */
+            @Min(1) @DefaultValue("1024") int maxLongSide,
+            /* 디코딩 전에 헤더로 확인하는 픽셀 수 상한(압축폭탄 방어). */
+            @Min(1) @DefaultValue("25000000") long maxPixels,
+            /* 요청 전체 크기 하드 상한(바이트). 초과하면 413. multipart 설정도 이 값을 쓴다. */
+            @Min(1) @DefaultValue("12582912") long maxRequestBytes,
+            /* multipart 파트 하나의 하드 상한(바이트). 초과하면 413. */
+            @Min(1) @DefaultValue("5242880") long maxPartBytes) {
     }
 
     public record Analyze(

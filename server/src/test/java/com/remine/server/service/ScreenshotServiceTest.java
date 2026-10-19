@@ -57,7 +57,8 @@ class ScreenshotServiceTest {
         return new RemineProperties(RemineProperties.ClassifierType.FAKE,
                 new RemineProperties.Llm(150, new RemineProperties.Gemini("m", 1.0, "http://localhost:1",
                         Duration.ofSeconds(1), Duration.ofSeconds(1), 0)),
-                new RemineProperties.Analyze(maxBatchSize));
+                new RemineProperties.Analyze(maxBatchSize),
+                new RemineProperties.Image(1048576, 1024, 25_000_000L, 12582912, 5242880));
     }
 
     @BeforeEach
