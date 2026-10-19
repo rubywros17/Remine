@@ -2,6 +2,7 @@ package com.remine.server.exception;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
@@ -13,6 +14,18 @@ import org.springframework.web.multipart.MultipartException;
  */
 @RestControllerAdvice
 public class ApiExceptionHandler {
+
+    /**
+     * JSON 본문을 읽을 수 없다(문법 오류, 타입·값 불일치). 예외 메시지에는 잘못된 값(OCR 원문 등)이 섞일 수 있어
+     * 응답에 쓰지 않고 고정 문구만 돌려준다.
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ProblemDetail unreadableBody() {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST,
+                "요청 본문을 읽을 수 없습니다. JSON 형식과 필드 타입을 확인해 주세요.");
+        problem.setTitle("잘못된 요청 본문");
+        return problem;
+    }
 
     @ExceptionHandler(InvalidAnalyzeRequestException.class)
     public ProblemDetail invalidAnalyzeRequest(InvalidAnalyzeRequestException e) {
