@@ -10,6 +10,8 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -17,6 +19,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 @RestController
 @RequestMapping("/api/screenshots")
@@ -25,11 +28,21 @@ public class ScreenshotController {
 
     private final ScreenshotService screenshotService;
     private final ScreenshotQueryService screenshotQueryService;
+    private final AnalyzeMultipartReader multipartReader;
 
-    @PostMapping("/analyze")
+    @PostMapping(value = "/analyze", consumes = MediaType.APPLICATION_JSON_VALUE)
     public AnalyzeResponse analyze(@RequestHeader("X-Device-Id") Long deviceId,
                                    @Valid @RequestBody AnalyzeRequest request) {
         return screenshotService.analyze(deviceId, request);
+    }
+
+    /** 이미지를 함께 보내는 형식. 이미지는 요청 처리 중 지역 변수로만 다루고 어디에도 저장하지 않는다. */
+    @PostMapping(value = "/analyze", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public AnalyzeResponse analyzeWithImages(@RequestHeader("X-Device-Id") Long deviceId,
+                                             @RequestParam(value = "request", required = false) String requestJson,
+                                             @RequestParam MultiValueMap<String, MultipartFile> files) {
+        AnalyzeRequest request = multipartReader.readRequest(requestJson);
+        return screenshotService.analyze(deviceId, request, multipartReader.readImages(files, request));
     }
 
     @GetMapping
