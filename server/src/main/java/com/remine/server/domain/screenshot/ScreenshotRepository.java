@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 public interface ScreenshotRepository extends JpaRepository<Screenshot, Long> {
@@ -17,6 +18,10 @@ public interface ScreenshotRepository extends JpaRepository<Screenshot, Long> {
             + "where s.device.id = :deviceId and s.localAssetId in :localAssetIds and s.analyzedAt is not null")
     Set<String> findAnalyzedLocalAssetIds(@Param("deviceId") Long deviceId,
                                           @Param("localAssetIds") Collection<String> localAssetIds);
+
+    /** 소유까지 한 쿼리로 확인한다. 없는 id와 다른 기기의 캡처는 둘 다 빈 결과다. */
+    @Query("select s from Screenshot s where s.id = :id and s.device.id = :deviceId")
+    Optional<Screenshot> findByIdAndDeviceId(@Param("id") Long id, @Param("deviceId") Long deviceId);
 
     /** 저장 단계에서 이미 있는 행(= 앞선 요청에서 분석에 실패해 남은 행)을 찾아 갱신하기 위한 조회. */
     @Query("select s from Screenshot s where s.device.id = :deviceId and s.localAssetId in :localAssetIds")
