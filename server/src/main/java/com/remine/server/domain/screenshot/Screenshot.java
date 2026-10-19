@@ -66,6 +66,13 @@ public class Screenshot {
         this.ocrText = ocrText;
     }
 
+    /** 분석에 실패해 남은 행을 같은 캡처의 재전송으로 다시 분석할 때 최신 입력으로 갱신한다. */
+    public void refreshCapture(LocalDateTime takenAt, String sourceApp, String ocrText) {
+        this.takenAt = takenAt;
+        this.sourceApp = sourceApp;
+        this.ocrText = ocrText;
+    }
+
     public void applyAnalysis(Category category, String summary) {
         this.category = category;
         this.summary = summary;

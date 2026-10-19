@@ -27,7 +27,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 실제 쿼리(JPQL / 네이티브) 동작과 쿼리 수를 H2로 검증한다.
  * 기기 A에 300장, 기기 B에 5장을 넣는다. 텍스트 7종을 돌려가며 쓰고 마지막 종류는 글자 없음(기타)이다.
  */
-@SpringBootTest(properties = "spring.jpa.properties.hibernate.generate_statistics=true")
+// 300장을 한 번에 시드하므로 요청당 최대 항목 수만 올린다 (운영 기본값은 20)
+@SpringBootTest(properties = {"spring.jpa.properties.hibernate.generate_statistics=true",
+        "remine.analyze.max-batch-size=300"})
 class ScreenshotQueryIntegrationTest {
 
     private static final LocalDateTime BASE = LocalDateTime.of(2026, 10, 1, 0, 0);

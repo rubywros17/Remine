@@ -18,7 +18,9 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** 300장 배치 분석 시 실행되는 SQL(PreparedStatement) 수를 측정한다. */
-@SpringBootTest(properties = "spring.jpa.properties.hibernate.generate_statistics=true")
+// 300장을 한 번에 넣어 쿼리 수를 재므로 요청당 최대 항목 수만 올린다 (운영 기본값은 20)
+@SpringBootTest(properties = {"spring.jpa.properties.hibernate.generate_statistics=true",
+        "remine.analyze.max-batch-size=300"})
 class ScreenshotAnalyzeQueryCountTest {
 
     private static final String[] TEXTS = {

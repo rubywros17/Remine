@@ -11,6 +11,8 @@ spring:
     # remine.env-file로 위치를 바꿀 수 있다 (테스트는 존재하지 않는 경로를 지정해 사용자 파일을 읽지 않는다).
     import: "optional:file:${remine.env-file:${user.home}/.remine.env}[.properties]"
   jpa:
+    # 요청 내내 세션(DB 연결)을 쥐지 않는다. analyze는 LLM 호출 중 DB를 점유하지 않도록 서비스에서 트랜잭션을 나눴다.
+    open-in-view: false
     show-sql: true
     properties:
       hibernate:
@@ -18,6 +20,9 @@ spring:
 
 remine:
   classifier: fake        # fake(키워드 임시 구현) | gemini(실제 LLM, GEMINI_API_KEY 필요)
+  analyze:
+    # analyze 요청 하나에 담을 수 있는 최대 캡처 수. 초과하면 400. (호출이 순차라 장수만큼 요청이 길어진다)
+    max-batch-size: 20
   llm:
     image-threshold-chars: 150   # OCR 글자 수(공백 제외)가 이 값 미만이고 이미지가 있으면 이미지도 함께 전송
     gemini:
