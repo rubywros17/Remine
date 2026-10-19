@@ -1,4 +1,4 @@
-package com.remine.server.experiment;
+package com.remine.server.classifier.llm;
 
 import org.junit.jupiter.api.Test;
 
@@ -66,5 +66,32 @@ class CallPacerTest {
         pacer.awaitTurn();
 
         assertThat(time.sleeps).isEmpty();
+    }
+
+    @Test
+    void 여러_스레드가_동시에_불러도_호출_간격을_지킨다() throws InterruptedException {
+        FakeTime time = new FakeTime();
+        CallPacer pacer = new CallPacer(1000, () -> time.nanos, time::sleep);
+        int threads = 8;
+        java.util.concurrent.CountDownLatch start = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch done = new java.util.concurrent.CountDownLatch(threads);
+        for (int i = 0; i < threads; i++) {
+            new Thread(() -> {
+                try {
+                    start.await();
+                    pacer.awaitTurn();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                } finally {
+                    done.countDown();
+                }
+            }).start();
+        }
+        start.countDown();
+        done.await();
+
+        // 첫 호출은 대기 없음, 나머지 7번은 각각 정확히 1초씩 기다린다 (동기화가 없으면 중복·누락이 생긴다)
+        assertThat(time.sleeps).hasSize(threads - 1).containsOnly(1000L);
+        assertThat(time.nanos).isEqualTo((threads - 1) * 1_000_000_000L);
     }
 }

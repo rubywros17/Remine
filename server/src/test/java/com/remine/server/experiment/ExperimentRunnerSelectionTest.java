@@ -1,5 +1,6 @@
 package com.remine.server.experiment;
 
+import com.remine.server.classifier.llm.PromptVersion;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

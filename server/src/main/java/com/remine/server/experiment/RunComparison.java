@@ -1,5 +1,6 @@
 package com.remine.server.experiment;
 
+import com.remine.server.classifier.llm.PromptVersion;
 import com.remine.server.domain.screenshot.Category;
 import com.remine.server.experiment.ExperimentStats.LengthBin;
 import com.remine.server.experiment.RunCsv.Row;

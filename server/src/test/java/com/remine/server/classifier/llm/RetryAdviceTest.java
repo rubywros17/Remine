@@ -1,4 +1,4 @@
-package com.remine.server.experiment;
+package com.remine.server.classifier.llm;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
@@ -74,5 +74,28 @@ class RetryAdviceTest {
         assertThat(RetryAdvice.isRetryable(new IllegalStateException("timeout"))).isTrue();
         assertThat(RetryAdvice.isRetryable(client(HttpStatus.BAD_REQUEST, new HttpHeaders(), ""))).isFalse();
         assertThat(RetryAdvice.isRetryable(client(HttpStatus.UNAUTHORIZED, new HttpHeaders(), ""))).isFalse();
+    }
+
+    @Test
+    void 안전한_요약은_상태_코드와_error_status만_담는다() {
+        String body = "{\"error\":{\"code\":429,\"message\":\"비밀 OCR 문장이 에코됨\",\"status\":\"RESOURCE_EXHAUSTED\"}}";
+
+        assertThat(RetryAdvice.safeDescribe(client(HttpStatus.TOO_MANY_REQUESTS, new HttpHeaders(), body), mapper))
+                .isEqualTo("HTTP 429 RESOURCE_EXHAUSTED");
+    }
+
+    @Test
+    void 안전한_요약은_JSON이_아닌_본문이나_이상한_status는_상태_코드만() {
+        assertThat(RetryAdvice.safeDescribe(client(HttpStatus.BAD_GATEWAY, new HttpHeaders(), "<html>oops</html>"), mapper))
+                .isEqualTo("HTTP 502");
+        assertThat(RetryAdvice.safeDescribe(
+                client(HttpStatus.BAD_REQUEST, new HttpHeaders(), "{\"error\":{\"status\":\"secret text here\"}}"), mapper))
+                .isEqualTo("HTTP 400");
+    }
+
+    @Test
+    void 안전한_요약은_통신_오류의_메시지를_담지_않는다() {
+        assertThat(RetryAdvice.safeDescribe(new IllegalStateException("http://host/?key=SECRET"), mapper))
+                .isEqualTo("IllegalStateException");
     }
 }

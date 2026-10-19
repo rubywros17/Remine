@@ -1,5 +1,7 @@
 package com.remine.server.experiment;
 
+import com.remine.server.classifier.llm.GeminiProvider;
+import com.remine.server.classifier.llm.LlmProvider;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.util.Optional;
@@ -18,7 +20,7 @@ final class LlmProviders {
 
     static String envName(String provider) {
         return switch (provider) {
-            case "gemini" -> "GEMINI_API_KEY";
+            case "gemini" -> GeminiProvider.API_KEY_PROPERTY;
             default -> throw new IllegalArgumentException("지원하지 않는 제공사: " + provider);
         };
     }

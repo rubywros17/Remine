@@ -1,11 +1,13 @@
-package com.remine.server.experiment;
+package com.remine.server.classifier.llm;
 
 import java.util.function.LongConsumer;
 import java.util.function.LongSupplier;
 
 /**
- * 후보별 호출 간격 제한. 호출 시작 시각 사이가 minIntervalMs 이상이 되도록 대기한다.
+ * 호출 간격 제한. 호출 시작 시각 사이가 minIntervalMs 이상이 되도록 대기한다.
  * 429를 맞고 재시도하기보다 처음부터 속도 제한 아래로 보내기 위한 것이다.
+ * 운영에서는 싱글턴 분류기를 여러 요청 스레드가 공유하므로 {@link #awaitTurn}이 동기화되어 있다
+ * (대기하는 동안 락을 쥐어 동시 호출도 간격을 지킨다).
  */
 final class CallPacer {
 
@@ -22,7 +24,7 @@ final class CallPacer {
     }
 
     /** 호출 직전에 부른다. 직전 호출 시작으로부터 간격이 모자라면 그만큼 기다린다. */
-    void awaitTurn() {
+    synchronized void awaitTurn() {
         long now = nanoClock.getAsLong();
         if (minIntervalNanos == 0) {
             return;

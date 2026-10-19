@@ -1,5 +1,7 @@
 package com.remine.server.experiment;
 
+import com.remine.server.classifier.llm.LlmProvider;
+import com.remine.server.classifier.llm.LlmReply;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.http.HttpHeaders;

@@ -1,4 +1,4 @@
-package com.remine.server.experiment;
+package com.remine.server.classifier.llm;
 
 /**
  * 제공사 응답에서 꺼낸 모델 출력 텍스트와 토큰 수.

@@ -1,14 +1,12 @@
 package com.remine.server.classifier;
 
 import com.remine.server.domain.screenshot.Category;
-import org.springframework.stereotype.Component;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** 키워드 포함 여부로 분류하는 임시 구현. 실제 LLM 구현체가 생기면 이 빈을 대체한다. */
-@Component
+/** 키워드 포함 여부로 분류하는 임시 구현. remine.classifier=fake(기본)일 때 쓰고 이미지는 무시한다. */
 public class FakeClassifier implements Classifier {
 
     private static final int MAX_TAGS = 3;
@@ -27,7 +25,7 @@ public class FakeClassifier implements Classifier {
     }
 
     @Override
-    public ClassificationResult classify(String ocrText) {
+    public ClassificationResult classify(String ocrText, byte[] jpegImage) {
         String summary = ocrText.length() <= SUMMARY_LENGTH
                 ? ocrText
                 : ocrText.substring(0, SUMMARY_LENGTH) + "…";
