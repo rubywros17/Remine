@@ -3,7 +3,10 @@ package com.remine.server.controller;
 import com.remine.server.domain.screenshot.Category;
 import com.remine.server.dto.AnalyzeRequest;
 import com.remine.server.dto.AnalyzeResponse;
+import com.remine.server.dto.CategoryUpdateRequest;
+import com.remine.server.dto.CategoryUpdateResponse;
 import com.remine.server.dto.ScreenshotPageResponse;
+import com.remine.server.service.ScreenshotCategoryService;
 import com.remine.server.service.ScreenshotQueryService;
 import com.remine.server.service.ScreenshotService;
 import jakarta.validation.Valid;
@@ -13,6 +16,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -29,6 +34,7 @@ public class ScreenshotController {
     private final ScreenshotService screenshotService;
     private final ScreenshotQueryService screenshotQueryService;
     private final AnalyzeMultipartReader multipartReader;
+    private final ScreenshotCategoryService categoryService;
 
     @PostMapping(value = "/analyze", consumes = MediaType.APPLICATION_JSON_VALUE)
     public AnalyzeResponse analyze(@RequestHeader("X-Device-Id") Long deviceId,
@@ -43,6 +49,13 @@ public class ScreenshotController {
                                              @RequestParam MultiValueMap<String, MultipartFile> files) {
         AnalyzeRequest request = multipartReader.readRequest(requestJson);
         return screenshotService.analyze(deviceId, request, multipartReader.readImages(files, request));
+    }
+
+    @PatchMapping("/{id}/category")
+    public CategoryUpdateResponse updateCategory(@RequestHeader("X-Device-Id") Long deviceId,
+                                                 @PathVariable("id") Long id,
+                                                 @RequestBody CategoryUpdateRequest request) {
+        return categoryService.updateCategory(deviceId, id, request.category());
     }
 
     @GetMapping

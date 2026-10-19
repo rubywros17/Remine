@@ -39,6 +39,28 @@ public class ApiExceptionHandler {
         return problem;
     }
 
+    @ExceptionHandler(CategoryNotAllowedException.class)
+    public ProblemDetail categoryNotAllowed(CategoryNotAllowedException e) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());
+        problem.setTitle("허용되지 않는 카테고리");
+        problem.setProperty("allowed", e.allowed());
+        return problem;
+    }
+
+    @ExceptionHandler(ScreenshotNotFoundException.class)
+    public ProblemDetail screenshotNotFound(ScreenshotNotFoundException e) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.getMessage());
+        problem.setTitle("스크린샷 없음");
+        return problem;
+    }
+
+    @ExceptionHandler(ScreenshotNotAnalyzedException.class)
+    public ProblemDetail screenshotNotAnalyzed(ScreenshotNotAnalyzedException e) {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, e.getMessage());
+        problem.setTitle("분석되지 않은 스크린샷");
+        return problem;
+    }
+
     @ExceptionHandler(BatchTooLargeException.class)
     public ProblemDetail batchTooLarge(BatchTooLargeException e) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, e.getMessage());

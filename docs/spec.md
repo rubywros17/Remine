@@ -107,9 +107,11 @@
 
 **F-05. 사용자 카테고리 수정**
 - AI가 분류한 카테고리가 틀리면 사용자가 스크린샷 상세 화면에서 **7개 기본 카테고리 중 하나로 직접 바꾼다.**
-- 수정한 값은 AI 분류보다 우선하며 이후 재분석이 덮어쓰지 않는다. 서버에는 `category_source`(AI / USER)로 구분해 저장한다.
-- 홈의 카테고리별 개수·대표 태그·썸네일은 수정된 카테고리를 기준으로 집계한다.
-- 정정 데이터는 이후 분류 품질 평가용 라벨로 쓸 수 있다(분류 정확도 검증 데이터 확보).
+- 수정한 값은 AI 분류보다 우선하며 이후 재분석이 덮어쓰지 않는다. 서버에는 모델이 처음 낸 값 `auto_category`(분석 시 한 번 저장, 이후 불변)와 현재 값 `category`, 출처 `category_source`(**AUTO** / **USER**)를 저장한다.
+- **같은 값으로 "수정"해도 `USER`가 된다**(= 사용자 확인). 틀렸다고 고친 것(`corrected`)과 맞다고 확인한 것(`confirmed`)을 구분해야 정확도를 잴 수 있고, 확인된 값도 재분석에서 보호된다.
+- **보호 규칙은 저장 로직(엔티티)에 있다**: `category`·`auto_category`는 분석 반영(`applyAnalysis`)과 사용자 수정(`changeCategoryByUser`)으로만 바뀌고, `USER`인 값은 어떤 재분석 경로도 덮어쓰지 못한다(요약은 카테고리와 독립으로 갱신). 분석되지 않은 캡처는 수정할 수 없다.
+- 홈의 카테고리별 개수·대표 태그·썸네일과 목록 필터는 수정된 `category`를 기준으로 집계하며 수정 즉시 반영된다. 태그는 그대로 유지된다.
+- 정정 데이터는 이후 분류 품질 평가용 라벨로 쓸 수 있다([실사용 정확도 측정](#실사용-정확도-측정-f-05) 참고).
 - 새 카테고리를 만드는 **사용자 정의 카테고리**와는 별개이며 MVP 이후다.
 
 ### ⏳ MVP 이후
@@ -193,10 +195,24 @@
 | 테이블 | 주요 컬럼 |
 |---|---|
 | `device` | id, fcm_token, created_at |
-| `screenshot` | id, device_id, local_asset_id, taken_at, source_app, ocr_text, category, category_source(AI/USER), summary, analyzed_at |
+| `screenshot` | id, device_id, local_asset_id, taken_at, source_app, ocr_text, auto_category(모델 최초 값, 불변), category(현재 값), category_source(AUTO/USER), summary, analyzed_at |
 | `tag` | id, name |
 | `screenshot_tag` | id, screenshot_id, tag_id (unique: screenshot_id + tag_id) |
 | `interest_alert` | id, device_id, tag_id, alert_type, message, sent_at |
+
+### 운영 DB 전환 메모 (카테고리 수정 컬럼)
+- 지금은 H2 인메모리 + 자동 스키마 생성이라 마이그레이션이 없다(기동마다 새 스키마).
+- 운영 DB로 옮길 때: `auto_category`, `category_source` 컬럼 추가 → 분석된 기존 행은 `auto_category = category`, `category_source = 'AUTO'`로 백필 → enum 컬럼에 CHECK 제약. 백필된 `auto_category`는 전환 이전 사용자 수정이 없었다는 가정의 값이다.
+- 수정 이력은 저장하지 않는다(현재 값과 최초 AI 값만). 여러 번 고친 중간 값은 남지 않는다.
+
+### 실사용 정확도 측정 (F-05)
+- 분석된 캡처 = `analyzed_at`이 있는 행. `corrected` = `USER` 이면서 `category ≠ auto_category`, `confirmed` = `USER` 이면서 `category = auto_category`, `unreviewed` = `AUTO`.
+- **수정률** = corrected / 분석된 캡처 수.
+- **정확도 상한** = 1 − 수정률. 안 고친 캡처가 맞는지는 알 수 없고(틀려도 못 보거나 안 고칠 수 있음) 정확도 자체가 아니라 **상한**이다.
+- **검토 기준 정확도** = confirmed / (confirmed + corrected). 사용자가 직접 본 표본뿐이라 작고 편향될 수 있어 참고용이다.
+- **혼동 쌍** (auto_category → category) 건수: 프롬프트·카테고리 정의 개선의 입력.
+- 한계: 수정 이력 없음, 기기 안에서 분류한 캡처(민감·은행·메신저 앱)는 서버에 없어 제외, 모델·프롬프트 버전별 분리는 버전 컬럼(`classifier_version`)이 생기면 가능.
+- 조회 API(제안, **이번에는 구현하지 않음**): `GET /api/categories/accuracy` (헤더 `X-Device-Id`, 선택 `from`/`to`) → `{analyzed, corrected, confirmed, unreviewed, correctionRate, byAutoCategory:[{category, analyzed, corrected}], confusions:[{from, to, count}]}`. `group by auto_category, category, category_source` 쿼리 1회. 기기 전체 합산은 인증이 없는 지금은 API로 열지 않고 관리용 SQL로만 본다.
 
 ## 9. API (초안)
 
@@ -223,7 +239,17 @@
 | `IMAGE_INVALID` | **이미지 없이** 재전송. 같은 이미지를 반복 전송하지 않는다 |
 | `LLM_CALL_FAILED` / `LLM_INVALID_RESPONSE` | 같은 요청을 나중에 다시 전송 |
 
-| PATCH | `/api/screenshots/{id}/category` | 사용자가 카테고리 수정 (7개 중 하나). `category_source`가 USER로 바뀌고 이후 재분석이 덮어쓰지 않음 |
+| PATCH | `/api/screenshots/{id}/category` | 사용자가 카테고리 수정. 본문 `{"category":"PLACE"}` → 200 `{id, category, autoCategory, categorySource}`. `category_source`가 USER로 바뀌고(같은 값이어도) 이후 재분석이 덮어쓰지 않음. 오류는 아래 표 |
+
+**PATCH 오류 응답** (검사 순서: 값 → 기기 → 캡처 소유 → 분석 여부):
+
+| 상황 | 응답 |
+|---|---|
+| `category` 누락·빈 값·7개에 없는 값 | 400, 본문에 `allowed`(허용 값 목록) |
+| `X-Device-Id` 헤더 없음 | 400 |
+| 등록되지 않은 기기 | 404 |
+| 없는 id **또는 다른 기기의 캡처** | 404 (같은 응답이라 다른 기기의 id 존재를 알 수 없음. 값 검증이 먼저라 400/404 차이로도 알 수 없음) |
+| 분석되지 않은 캡처(`analyzed_at` null) | 409 |
 | GET | `/api/screenshots?category=&tag=&page=&size=` | 분류된 스크린샷 목록. taken_at 최신순, page 기본 0 / size 기본 30·최대 100, 각 항목에 태그 포함 |
 | GET | `/api/categories/summary` | 홈 화면용. 7개 카테고리 전부 반환(0장은 count 0), 카테고리별 개수·대표 태그 상위 3개·최신 localAssetId 4개 |
 | GET | `/api/interests` | 감지된 관심사 목록 |
@@ -271,6 +297,8 @@
 - [ ] DB 선택
 - [ ] 분석의 비동기·병렬화 (작업 큐 + 진행 상태 조회, 제한된 동시성). 지금은 동기 순차 호출이라 요청당 20장으로 제한한다.
 - [x] 이미지 수신 API(multipart, 메모리 전용)와 "빈 OCR + 이미지" 분류 경로
+- [x] 사용자 카테고리 수정(F-05): `auto_category` + `category_source(AUTO/USER)`, 같은 값 수정 = USER
+- [ ] 실사용 정확도 조회 API(`GET /api/categories/accuracy`) — 5주차 Key Numbers 측정 시 구현
 - [ ] 관심사 감지 규칙의 기준값 (기간, 횟수)
 - [ ] 하이브리드 기준값 재검증 (ML Kit OCR, 더 큰 표본)
 - [ ] 분류 힌트 입력(앱 이름, 인스타 저장 컬렉션 이름 등 화면 상단 문구) — **ML Kit(텍스트 위치 정보) 도입 후 재검토.**
