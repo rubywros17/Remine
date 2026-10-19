@@ -85,7 +85,9 @@ public class LlmClassifier {
                 LlmPrompt.Parsed parsed = LlmPrompt.parse(mapper, reply.text());
                 return new LlmOutcome(parsed.result(), usage,
                         parsed.ok() ? LlmOutcome.Status.OK : LlmOutcome.Status.PARSE_FAILED,
-                        reply.note().isEmpty() ? reply.text() : "[" + reply.note() + "] " + reply.text());
+                        reply.note().isEmpty() ? reply.text() : "[" + reply.note() + "] " + reply.text(),
+                        false,
+                        parsed.ok() ? "" : "응답 형식 오류" + (reply.note().isEmpty() ? "" : " (" + reply.note() + ")"));
             } catch (RuntimeException e) {
                 last = e;
                 if (!RetryAdvice.isRetryable(e)) {
@@ -109,7 +111,8 @@ public class LlmClassifier {
         String detail = "시도 " + attempts + "회" + (stopReason.isEmpty() ? "" : ", " + stopReason)
                 + " | " + RetryAdvice.describe(last);
         return new LlmOutcome(new ClassificationResult(Category.ETC, List.of(), ""), LlmUsage.NONE,
-                LlmOutcome.Status.CALL_FAILED, detail, !stopReason.isEmpty());
+                LlmOutcome.Status.CALL_FAILED, detail, !stopReason.isEmpty(),
+                RetryAdvice.safeDescribe(last, mapper) + ", 시도 " + attempts + "회");
     }
 
     private static void sleep(long millis) {

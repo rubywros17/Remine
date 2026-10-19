@@ -3,6 +3,7 @@ package com.remine.server.classifier.llm;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
@@ -17,28 +18,40 @@ import java.util.Map;
  */
 public class GeminiProvider extends JsonHttpProvider {
 
-    private static final String URL = "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent";
+    /** API 키를 읽는 설정 이름(환경변수 또는 ~/.remine.env). 운영과 실험이 같은 이름을 쓴다. */
+    public static final String API_KEY_PROPERTY = "GEMINI_API_KEY";
+    public static final String DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com";
+    private static final String PATH = "/v1beta/models/%s:generateContent";
     // 사고 토큰도 출력 한도를 쓸 수 있어 JSON이 잘리지 않도록 여유를 둔다.
     private static final int MAX_OUTPUT_TOKENS = 4096;
 
     private final String apiKey;
     private final double temperature;
+    private final String endpointTemplate;
 
+    /** 기본 주소·타임아웃을 쓰는 생성자(실험 러너). */
     public GeminiProvider(String apiKey, double temperature, JsonMapper mapper) {
-        super(mapper);
+        this(apiKey, temperature, mapper, DEFAULT_BASE_URL, DEFAULT_CONNECT_TIMEOUT, DEFAULT_READ_TIMEOUT);
+    }
+
+    /** baseUrl을 주입할 수 있어 테스트는 항상 로컬 가짜 서버만 가리킨다(실제 API를 부를 수 없는 구조). */
+    public GeminiProvider(String apiKey, double temperature, JsonMapper mapper, String baseUrl,
+                          Duration connectTimeout, Duration readTimeout) {
+        super(mapper, connectTimeout, readTimeout);
         this.apiKey = apiKey;
         this.temperature = temperature;
+        this.endpointTemplate = (baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl) + PATH;
     }
 
     @Override
     public LlmReply call(String model, String systemPrompt, String userText) {
-        return parse(post(URL.formatted(model), Map.of("x-goog-api-key", apiKey),
+        return parse(post(endpointTemplate.formatted(model), Map.of("x-goog-api-key", apiKey),
                 requestBody(systemPrompt, userText, temperature)));
     }
 
     @Override
     public LlmReply call(String model, String systemPrompt, String userText, byte[] jpegImage) {
-        return parse(post(URL.formatted(model), Map.of("x-goog-api-key", apiKey),
+        return parse(post(endpointTemplate.formatted(model), Map.of("x-goog-api-key", apiKey),
                 requestBody(systemPrompt, userText, temperature, jpegImage)));
     }
 

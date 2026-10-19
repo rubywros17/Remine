@@ -96,6 +96,27 @@ final class RetryAdvice {
         return wait.compareTo(MAX_BACKOFF) > 0 ? MAX_BACKOFF : wait;
     }
 
+    /**
+     * 로그·응답에 써도 안전한 실패 요약. HTTP 상태 코드와 제공사의 error.status(예: RESOURCE_EXHAUSTED)까지만 담고
+     * 응답 본문·요청 내용·URL은 담지 않는다. 운영 경로는 {@link #describe}가 아니라 이것만 쓴다.
+     */
+    static String safeDescribe(RuntimeException e, JsonMapper mapper) {
+        if (e instanceof RestClientResponseException response) {
+            String status = "HTTP " + response.getStatusCode().value();
+            try {
+                String errorStatus = mapper.readTree(response.getResponseBodyAsString())
+                        .path("error").path("status").asString("");
+                if (errorStatus.matches("[A-Z_]{1,40}")) {
+                    return status + " " + errorStatus;
+                }
+            } catch (RuntimeException ignored) {
+                // JSON이 아닌 본문이면 상태 코드만
+            }
+            return status;
+        }
+        return e.getClass().getSimpleName();
+    }
+
     /** 실패 원인 요약(상태 코드와 본문). errors.local.*.md에 남긴다. */
     static String describe(RuntimeException e) {
         if (e instanceof RestClientResponseException response) {

@@ -75,14 +75,14 @@ class ExperimentRunnerKeyTest {
     }
 
     @Test
-    void experiment_프로필은_홈의_remine_env_파일을_선택적으로_불러온다() throws IOException {
+    void 공통_설정은_remine_env_파일을_선택적으로_불러온다() throws IOException {
         List<PropertySource<?>> sources = new YamlPropertySourceLoader()
-                .load("experiment", new ClassPathResource("application-experiment.yaml"));
+                .load("application", new ClassPathResource("application.yaml"));
         Map<?, ?> merged = sources.stream().map(PropertySource::getSource)
                 .filter(Map.class::isInstance).map(Map.class::cast).findFirst().orElseThrow();
 
         // optional: 파일이 없어도 기동하고, [.properties]로 확장자 없는 파일을 properties로 읽는다.
         assertThat(String.valueOf(merged.get("spring.config.import")))
-                .isEqualTo("optional:file:${user.home}/.remine.env[.properties]");
+                .isEqualTo("optional:file:${remine.env-file:${user.home}/.remine.env}[.properties]");
     }
 }

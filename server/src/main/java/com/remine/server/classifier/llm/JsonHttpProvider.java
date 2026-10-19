@@ -15,11 +15,18 @@ abstract class JsonHttpProvider implements LlmProvider {
     protected final JsonMapper mapper;
     private final RestClient client;
 
+    static final Duration DEFAULT_CONNECT_TIMEOUT = Duration.ofSeconds(10);
+    static final Duration DEFAULT_READ_TIMEOUT = Duration.ofSeconds(60);
+
     protected JsonHttpProvider(JsonMapper mapper) {
+        this(mapper, DEFAULT_CONNECT_TIMEOUT, DEFAULT_READ_TIMEOUT);
+    }
+
+    protected JsonHttpProvider(JsonMapper mapper, Duration connectTimeout, Duration readTimeout) {
         this.mapper = mapper;
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(Duration.ofSeconds(10));
-        factory.setReadTimeout(Duration.ofSeconds(60));
+        factory.setConnectTimeout(connectTimeout);
+        factory.setReadTimeout(readTimeout);
         this.client = RestClient.builder().requestFactory(factory).build();
     }
 

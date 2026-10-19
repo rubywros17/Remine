@@ -20,7 +20,7 @@ final class LlmProviders {
 
     static String envName(String provider) {
         return switch (provider) {
-            case "gemini" -> "GEMINI_API_KEY";
+            case "gemini" -> GeminiProvider.API_KEY_PROPERTY;
             default -> throw new IllegalArgumentException("지원하지 않는 제공사: " + provider);
         };
     }
