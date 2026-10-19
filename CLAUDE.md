@@ -28,7 +28,8 @@ docs/     기획·설계 문서
 ## 개발 환경
 - Windows (LG 그램) + VS Code
 - 테스트: 갤럭시 실기기 (USB 디버깅). 에뮬레이터는 기본으로 쓰지 않는다.
-- 명령어는 Windows(PowerShell) 기준으로 안내한다.
+- 사용자 터미널은 Windows의 **Git Bash**다. 명령 예시는 bash 문법으로 안내한다(PowerShell 문법 금지).
+- 한글이 들어간 curl 본문은 인라인 `-d`로 보내지 말고 UTF-8 파일에 저장해 `--data-binary @파일`로 보낸다(터미널 인코딩에 따라 깨짐).
 
 ## 자주 쓰는 명령
 ```

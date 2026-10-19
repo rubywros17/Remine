@@ -2,7 +2,7 @@ package com.remine.server.experiment;
 
 /**
  * 후보에게 무엇을 보내는지. candidates.json의 "input" 값.
- * TEXT_IMAGE는 실험 러너 전용이다. 앱은 원본 이미지를 서버로 보내지 않는다는 원칙을 유지한다.
+ * TEXT_IMAGE는 모든 표본에 이미지를 보내는 실험 비교용이다. 서비스는 동의한 경우의 짧은 OCR 캡처에만 축소 이미지를 받고 저장하지 않는다.
  */
 public enum InputMode {
     TEXT("text"),

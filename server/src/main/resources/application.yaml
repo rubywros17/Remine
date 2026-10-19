@@ -1,6 +1,12 @@
 logging:
   charset:
     console: UTF-8
+  level:
+    # 읽을 수 없는 JSON 본문을 처리할 때 이 로거가 DEBUG에서 잘못된 값(OCR 원문 등)이 든 예외 메시지를 찍는다.
+    # 상위(org.springframework.web)를 DEBUG로 올려도 본문 내용이 로그에 남지 않게 고정한다.
+    org.springframework.web.method.HandlerMethod: INFO
+    # @ExceptionHandler로 처리된 예외도 DEBUG에서 "Resolved [예외]"로 메시지를 찍는다.
+    org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver: INFO
 
 spring:
   application:
