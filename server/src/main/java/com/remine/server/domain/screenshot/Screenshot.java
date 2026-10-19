@@ -53,6 +53,14 @@ public class Screenshot {
     @Enumerated(EnumType.STRING)
     private Category category;
 
+    // 모델이 처음 낸 카테고리. 분석 시 한 번 채워지고 이후 바뀌지 않는다(사용자 수정 후 정확도 측정의 기준값).
+    @Enumerated(EnumType.STRING)
+    private Category autoCategory;
+
+    // category가 모델 값(AUTO)인지 사용자가 정한 값(USER)인지. 분석 전에는 null.
+    @Enumerated(EnumType.STRING)
+    private CategorySource categorySource;
+
     private String summary;
 
     private LocalDateTime analyzedAt;
@@ -73,9 +81,29 @@ public class Screenshot {
         this.ocrText = ocrText;
     }
 
+    /**
+     * 분석 결과를 반영한다. category·autoCategory는 이 메서드와 {@link #changeCategoryByUser}로만 바뀐다(세터 없음).
+     * 어떤 재분석 경로든 여기를 거치므로 사용자가 정한 카테고리(USER)는 덮어쓰지 않는다.
+     * 요약은 내용 설명이라 카테고리와 독립으로 갱신한다.
+     */
     public void applyAnalysis(Category category, String summary) {
-        this.category = category;
+        if (this.autoCategory == null) {
+            this.autoCategory = category;
+        }
+        if (this.categorySource != CategorySource.USER) {
+            this.category = category;
+            this.categorySource = CategorySource.AUTO;
+        }
         this.summary = summary;
         this.analyzedAt = LocalDateTime.now();
+    }
+
+    /** 사용자가 카테고리를 지정한다. 같은 값이어도 USER가 된다(= 사용자 확인). 분석되지 않은 행은 수정할 수 없다. */
+    public void changeCategoryByUser(Category category) {
+        if (analyzedAt == null) {
+            throw new IllegalStateException("분석되지 않은 스크린샷은 카테고리를 수정할 수 없습니다");
+        }
+        this.category = category;
+        this.categorySource = CategorySource.USER;
     }
 }
