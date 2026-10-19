@@ -40,9 +40,13 @@ flutter analyze
 
 # 서버
 cd server
-./gradlew bootRun
+./gradlew bootRun                                  # 기본: fake 분류기 (키 불필요)
+./gradlew bootRun --args="--remine.classifier=gemini"   # 실제 Gemini 분류 (GEMINI_API_KEY 필요)
 ./gradlew test
 ```
+- Gemini 키는 환경변수 `GEMINI_API_KEY` 또는 `~/.remine.env` 파일(`GEMINI_API_KEY=키값`, 따옴표 없이)에 둔다. 키가 없으면 기동이 안내와 함께 실패한다.
+- 테스트는 `~/.remine.env`·키·`REMINE_CLASSIFIER`를 읽지 않고(build.gradle에서 중립화) 실제 API를 부르지 않는다.
+- analyze는 요청당 최대 20장(`remine.analyze.max-batch-size`). 설정은 `server/src/main/resources/application.yaml`의 `remine.*`.
 
 ## 코드 규칙
 - 서버: 계층 구조 (controller / service / repository / domain / dto). 엔티티를 API 응답으로 직접 노출하지 않는다.
