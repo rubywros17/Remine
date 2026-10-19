@@ -22,6 +22,10 @@ public record AnalyzeResponse(List<Result> analyzed, List<String> skipped, List<
         /** LLM 호출 자체가 실패했다(통신 오류, 쿼터 소진, 인증 오류 등). */
         LLM_CALL_FAILED,
         /** LLM이 해석할 수 없는 응답을 줬다. */
-        LLM_INVALID_RESPONSE
+        LLM_INVALID_RESPONSE,
+        /** 이미지가 JPEG가 아니거나 읽을 수 없다(손상·픽셀 수 초과). 이미지 없이 다시 보낸다. */
+        IMAGE_INVALID,
+        /** 이미지가 장당 최대 크기(imageMaxBytes)를 넘는다. 더 줄여서 다시 보낸다. */
+        IMAGE_TOO_LARGE
     }
 }

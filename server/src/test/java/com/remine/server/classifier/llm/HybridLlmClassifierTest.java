@@ -151,4 +151,38 @@ class HybridLlmClassifierTest {
                 .isInstanceOfSatisfying(ClassificationException.class,
                         e -> assertThat(e.reason()).isEqualTo(ClassificationException.Reason.INVALID_RESPONSE));
     }
+
+    @Test
+    void 이미지_판정_표() {
+        HybridLlmClassifier c = classifier(okProvider(), 150);
+
+        assertThat(c.imageDecision("")).isEqualTo(com.remine.server.classifier.ImageDecision.USE);
+        assertThat(c.imageDecision(null)).isEqualTo(com.remine.server.classifier.ImageDecision.USE);
+        assertThat(c.imageDecision("가".repeat(149))).isEqualTo(com.remine.server.classifier.ImageDecision.USE);
+        assertThat(c.imageDecision("가".repeat(150))).isEqualTo(com.remine.server.classifier.ImageDecision.ABOVE_THRESHOLD);
+        // 마스킹 표시는 짧든 길든 글자 수 조건보다 우선한다
+        assertThat(c.imageDecision("연락처 " + com.remine.server.classifier.PrivacyMarkers.PHONE_NUMBER_MASK))
+                .isEqualTo(com.remine.server.classifier.ImageDecision.PHONE_MASKED);
+        assertThat(c.imageDecision("가".repeat(300) + com.remine.server.classifier.PrivacyMarkers.PHONE_NUMBER_MASK))
+                .isEqualTo(com.remine.server.classifier.ImageDecision.PHONE_MASKED);
+    }
+
+    @Test
+    void 마스킹_표시가_있으면_classify를_직접_불러도_이미지를_보내지_않는다() {
+        RecordingProvider provider = okProvider();
+
+        classifier(provider, 150).classify("짧음 " + com.remine.server.classifier.PrivacyMarkers.PHONE_NUMBER_MASK, IMAGE);
+
+        assertThat(provider.imageCalls).isEmpty();
+        assertThat(provider.textCalls).hasSize(1);
+    }
+
+    @Test
+    void 빈_OCR이어도_이미지가_있으면_이미지로_분류한다() {
+        RecordingProvider provider = okProvider();
+
+        classifier(provider, 150).classify("", IMAGE);
+
+        assertThat(provider.imageCalls).hasSize(1);
+    }
 }

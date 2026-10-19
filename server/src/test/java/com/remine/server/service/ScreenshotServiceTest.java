@@ -57,7 +57,8 @@ class ScreenshotServiceTest {
         return new RemineProperties(RemineProperties.ClassifierType.FAKE,
                 new RemineProperties.Llm(150, new RemineProperties.Gemini("m", 1.0, "http://localhost:1",
                         Duration.ofSeconds(1), Duration.ofSeconds(1), 0)),
-                new RemineProperties.Analyze(maxBatchSize));
+                new RemineProperties.Analyze(maxBatchSize),
+                new RemineProperties.Image(1048576, 1024, 25_000_000L, 12582912, 5242880));
     }
 
     @BeforeEach
@@ -201,5 +202,135 @@ class ScreenshotServiceTest {
         assertThatThrownBy(() -> small.analyze(1L, new AnalyzeRequest(items)))
                 .isInstanceOf(BatchTooLargeException.class)
                 .hasMessageContaining("최대 2장");
+    }
+
+    // ---- 이미지 입력: 분류기 판정 표 ----
+
+    private static byte[] jpeg(int width, int height) {
+        try {
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            javax.imageio.ImageIO.write(new java.awt.image.BufferedImage(width, height,
+                    java.awt.image.BufferedImage.TYPE_INT_RGB), "jpeg", out);
+            return out.toByteArray();
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    private AnalyzeResponse analyzeWithImage(String ocr, byte[] image) {
+        return service.analyze(1L, request(new Item("a1", NOW, null, ocr)), java.util.Map.of("a1", image));
+    }
+
+    private void givenNewCapture() {
+        givenDevice();
+        when(screenshotRepository.findAnalyzedLocalAssetIds(any(), any())).thenReturn(Set.of());
+    }
+
+    private static final ClassificationResult OK = new ClassificationResult(Category.INFO, List.of("팁"), "요약");
+
+    @Test
+    void 분류기가_이미지를_쓰겠다고_하면_검증_축소해서_함께_분류한다() {
+        givenNewCapture();
+        when(classifier.imageDecision("짧음")).thenReturn(com.remine.server.classifier.ImageDecision.USE);
+        ArgumentCaptor<byte[]> sent = ArgumentCaptor.forClass(byte[].class);
+        when(classifier.classify(eq("짧음"), sent.capture())).thenReturn(OK);
+
+        AnalyzeResponse response = analyzeWithImage("짧음", jpeg(3000, 1500));
+
+        assertThat(response.analyzed()).hasSize(1);
+        java.awt.image.BufferedImage delivered = decode(sent.getValue());
+        assertThat(delivered.getWidth()).isEqualTo(1024); // 긴 변이 1024로 줄었다
+        assertThat(delivered.getHeight()).isEqualTo(512);
+    }
+
+    @Test
+    void 기준값_이상이거나_마스킹된_캡처의_이미지는_분류기에_넘기지_않고_텍스트로_분류한다() {
+        givenNewCapture();
+        when(classifier.imageDecision("긴 글")).thenReturn(com.remine.server.classifier.ImageDecision.ABOVE_THRESHOLD);
+        when(classifier.imageDecision("번호 [전화번호]")).thenReturn(com.remine.server.classifier.ImageDecision.PHONE_MASKED);
+        when(classifier.classify(eq("긴 글"), isNull())).thenReturn(OK);
+        when(classifier.classify(eq("번호 [전화번호]"), isNull())).thenReturn(OK);
+
+        // 디코딩하지 않으므로 JPEG가 아닌 바이트여도 실패하지 않는다(= 검증조차 하지 않았다)
+        byte[] notEvenImage = {1, 2, 3};
+        assertThat(analyzeWithImage("긴 글", notEvenImage).failed()).isEmpty();
+        assertThat(analyzeWithImage("번호 [전화번호]", notEvenImage).failed()).isEmpty();
+    }
+
+    @Test
+    void 이미지를_쓰지_않는_분류기면_이미지를_무시한다() {
+        givenNewCapture();
+        when(classifier.imageDecision("글")).thenReturn(com.remine.server.classifier.ImageDecision.NOT_SUPPORTED);
+        when(classifier.classify(eq("글"), isNull())).thenReturn(OK);
+
+        assertThat(analyzeWithImage("글", new byte[]{1}).analyzed()).hasSize(1);
+    }
+
+    @Test
+    void 장당_최대_크기를_넘으면_그_캡처만_IMAGE_TOO_LARGE로_실패한다() {
+        givenNewCapture();
+        when(classifier.imageDecision("글")).thenReturn(com.remine.server.classifier.ImageDecision.USE);
+
+        AnalyzeResponse response = analyzeWithImage("글", new byte[1_048_577]);
+
+        assertThat(response.failed()).containsExactly(
+                new AnalyzeResponse.Failure("a1", AnalyzeResponse.Reason.IMAGE_TOO_LARGE));
+        verify(classifier, never()).classify(anyString(), any());
+        verify(persister).saveAll(eq(1L), outcomes.capture());
+        assertThat(outcomes.getValue()).allMatch(Outcome::failed); // 미분석으로 남는다
+    }
+
+    @Test
+    void JPEG가_아니거나_읽을_수_없으면_IMAGE_INVALID로_실패한다() {
+        givenNewCapture();
+        when(classifier.imageDecision("글")).thenReturn(com.remine.server.classifier.ImageDecision.USE);
+
+        AnalyzeResponse response = analyzeWithImage("글", new byte[]{1, 2, 3});
+
+        assertThat(response.failed()).containsExactly(
+                new AnalyzeResponse.Failure("a1", AnalyzeResponse.Reason.IMAGE_INVALID));
+        verify(classifier, never()).classify(anyString(), any());
+    }
+
+    @Test
+    void 빈_OCR이어도_쓸_수_있는_이미지가_있으면_분류기로_보낸다() {
+        givenNewCapture();
+        when(classifier.imageDecision("")).thenReturn(com.remine.server.classifier.ImageDecision.USE);
+        when(classifier.classify(eq(""), any(byte[].class))).thenReturn(OK);
+
+        AnalyzeResponse response = analyzeWithImage("", jpeg(100, 100));
+
+        assertThat(response.analyzed()).extracting(AnalyzeResponse.Result::category).containsExactly(Category.INFO);
+    }
+
+    @Test
+    void 빈_OCR이고_이미지를_쓰지_않으면_분류기를_거치지_않고_기타다() {
+        givenNewCapture();
+        when(classifier.imageDecision(null)).thenReturn(com.remine.server.classifier.ImageDecision.NOT_SUPPORTED);
+
+        AnalyzeResponse response = service.analyze(1L, request(new Item("a1", NOW, null, null)),
+                java.util.Map.of("a1", jpeg(10, 10)));
+
+        assertThat(response.analyzed()).extracting(AnalyzeResponse.Result::category).containsExactly(Category.ETC);
+        verify(classifier, never()).classify(anyString(), any());
+    }
+
+    @Test
+    void 이미_분석된_캡처의_이미지는_판정도_디코딩도_하지_않는다() {
+        givenDevice();
+        when(screenshotRepository.findAnalyzedLocalAssetIds(any(), any())).thenReturn(Set.of("a1"));
+
+        AnalyzeResponse response = analyzeWithImage("글", new byte[]{1});
+
+        assertThat(response.skipped()).containsExactly("a1");
+        verify(classifier, never()).imageDecision(any());
+    }
+
+    private static java.awt.image.BufferedImage decode(byte[] jpeg) {
+        try {
+            return javax.imageio.ImageIO.read(new java.io.ByteArrayInputStream(jpeg));
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException(e);
+        }
     }
 }

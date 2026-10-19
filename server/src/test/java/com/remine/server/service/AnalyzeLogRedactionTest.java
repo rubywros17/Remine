@@ -118,7 +118,8 @@ class AnalyzeLogRedactionTest {
         RemineProperties properties = new RemineProperties(RemineProperties.ClassifierType.GEMINI,
                 new RemineProperties.Llm(150, new RemineProperties.Gemini("m", 1.0, "http://localhost:1",
                         Duration.ofSeconds(1), Duration.ofSeconds(1), 0)),
-                new RemineProperties.Analyze(20));
+                new RemineProperties.Analyze(20),
+                new RemineProperties.Image(1048576, 1024, 25_000_000L, 12582912, 5242880));
         HybridLlmClassifier classifier = hybridWithFakeProvider();
         ScreenshotService service = new ScreenshotService(deviceRepository, screenshotRepository, classifier, persister, properties);
         LocalDateTime now = LocalDateTime.of(2026, 10, 19, 12, 0);

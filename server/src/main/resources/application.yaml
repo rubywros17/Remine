@@ -13,6 +13,13 @@ spring:
   jpa:
     # 요청 내내 세션(DB 연결)을 쥐지 않는다. analyze는 LLM 호출 중 DB를 점유하지 않도록 서비스에서 트랜잭션을 나눴다.
     open-in-view: false
+  servlet:
+    multipart:
+      # 분석용 이미지는 디스크에 쓰지 않는다. file-size-threshold 기본값 0B는 모든 파트를 임시 파일로 쓰므로,
+      # 어떤 파트보다 크게 잡아 항상 메모리에서만 처리한다. 상한은 remine.image.*와 같은 값을 쓴다.
+      file-size-threshold: 256MB
+      max-file-size: ${remine.image.max-part-bytes}B
+      max-request-size: ${remine.image.max-request-bytes}B
     show-sql: true
     properties:
       hibernate:
@@ -23,6 +30,12 @@ remine:
   analyze:
     # analyze 요청 하나에 담을 수 있는 최대 캡처 수. 초과하면 400. (호출이 순차라 장수만큼 요청이 길어진다)
     max-batch-size: 20
+  image:
+    max-bytes: 1048576           # 장당 1MB 초과 → 그 캡처만 IMAGE_TOO_LARGE
+    max-long-side: 1024          # 서버가 이보다 긴 변은 축소
+    max-pixels: 25000000         # 디코딩 전 픽셀 수 상한 (압축폭탄 방어)
+    max-request-bytes: 12582912  # 요청 전체 하드 상한 12MB → 413
+    max-part-bytes: 5242880      # 파트 하나 하드 상한 5MB → 413
   llm:
     image-threshold-chars: 150   # OCR 글자 수(공백 제외)가 이 값 미만이고 이미지가 있으면 이미지도 함께 전송
     gemini:

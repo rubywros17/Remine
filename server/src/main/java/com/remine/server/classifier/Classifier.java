@@ -13,6 +13,15 @@ public interface Classifier {
      */
     ClassificationResult classify(String ocrText, byte[] jpegImage);
 
+    /**
+     * 이 OCR 텍스트의 캡처에 이미지가 오면 쓸지. 서비스는 이 값으로 이미지를 검증·축소할지만 정하고,
+     * {@link #classify}도 같은 판단을 다시 적용하므로 서비스를 우회해도 쓰면 안 되는 이미지는 나가지 않는다.
+     * 기본은 이미지를 쓰지 않는다.
+     */
+    default ImageDecision imageDecision(String ocrText) {
+        return ImageDecision.NOT_SUPPORTED;
+    }
+
     /** 이미지 없이 텍스트만으로 분류한다. */
     default ClassificationResult classify(String ocrText) {
         return classify(ocrText, null);

@@ -47,6 +47,7 @@ cd server
 - Gemini 키는 환경변수 `GEMINI_API_KEY` 또는 `~/.remine.env` 파일(`GEMINI_API_KEY=키값`, 따옴표 없이)에 둔다. 키가 없으면 기동이 안내와 함께 실패한다.
 - 테스트는 `~/.remine.env`·키·`REMINE_CLASSIFIER`를 읽지 않고(build.gradle에서 중립화) 실제 API를 부르지 않는다.
 - analyze는 요청당 최대 20장(`remine.analyze.max-batch-size`). 설정은 `server/src/main/resources/application.yaml`의 `remine.*`.
+- 이미지 입력(`remine.image.*`): 장당 `max-bytes`(1MB), `max-long-side`(1024), `max-pixels`(25,000,000), 요청 `max-request-bytes`(12MB)·파트 `max-part-bytes`(5MB). multipart는 **메모리 전용**(`spring.servlet.multipart.file-size-threshold`를 낮추지 말 것 — 기본 0B는 이미지를 임시 파일로 씀). 앱은 `GET /api/config`로 값을 받는다. 형식은 `docs/spec.md` API 절.
 
 ## 코드 규칙
 - 서버: 계층 구조 (controller / service / repository / domain / dto). 엔티티를 API 응답으로 직접 노출하지 않는다.

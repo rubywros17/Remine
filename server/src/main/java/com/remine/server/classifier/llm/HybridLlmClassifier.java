@@ -3,6 +3,8 @@ package com.remine.server.classifier.llm;
 import com.remine.server.classifier.ClassificationException;
 import com.remine.server.classifier.ClassificationResult;
 import com.remine.server.classifier.Classifier;
+import com.remine.server.classifier.ImageDecision;
+import com.remine.server.classifier.PrivacyMarkers;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -33,10 +35,23 @@ public class HybridLlmClassifier implements Classifier {
         return llm.model();
     }
 
+    /** 마스킹 표시가 글자 수 조건보다 우선한다. */
+    @Override
+    public ImageDecision imageDecision(String ocrText) {
+        if (ocrText != null && ocrText.contains(PrivacyMarkers.PHONE_NUMBER_MASK)) {
+            return ImageDecision.PHONE_MASKED;
+        }
+        return OcrText.countChars(ocrText) >= imageThresholdChars ? ImageDecision.ABOVE_THRESHOLD : ImageDecision.USE;
+    }
+
     @Override
     public ClassificationResult classify(String ocrText, byte[] jpegImage) {
-        boolean useImage = jpegImage != null && jpegImage.length > 0
-                && OcrText.countChars(ocrText) < imageThresholdChars;
+        boolean hasImage = jpegImage != null && jpegImage.length > 0;
+        ImageDecision decision = imageDecision(ocrText);
+        boolean useImage = hasImage && decision == ImageDecision.USE;
+        if (hasImage && !useImage) {
+            log.info("이미지 무시 reason={}", decision);
+        }
 
         LlmOutcome outcome = llm.classifyWithUsage(ocrText, useImage ? jpegImage : null);
 

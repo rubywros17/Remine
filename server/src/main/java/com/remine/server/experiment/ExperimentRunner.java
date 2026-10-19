@@ -6,6 +6,7 @@ import com.remine.server.classifier.llm.LlmProvider;
 import com.remine.server.classifier.llm.LlmUsage;
 import com.remine.server.classifier.llm.PromptVersion;
 import com.remine.server.domain.screenshot.Category;
+import com.remine.server.image.ImageResizer;
 import com.remine.server.experiment.ExperimentStats.Sample;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
