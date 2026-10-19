@@ -1,4 +1,4 @@
-package com.remine.server.experiment;
+package com.remine.server.classifier.llm;
 
 import com.remine.server.domain.screenshot.Category;
 import org.junit.jupiter.api.Test;
@@ -18,14 +18,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 class LlmClassifierTest {
 
     private final JsonMapper mapper = JsonMapper.builder().build();
-    private final Candidate candidate = new Candidate("c", "gemini", "m", 1, 1);
+    private static final String MODEL = "m";
 
     @Test
     void 응답을_분류_결과와_토큰으로_변환한다() {
         LlmProvider provider = (model, system, user) -> new LlmReply(
                 "{\"category\":\"ENTERTAINMENT\",\"tags\":[\"드라마\"],\"summary\":\"드라마 정보\"}", 120, 20);
 
-        LlmOutcome outcome = new LlmClassifier(candidate, provider, mapper).classifyWithUsage("드라마 시즌2");
+        LlmOutcome outcome = new LlmClassifier(MODEL, 0, provider, mapper, PromptVersion.V1).classifyWithUsage("드라마 시즌2");
 
         assertThat(outcome.status()).isEqualTo(LlmOutcome.Status.OK);
         assertThat(outcome.result().category()).isEqualTo(Category.ENTERTAINMENT);
@@ -37,7 +37,7 @@ class LlmClassifierTest {
     void 이해할_수_없는_응답은_PARSE_FAILED() {
         LlmProvider provider = (model, system, user) -> new LlmReply("모르겠어요", 10, 3);
 
-        LlmOutcome outcome = new LlmClassifier(candidate, provider, mapper).classifyWithUsage("x");
+        LlmOutcome outcome = new LlmClassifier(MODEL, 0, provider, mapper, PromptVersion.V1).classifyWithUsage("x");
 
         assertThat(outcome.status()).isEqualTo(LlmOutcome.Status.PARSE_FAILED);
         assertThat(outcome.result().category()).isEqualTo(Category.ETC);
@@ -50,8 +50,8 @@ class LlmClassifierTest {
                 body.getBytes(StandardCharsets.UTF_8), StandardCharsets.UTF_8);
     }
 
-    private LlmClassifier classifier(LlmProvider provider, Candidate c, List<Long> sleeps) {
-        return new LlmClassifier(c, provider, mapper, sleeps::add, System::nanoTime);
+    private LlmClassifier classifier(LlmProvider provider, long minIntervalMs, List<Long> sleeps) {
+        return new LlmClassifier(MODEL, minIntervalMs, provider, mapper, PromptVersion.V1, sleeps::add, System::nanoTime);
     }
 
     @Test
@@ -65,7 +65,7 @@ class LlmClassifierTest {
             return new LlmReply(OK_REPLY, 5, 5);
         };
 
-        LlmOutcome outcome = classifier(provider, candidate, sleeps).classifyWithUsage("ㅋㅋ");
+        LlmOutcome outcome = classifier(provider, 0, sleeps).classifyWithUsage("ㅋㅋ");
 
         assertThat(outcome.status()).isEqualTo(LlmOutcome.Status.OK);
         assertThat(calls.get()).isEqualTo(2);
@@ -84,7 +84,7 @@ class LlmClassifierTest {
             return new LlmReply(OK_REPLY, 5, 5);
         };
 
-        LlmOutcome outcome = classifier(provider, candidate, sleeps).classifyWithUsage("x");
+        LlmOutcome outcome = classifier(provider, 0, sleeps).classifyWithUsage("x");
 
         assertThat(outcome.status()).isEqualTo(LlmOutcome.Status.OK);
         assertThat(sleeps).containsExactly(31_000L); // 30초 + 여유 1초
@@ -103,7 +103,7 @@ class LlmClassifierTest {
             return new LlmReply(OK_REPLY, 5, 5);
         };
 
-        classifier(provider, candidate, sleeps).classifyWithUsage("x");
+        classifier(provider, 0, sleeps).classifyWithUsage("x");
 
         assertThat(sleeps).containsExactly(6_000L);
     }
@@ -117,7 +117,7 @@ class LlmClassifierTest {
             throw error(HttpStatus.TOO_MANY_REQUESTS, "{\"error\":{\"message\":\"quota\"}}", new HttpHeaders());
         };
 
-        LlmOutcome outcome = classifier(provider, candidate, sleeps).classifyWithUsage("x");
+        LlmOutcome outcome = classifier(provider, 0, sleeps).classifyWithUsage("x");
 
         assertThat(outcome.status()).isEqualTo(LlmOutcome.Status.CALL_FAILED);
         assertThat(calls.get()).isEqualTo(LlmClassifier.MAX_ATTEMPTS);
@@ -136,7 +136,7 @@ class LlmClassifierTest {
             throw error(HttpStatus.TOO_MANY_REQUESTS, "{}", headers);
         };
 
-        LlmOutcome outcome = classifier(provider, candidate, sleeps).classifyWithUsage("x");
+        LlmOutcome outcome = classifier(provider, 0, sleeps).classifyWithUsage("x");
 
         assertThat(calls.get()).isEqualTo(1);
         assertThat(sleeps).isEmpty();
@@ -153,7 +153,7 @@ class LlmClassifierTest {
             throw error(HttpStatus.BAD_REQUEST, "{\"error\":{\"message\":\"bad field\"}}", new HttpHeaders());
         };
 
-        LlmOutcome outcome = classifier(provider, candidate, sleeps).classifyWithUsage("x");
+        LlmOutcome outcome = classifier(provider, 0, sleeps).classifyWithUsage("x");
 
         assertThat(calls.get()).isEqualTo(1);
         assertThat(sleeps).isEmpty();
@@ -179,7 +179,7 @@ class LlmClassifierTest {
             }
         };
 
-        LlmOutcome outcome = new LlmClassifier(candidate, provider, mapper).classifyWithUsage("OCR 텍스트", jpeg);
+        LlmOutcome outcome = new LlmClassifier(MODEL, 0, provider, mapper, PromptVersion.V1).classifyWithUsage("OCR 텍스트", jpeg);
 
         assertThat(outcome.status()).isEqualTo(LlmOutcome.Status.OK);
         assertThat(outcome.usage().inputTokens()).isEqualTo(2400);
@@ -195,7 +195,7 @@ class LlmClassifierTest {
             return new LlmReply(OK_REPLY, 5, 5);
         };
 
-        new LlmClassifier(candidate, provider, mapper).classifyWithUsage("OCR 텍스트");
+        new LlmClassifier(MODEL, 0, provider, mapper, PromptVersion.V1).classifyWithUsage("OCR 텍스트");
 
         assertThat(users).containsExactly(LlmPrompt.user("OCR 텍스트"));
     }
@@ -204,7 +204,6 @@ class LlmClassifierTest {
     void 응답_시간에는_호출_간격_대기와_재시도_대기가_포함되지_않는다() {
         long[] now = {0};
         AtomicInteger calls = new AtomicInteger();
-        Candidate paced = new Candidate("c", "gemini", "m", 1, 1, 1.0, 5000);
         // 두 번째 분류의 첫 시도는 429로 실패(0.2초) → 백오프 대기 → 재시도는 성공(0.8초 소요)
         LlmProvider provider = (model, system, user) -> {
             if (calls.incrementAndGet() == 2) {
@@ -214,8 +213,8 @@ class LlmClassifierTest {
             now[0] += 800_000_000L;
             return new LlmReply(OK_REPLY, 5, 5);
         };
-        LlmClassifier classifier = new LlmClassifier(paced, provider, mapper, ms -> now[0] += ms * 1_000_000L,
-                () -> now[0]);
+        LlmClassifier classifier = new LlmClassifier(MODEL, 5000, provider, mapper, PromptVersion.V1,
+                ms -> now[0] += ms * 1_000_000L, () -> now[0]);
 
         classifier.classifyWithUsage("앞선 호출로 간격 기준 시각을 만든다");
         LlmOutcome outcome = classifier.classifyWithUsage("x");
@@ -228,9 +227,8 @@ class LlmClassifierTest {
     void 후보의_호출_간격만큼_연속_호출_사이에_기다린다() {
         List<Long> sleeps = new ArrayList<>();
         long[] now = {0};
-        Candidate paced = new Candidate("c", "gemini", "m", 1, 1, 1.0, 3000);
         LlmProvider provider = (model, system, user) -> new LlmReply(OK_REPLY, 5, 5);
-        LlmClassifier classifier = new LlmClassifier(paced, provider, mapper, ms -> {
+        LlmClassifier classifier = new LlmClassifier(MODEL, 3000, provider, mapper, PromptVersion.V1, ms -> {
             sleeps.add(ms);
             now[0] += ms * 1_000_000L;
         }, () -> now[0]);

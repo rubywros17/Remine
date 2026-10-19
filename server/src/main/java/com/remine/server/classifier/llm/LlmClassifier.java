@@ -1,7 +1,6 @@
-package com.remine.server.experiment;
+package com.remine.server.classifier.llm;
 
 import com.remine.server.classifier.ClassificationResult;
-import com.remine.server.classifier.Classifier;
 import com.remine.server.domain.screenshot.Category;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -12,15 +11,20 @@ import java.util.Optional;
 import java.util.function.LongConsumer;
 import java.util.function.LongSupplier;
 
-/** 후보 하나(제공사 + 모델). 프롬프트와 파싱은 공통이고 {@link LlmProvider}만 다르다. */
-public class LlmClassifier implements Classifier {
+/**
+ * 모델 하나에 대한 LLM 분류 호출. 프롬프트·파싱·재시도·호출 간격은 공통이고 {@link LlmProvider}만 다르다.
+ * 운영(HybridLlmClassifier)과 실험 러너가 같은 코드를 쓴다. 호출 결과는 {@link LlmOutcome}으로 돌려주며
+ * 실패를 조용히 ETC로 바꾸지 않는다(상태로 구분한다).
+ * 스레드 안전: 호출 간격 제한({@link CallPacer})이 동기화되어 있어 여러 요청 스레드가 공유해도 된다.
+ */
+public class LlmClassifier {
 
     static final int MAX_ATTEMPTS = 5;
     // 서버가 이보다 오래 기다리라고 하면(일일 한도 소진 등) 기다리지 않고 포기한다.
     static final Duration MAX_SERVER_WAIT = Duration.ofSeconds(120);
     private static final Duration SERVER_WAIT_MARGIN = Duration.ofSeconds(1);
 
-    private final Candidate candidate;
+    private final String model;
     private final LlmProvider provider;
     private final JsonMapper mapper;
     private final String systemPrompt;
@@ -28,38 +32,25 @@ public class LlmClassifier implements Classifier {
     private final CallPacer pacer;
     private final LongSupplier nanoClock;
 
-    public LlmClassifier(Candidate candidate, LlmProvider provider, JsonMapper mapper) {
-        this(candidate, provider, mapper, PromptVersion.V1);
-    }
-
-    public LlmClassifier(Candidate candidate, LlmProvider provider, JsonMapper mapper, PromptVersion promptVersion) {
-        this(candidate, provider, mapper, promptVersion, LlmClassifier::sleep, System::nanoTime);
+    public LlmClassifier(String model, long minIntervalMs, LlmProvider provider, JsonMapper mapper,
+                         PromptVersion promptVersion) {
+        this(model, minIntervalMs, provider, mapper, promptVersion, LlmClassifier::sleep, System::nanoTime);
     }
 
     // 테스트에서 대기와 시계를 바꿔 끼울 수 있게 한다.
-    LlmClassifier(Candidate candidate, LlmProvider provider, JsonMapper mapper,
-                  LongConsumer sleepMillis, LongSupplier nanoClock) {
-        this(candidate, provider, mapper, PromptVersion.V1, sleepMillis, nanoClock);
-    }
-
-    LlmClassifier(Candidate candidate, LlmProvider provider, JsonMapper mapper, PromptVersion promptVersion,
-                  LongConsumer sleepMillis, LongSupplier nanoClock) {
-        this.candidate = candidate;
+    LlmClassifier(String model, long minIntervalMs, LlmProvider provider, JsonMapper mapper,
+                  PromptVersion promptVersion, LongConsumer sleepMillis, LongSupplier nanoClock) {
+        this.model = model;
         this.provider = provider;
         this.mapper = mapper;
         this.systemPrompt = LlmPrompt.system(promptVersion);
         this.sleepMillis = sleepMillis;
         this.nanoClock = nanoClock;
-        this.pacer = new CallPacer(candidate.minIntervalMs(), nanoClock, sleepMillis);
+        this.pacer = new CallPacer(minIntervalMs, nanoClock, sleepMillis);
     }
 
-    public Candidate candidate() {
-        return candidate;
-    }
-
-    @Override
-    public ClassificationResult classify(String ocrText) {
-        return classifyWithUsage(ocrText).result();
+    public String model() {
+        return model;
     }
 
     /**
@@ -72,7 +63,7 @@ public class LlmClassifier implements Classifier {
     }
 
     /**
-     * jpegImage가 null이 아니면 OCR 텍스트와 함께 이미지를 보낸다(실험 전용, text+image 후보).
+     * jpegImage가 null이 아니면 OCR 텍스트와 함께 이미지를 보낸다(text+image).
      * 프롬프트는 동일하고 user 메시지에 "이미지도 참고하라"는 한 줄만 더한다.
      */
     public LlmOutcome classifyWithUsage(String ocrText, byte[] jpegImage) {
@@ -87,8 +78,8 @@ public class LlmClassifier implements Classifier {
             long start = nanoClock.getAsLong();
             try {
                 LlmReply reply = jpegImage == null
-                        ? provider.call(candidate.model(), systemPrompt, user)
-                        : provider.call(candidate.model(), systemPrompt, user, jpegImage);
+                        ? provider.call(model, systemPrompt, user)
+                        : provider.call(model, systemPrompt, user, jpegImage);
                 long latencyMs = (nanoClock.getAsLong() - start) / 1_000_000;
                 LlmUsage usage = new LlmUsage(reply.inputTokens(), reply.outputTokens(), latencyMs);
                 LlmPrompt.Parsed parsed = LlmPrompt.parse(mapper, reply.text());

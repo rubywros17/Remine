@@ -1,4 +1,4 @@
-package com.remine.server.experiment;
+package com.remine.server.classifier.llm;
 
 /** 한 번의 LLM 호출에서 측정한 토큰 수와 응답 시간. */
 public record LlmUsage(int inputTokens, int outputTokens, long latencyMs) {

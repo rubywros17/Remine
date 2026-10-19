@@ -1,4 +1,4 @@
-package com.remine.server.experiment;
+package com.remine.server.classifier.llm;
 
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.JsonNode;
@@ -57,12 +57,6 @@ class GeminiProviderTest {
         JsonNode body = mapper.valueToTree(GeminiProvider.requestBody("s", "u", 1.0));
 
         assertThat(body.path("generationConfig").path("temperature").asDouble(-1)).isEqualTo(1.0);
-    }
-
-    @Test
-    void 후보의_temperature_기본값은_0이다() {
-        assertThat(new Candidate("c", "gemini", "m", 1, 1).temperature()).isEqualTo(0.0);
-        assertThat(new Candidate("c", "gemini", "m", 1, 1, 0.7).temperature()).isEqualTo(0.7);
     }
 
     @Test

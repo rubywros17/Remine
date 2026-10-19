@@ -1,4 +1,4 @@
-package com.remine.server.experiment;
+package com.remine.server.classifier.llm;
 
 import java.util.function.LongConsumer;
 import java.util.function.LongSupplier;

@@ -1,5 +1,6 @@
 package com.remine.server.experiment;
 
+import com.remine.server.classifier.llm.PromptVersion;
 import com.remine.server.domain.screenshot.Category;
 
 import java.time.LocalDate;

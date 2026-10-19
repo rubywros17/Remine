@@ -1,5 +1,10 @@
 package com.remine.server.experiment;
 
+import com.remine.server.classifier.llm.LlmClassifier;
+import com.remine.server.classifier.llm.LlmOutcome;
+import com.remine.server.classifier.llm.LlmProvider;
+import com.remine.server.classifier.llm.LlmUsage;
+import com.remine.server.classifier.llm.PromptVersion;
 import com.remine.server.domain.screenshot.Category;
 import com.remine.server.experiment.ExperimentStats.Sample;
 import org.slf4j.Logger;
@@ -144,14 +149,14 @@ class ExperimentRunner implements CommandLineRunner {
 
         for (Map.Entry<Candidate, LlmProvider> entry : providers.entrySet()) {
             Candidate candidate = entry.getKey();
-            LlmClassifier classifier = new LlmClassifier(candidate, entry.getValue(), mapper, promptVersion);
+            LlmClassifier classifier = new LlmClassifier(candidate.model(), candidate.minIntervalMs(), entry.getValue(), mapper, promptVersion);
             List<Sample> samples = new ArrayList<>();
             int calls = 0;
             int failedCalls = 0;
             int consecutiveGiveUps = 0;
             boolean aborted = false;
             for (Labeled item : labeled) {
-                Classified classified = classify(classifier, item);
+                Classified classified = classify(classifier, candidate, item);
                 Sample sample = classified.sample();
                 samples.add(sample);
                 if (sample.called()) {
@@ -384,10 +389,10 @@ class ExperimentRunner implements CommandLineRunner {
     private record Classified(Sample sample, boolean giveUp) {
     }
 
-    private Classified classify(LlmClassifier classifier, Labeled item) {
+    private Classified classify(LlmClassifier classifier, Candidate candidate, Labeled item) {
         int ocrChars = Sample.countChars(item.ocrText());
         byte[] image = null;
-        if (classifier.candidate().usesImage()) {
+        if (candidate.usesImage()) {
             // text+image 후보: 실험 러너 전용. 글자가 없는 스크린샷도 이미지를 보고 분류해 볼 수 있으므로 호출한다.
             try {
                 image = resizedImage(item.filename());

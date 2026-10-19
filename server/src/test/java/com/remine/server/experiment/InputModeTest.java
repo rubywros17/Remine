@@ -38,4 +38,10 @@ class InputModeTest {
         // 텍스트 456 + 이미지 약 2,000 토큰 = 입력 2,456, 출력 41
         assertThat(lite.costUsd(2456, 41)).isEqualTo((2456 * 0.30 + 41 * 2.50) / 1_000_000.0);
     }
+
+    @Test
+    void 후보의_temperature_기본값은_0이다() {
+        assertThat(new Candidate("c", "gemini", "m", 1, 1).temperature()).isEqualTo(0.0);
+        assertThat(new Candidate("c", "gemini", "m", 1, 1, 0.7).temperature()).isEqualTo(0.7);
+    }
 }

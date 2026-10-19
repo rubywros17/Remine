@@ -1,5 +1,8 @@
 package com.remine.server.experiment;
 
+import com.remine.server.classifier.llm.LlmOutcome;
+import com.remine.server.classifier.llm.OcrText;
+import com.remine.server.classifier.llm.LlmUsage;
 import com.remine.server.domain.screenshot.Category;
 
 import java.util.ArrayList;
@@ -34,9 +37,9 @@ public final class ExperimentStats {
             this(filename, expected, null, predicted, status, called, usage, "", -1);
         }
 
-        /** 공백(줄바꿈 포함)을 뺀 글자 수. */
+        /** 공백(줄바꿈 포함)을 뺀 글자 수. 운영 하이브리드와 같은 계산({@link OcrText#countChars})이다. */
         public static int countChars(String ocrText) {
-            return (int) ocrText.codePoints().filter(cp -> !Character.isWhitespace(cp)).count();
+            return OcrText.countChars(ocrText);
         }
 
         /** category만 정답으로 인정. */

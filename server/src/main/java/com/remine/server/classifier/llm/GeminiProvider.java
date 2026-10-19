@@ -1,4 +1,4 @@
-package com.remine.server.experiment;
+package com.remine.server.classifier.llm;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -15,7 +15,7 @@ import java.util.Map;
  * candidatesTokenCount, thoughtsTokenCount}, 후보가 없으면 promptFeedback.blockReason.
  * thinkingConfig는 문서에서 필드명을 확인하지 못해 보내지 않고 모델 기본값으로 둔다.
  */
-class GeminiProvider extends JsonHttpProvider {
+public class GeminiProvider extends JsonHttpProvider {
 
     private static final String URL = "https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent";
     // 사고 토큰도 출력 한도를 쓸 수 있어 JSON이 잘리지 않도록 여유를 둔다.
@@ -24,7 +24,7 @@ class GeminiProvider extends JsonHttpProvider {
     private final String apiKey;
     private final double temperature;
 
-    GeminiProvider(String apiKey, double temperature, JsonMapper mapper) {
+    public GeminiProvider(String apiKey, double temperature, JsonMapper mapper) {
         super(mapper);
         this.apiKey = apiKey;
         this.temperature = temperature;

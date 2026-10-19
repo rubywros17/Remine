@@ -1,5 +1,8 @@
 package com.remine.server.experiment;
 
+import com.remine.server.classifier.llm.LlmOutcome;
+import com.remine.server.classifier.llm.LlmUsage;
+import com.remine.server.classifier.llm.PromptVersion;
 import com.remine.server.domain.screenshot.Category;
 import com.remine.server.experiment.ExperimentStats.Sample;
 import org.junit.jupiter.api.Test;

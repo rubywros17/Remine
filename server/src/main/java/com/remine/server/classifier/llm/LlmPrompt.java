@@ -1,4 +1,4 @@
-package com.remine.server.experiment;
+package com.remine.server.classifier.llm;
 
 import com.remine.server.classifier.ClassificationResult;
 import com.remine.server.domain.screenshot.Category;
