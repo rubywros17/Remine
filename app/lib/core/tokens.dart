@@ -1,0 +1,192 @@
+import 'package:flutter/material.dart';
+
+// 디자인 토큰(색·폰트·모서리·간격·모션)은 이 파일 한 곳에만 둔다. 값의 근거는 docs/design.md.
+//
+// [Dart 메모] `abstract final class`는 "인스턴스를 만들 수도, 상속할 수도 없는" 클래스다.
+// 상수와 static 메서드만 모아 두는 네임스페이스(자바의 final class + private 생성자)로 쓴다.
+
+/// 색. 셀라돈·레몬 위 글자는 항상 [ink].
+abstract final class AppColors {
+  static const background = Color(0xFFFBFBF8);
+  static const ink = Color(0xFF111111);
+  static const inkSub = Color(0xFF6F6F71); // 칩·셀라돈 위에는 쓰지 않는다(대비 부족)
+  static const darkGray = Color(0xFF4A4B4E); // 위 글자는 흰색
+  static const celadon = Color(0xFF7DC4CE); // 면·버튼용
+  static const celadonDeep = Color(0xFF3E8D98); // 바탕 위 큰 숫자 전용
+  static const celadonSoft = Color(0xFFDDEFF2);
+  static const lemon = Color(0xFFEDE7B3);
+  static const chip = Color(0xFFEEF0F0);
+  static const border = Color(0xFFE1E3E3);
+  static const white = Color(0xFFFFFFFF);
+
+  /// 휴지통 기준선을 넘었을 때 아이콘 배경(원)과 아이콘.
+  static const trashActiveBackground = Color(0xFF111111);
+  static const trashActiveIcon = lemon;
+}
+
+/// 가짜 썸네일(색 블록)용 색 쌍: (바탕, 안쪽 블록). 실제 스크린샷 대신 쓴다.
+abstract final class AppThumbs {
+  static const palette = <(Color, Color)>[
+    (Color(0xFF9ED0D9), Color(0xFF5FA8B1)),
+    (Color(0xFFE6E6E6), Color(0xFFB5B5B5)),
+    (Color(0xFFDDE9EA), Color(0xFF9FD0D9)),
+    (Color(0xFF7DC4CE), Color(0xFFDBE8EA)),
+    (Color(0xFFCCCCCF), Color(0xFF8F8F91)),
+    (Color(0xFFEDE7B3), Color(0xFFFBFBF8)),
+  ];
+}
+
+/// 모서리 반경.
+abstract final class AppRadii {
+  static const double card = 28;
+  static const double sheet = 30;
+  static const double tile = 18;
+  static const double pill = 999;
+}
+
+/// 간격(4 단위)과 화면 좌우 여백.
+abstract final class AppSpacing {
+  static const double s4 = 4;
+  static const double s8 = 8;
+  static const double s12 = 12;
+  static const double s16 = 16;
+  static const double s20 = 20;
+  static const double s24 = 24;
+  static const double s32 = 32;
+  static const double s40 = 40;
+  static const double screenPadding = 22;
+}
+
+/// 글자 스타일. 한글은 Pretendard, 숫자·영문은 Space Grotesk.
+abstract final class AppText {
+  static const _kr = 'Pretendard';
+  static const _num = 'SpaceGrotesk';
+
+  // 숫자 폰트는 가변 폰트라 굵기를 fontVariations로도 지정해야 실제로 반영된다.
+  static TextStyle _numeric(double size, double weight, Color color) =>
+      TextStyle(
+        fontFamily: _num,
+        fontSize: size,
+        height: 1.0,
+        fontWeight: FontWeight.values[(weight ~/ 100) - 1],
+        fontVariations: [FontVariation.weight(weight)],
+        color: color,
+      );
+
+  static const display = TextStyle(
+    fontFamily: _kr,
+    fontSize: 30,
+    height: 1.25,
+    fontWeight: FontWeight.w700,
+    color: AppColors.ink,
+  );
+  static const title = TextStyle(
+    fontFamily: _kr,
+    fontSize: 36,
+    height: 1.1,
+    fontWeight: FontWeight.w700,
+    color: AppColors.ink,
+  );
+  static const sectionTitle = TextStyle(
+    fontFamily: _kr,
+    fontSize: 18,
+    height: 1.3,
+    fontWeight: FontWeight.w700,
+    color: AppColors.ink,
+  );
+  static const cardTitle = TextStyle(
+    fontFamily: _kr,
+    fontSize: 20,
+    height: 1.35,
+    fontWeight: FontWeight.w700,
+    color: AppColors.ink,
+  );
+  static const body = TextStyle(
+    fontFamily: _kr,
+    fontSize: 15,
+    height: 1.5,
+    fontWeight: FontWeight.w400,
+    color: AppColors.ink,
+  );
+  static const label = TextStyle(
+    fontFamily: _kr,
+    fontSize: 14,
+    height: 1.2,
+    fontWeight: FontWeight.w600,
+    color: AppColors.ink,
+  );
+  static const caption = TextStyle(
+    fontFamily: _kr,
+    fontSize: 12,
+    height: 1.3,
+    fontWeight: FontWeight.w400,
+    color: AppColors.inkSub,
+  );
+
+  static TextStyle numHero({Color color = AppColors.ink, double size = 88}) =>
+      _numeric(size, 700, color);
+  static TextStyle numXL({Color color = AppColors.ink}) =>
+      _numeric(56, 700, color);
+  static TextStyle numBadge({Color color = AppColors.ink}) =>
+      _numeric(13, 600, color);
+  static TextStyle brand({Color color = AppColors.ink}) =>
+      _numeric(20, 700, color);
+}
+
+enum MotionDuration { fast, base, slow }
+
+/// 모션 토큰. "애니메이션 줄이기"(`MediaQuery.disableAnimations`)가 켜져 있으면 모든 시간이 0이다.
+abstract final class AppMotion {
+  static const _durations = {
+    MotionDuration.fast: Duration(milliseconds: 120),
+    MotionDuration.base: Duration(milliseconds: 240),
+    MotionDuration.slow: Duration(milliseconds: 420),
+  };
+
+  static const Curve standard = Curves.easeOutCubic;
+  static const Curve emphasized = Cubic(0.2, 0, 0, 1);
+  static const Curve exit = Curves.easeInCubic;
+
+  /// 시트·눌림 반응용 스프링.
+  static const spring = SpringDescription(mass: 1, stiffness: 300, damping: 22);
+
+  static bool reduced(BuildContext context) =>
+      MediaQuery.disableAnimationsOf(context);
+
+  static Duration duration(BuildContext context, MotionDuration d) =>
+      reduced(context) ? Duration.zero : _durations[d]!;
+}
+
+/// 상세 화면 제스처 값(좌우 넘기기 · 아래로 닫기 · 위로 던져 휴지통). 값의 근거와 동작은 docs/design.md.
+/// 손가락 감각은 실기기에서 조정하므로 숫자는 전부 여기 한 곳에 둔다.
+abstract final class AppGesture {
+  /// 위로 끌어 이 높이(화면 높이 비율)를 넘으면 휴지통 기준선 통과.
+  static const double trashLineFraction = 1 / 3;
+
+  /// 놓을 때 위쪽 속도(px/s)가 이 값 이상이면 기준선 전이라도 휴지통으로 던진 것으로 본다.
+  static const double trashFlingVelocity = 1200;
+
+  /// 휴지통 플링으로 인정하려면 최소한 이만큼(px)은 끌어야 한다(스치기 방지).
+  static const double trashFlingMinDistance = 24;
+
+  /// 끄는 거리에 비례해 어두워지는 배경(다크그레이)의 최대 불투명도.
+  static const double trashDimMaxOpacity = 0.72;
+
+  /// 끌수록 카드가 줄어드는 최소 배율, 기울어지는 최대 각도(라디안).
+  static const double trashCardMinScale = 0.86;
+  static const double trashCardTilt = 0.06;
+
+  /// 휴지통 아이콘이 끌수록 커지는 범위.
+  static const double trashIconMinScale = 0.6;
+  static const double trashIconMaxScale = 1.4;
+
+  /// 빨려 들어간 카드의 최종 배율.
+  static const double trashSuckScale = 0.1;
+
+  /// 아래로 쓸어 닫기: 화면 높이 비율 또는 아래쪽 속도(px/s).
+  static const double dismissFraction = 0.18;
+  static const double dismissFlingVelocity = 800;
+
+  /// 휴지통으로 옮긴 뒤 "되돌리기"를 보여주는 시간.
+  static const Duration undoDuration = Duration(seconds: 4);
+}

@@ -27,7 +27,6 @@ app/.pub/
 app/build/
 app/coverage/
 app/**/generated_plugin_registrant.*
-app/.metadata
 
 # Android (Flutter)
 app/android/.gradle/
@@ -36,9 +35,7 @@ app/android/local.properties
 app/android/app/debug/
 app/android/app/profile/
 app/android/app/release/
-app/android/**/gradle-wrapper.jar
-app/android/gradlew
-app/android/gradlew.bat
+# gradle wrapper(gradlew, gradlew.bat, gradle/wrapper/*)는 커밋한다. 서명 키·keystore 규칙은 app/android/.gitignore에 있다.
 
 # iOS (Flutter)
 app/ios/Pods/
