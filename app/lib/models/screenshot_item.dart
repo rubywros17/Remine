@@ -29,31 +29,36 @@ class ScreenshotItem {
 
   // [Dart 메모] factory 생성자는 JSON(Map) → 객체 변환에 흔히 쓴다. `as` 는 타입 단언(캐스팅)이다.
   factory ScreenshotItem.fromJson(Map<String, dynamic> json) => ScreenshotItem(
-        id: (json['id'] as num).toInt(),
-        localAssetId: json['localAssetId'] as String,
-        takenAt: DateTime.parse(json['takenAt'] as String),
-        sourceApp: json['sourceApp'] as String?,
-        category: Category.fromJson(json['category'] as String),
-        summary: json['summary'] as String?,
-        tags: (json['tags'] as List).cast<String>(),
-        autoCategory:
-            json['autoCategory'] == null ? null : Category.fromJson(json['autoCategory'] as String),
-        categorySource:
-            json['categorySource'] == null ? null : CategorySource.fromJson(json['categorySource'] as String),
-      );
+    id: (json['id'] as num).toInt(),
+    localAssetId: json['localAssetId'] as String,
+    takenAt: DateTime.parse(json['takenAt'] as String),
+    sourceApp: json['sourceApp'] as String?,
+    category: Category.fromJson(json['category'] as String),
+    summary: json['summary'] as String?,
+    tags: (json['tags'] as List).cast<String>(),
+    autoCategory: json['autoCategory'] == null
+        ? null
+        : Category.fromJson(json['autoCategory'] as String),
+    categorySource: json['categorySource'] == null
+        ? null
+        : CategorySource.fromJson(json['categorySource'] as String),
+  );
 
   /// 불변 객체의 일부만 바꾼 복사본.
-  ScreenshotItem copyWith({Category? category, CategorySource? categorySource}) => ScreenshotItem(
-        id: id,
-        localAssetId: localAssetId,
-        takenAt: takenAt,
-        sourceApp: sourceApp,
-        category: category ?? this.category,
-        summary: summary,
-        tags: tags,
-        autoCategory: autoCategory,
-        categorySource: categorySource ?? this.categorySource,
-      );
+  ScreenshotItem copyWith({
+    Category? category,
+    CategorySource? categorySource,
+  }) => ScreenshotItem(
+    id: id,
+    localAssetId: localAssetId,
+    takenAt: takenAt,
+    sourceApp: sourceApp,
+    category: category ?? this.category,
+    summary: summary,
+    tags: tags,
+    autoCategory: autoCategory,
+    categorySource: categorySource ?? this.categorySource,
+  );
 }
 
 /// GET /api/screenshots 의 페이지 응답 (서버 ScreenshotPageResponse).
@@ -73,10 +78,12 @@ class ScreenshotPage {
   final int totalPages;
 
   factory ScreenshotPage.fromJson(Map<String, dynamic> json) => ScreenshotPage(
-        items: (json['items'] as List).map((e) => ScreenshotItem.fromJson(e as Map<String, dynamic>)).toList(),
-        page: (json['page'] as num).toInt(),
-        size: (json['size'] as num).toInt(),
-        totalElements: (json['totalElements'] as num).toInt(),
-        totalPages: (json['totalPages'] as num).toInt(),
-      );
+    items: (json['items'] as List)
+        .map((e) => ScreenshotItem.fromJson(e as Map<String, dynamic>))
+        .toList(),
+    page: (json['page'] as num).toInt(),
+    size: (json['size'] as num).toInt(),
+    totalElements: (json['totalElements'] as num).toInt(),
+    totalPages: (json['totalPages'] as num).toInt(),
+  );
 }

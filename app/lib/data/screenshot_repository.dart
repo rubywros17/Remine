@@ -13,7 +13,12 @@ import '../models/screenshot_item.dart';
 /// (자바의 CompletableFuture), `async/await`로 기다린다.
 abstract interface class ScreenshotRepository {
   /// GET /api/screenshots?category=&tag=&page=&size= — 최신순, 분석된 캡처만.
-  Future<ScreenshotPage> list({Category? category, String? tag, int page = 0, int size = 30});
+  Future<ScreenshotPage> list({
+    Category? category,
+    String? tag,
+    int page = 0,
+    int size = 30,
+  });
 
   /// GET /api/categories/summary — 7개 카테고리 전부.
   Future<CategorySummary> summary();

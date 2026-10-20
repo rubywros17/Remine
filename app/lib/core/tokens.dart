@@ -20,6 +20,18 @@ abstract final class AppColors {
   static const white = Color(0xFFFFFFFF);
 }
 
+/// 가짜 썸네일(색 블록)용 색 쌍: (바탕, 안쪽 블록). 실제 스크린샷 대신 쓴다.
+abstract final class AppThumbs {
+  static const palette = <(Color, Color)>[
+    (Color(0xFF9ED0D9), Color(0xFF5FA8B1)),
+    (Color(0xFFE6E6E6), Color(0xFFB5B5B5)),
+    (Color(0xFFDDE9EA), Color(0xFF9FD0D9)),
+    (Color(0xFF7DC4CE), Color(0xFFDBE8EA)),
+    (Color(0xFFCCCCCF), Color(0xFF8F8F91)),
+    (Color(0xFFEDE7B3), Color(0xFFFBFBF8)),
+  ];
+}
+
 /// 모서리 반경.
 abstract final class AppRadii {
   static const double card = 28;
@@ -47,7 +59,8 @@ abstract final class AppText {
   static const _num = 'SpaceGrotesk';
 
   // 숫자 폰트는 가변 폰트라 굵기를 fontVariations로도 지정해야 실제로 반영된다.
-  static TextStyle _numeric(double size, double weight, Color color) => TextStyle(
+  static TextStyle _numeric(double size, double weight, Color color) =>
+      TextStyle(
         fontFamily: _num,
         fontSize: size,
         height: 1.0,
@@ -57,24 +70,63 @@ abstract final class AppText {
       );
 
   static const display = TextStyle(
-      fontFamily: _kr, fontSize: 30, height: 1.25, fontWeight: FontWeight.w700, color: AppColors.ink);
+    fontFamily: _kr,
+    fontSize: 30,
+    height: 1.25,
+    fontWeight: FontWeight.w700,
+    color: AppColors.ink,
+  );
   static const title = TextStyle(
-      fontFamily: _kr, fontSize: 36, height: 1.1, fontWeight: FontWeight.w700, color: AppColors.ink);
+    fontFamily: _kr,
+    fontSize: 36,
+    height: 1.1,
+    fontWeight: FontWeight.w700,
+    color: AppColors.ink,
+  );
   static const sectionTitle = TextStyle(
-      fontFamily: _kr, fontSize: 18, height: 1.3, fontWeight: FontWeight.w700, color: AppColors.ink);
+    fontFamily: _kr,
+    fontSize: 18,
+    height: 1.3,
+    fontWeight: FontWeight.w700,
+    color: AppColors.ink,
+  );
   static const cardTitle = TextStyle(
-      fontFamily: _kr, fontSize: 20, height: 1.35, fontWeight: FontWeight.w700, color: AppColors.ink);
+    fontFamily: _kr,
+    fontSize: 20,
+    height: 1.35,
+    fontWeight: FontWeight.w700,
+    color: AppColors.ink,
+  );
   static const body = TextStyle(
-      fontFamily: _kr, fontSize: 15, height: 1.5, fontWeight: FontWeight.w400, color: AppColors.ink);
+    fontFamily: _kr,
+    fontSize: 15,
+    height: 1.5,
+    fontWeight: FontWeight.w400,
+    color: AppColors.ink,
+  );
   static const label = TextStyle(
-      fontFamily: _kr, fontSize: 14, height: 1.2, fontWeight: FontWeight.w600, color: AppColors.ink);
+    fontFamily: _kr,
+    fontSize: 14,
+    height: 1.2,
+    fontWeight: FontWeight.w600,
+    color: AppColors.ink,
+  );
   static const caption = TextStyle(
-      fontFamily: _kr, fontSize: 12, height: 1.3, fontWeight: FontWeight.w400, color: AppColors.inkSub);
+    fontFamily: _kr,
+    fontSize: 12,
+    height: 1.3,
+    fontWeight: FontWeight.w400,
+    color: AppColors.inkSub,
+  );
 
-  static TextStyle numHero({Color color = AppColors.ink, double size = 88}) => _numeric(size, 700, color);
-  static TextStyle numXL({Color color = AppColors.ink}) => _numeric(56, 700, color);
-  static TextStyle numBadge({Color color = AppColors.ink}) => _numeric(13, 600, color);
-  static TextStyle brand({Color color = AppColors.ink}) => _numeric(20, 700, color);
+  static TextStyle numHero({Color color = AppColors.ink, double size = 88}) =>
+      _numeric(size, 700, color);
+  static TextStyle numXL({Color color = AppColors.ink}) =>
+      _numeric(56, 700, color);
+  static TextStyle numBadge({Color color = AppColors.ink}) =>
+      _numeric(13, 600, color);
+  static TextStyle brand({Color color = AppColors.ink}) =>
+      _numeric(20, 700, color);
 }
 
 enum MotionDuration { fast, base, slow }
@@ -94,7 +146,8 @@ abstract final class AppMotion {
   /// 시트·눌림 반응용 스프링.
   static const spring = SpringDescription(mass: 1, stiffness: 300, damping: 22);
 
-  static bool reduced(BuildContext context) => MediaQuery.disableAnimationsOf(context);
+  static bool reduced(BuildContext context) =>
+      MediaQuery.disableAnimationsOf(context);
 
   static Duration duration(BuildContext context, MotionDuration d) =>
       reduced(context) ? Duration.zero : _durations[d]!;

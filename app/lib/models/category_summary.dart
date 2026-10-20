@@ -16,7 +16,8 @@ class CategorySummaryItem {
   /// 카테고리별 최신 캡처의 localAssetId (최대 4개).
   final List<String> recentAssetIds;
 
-  factory CategorySummaryItem.fromJson(Map<String, dynamic> json) => CategorySummaryItem(
+  factory CategorySummaryItem.fromJson(Map<String, dynamic> json) =>
+      CategorySummaryItem(
         category: Category.fromJson(json['category'] as String),
         count: (json['count'] as num).toInt(),
         topTags: (json['topTags'] as List).cast<String>(),
@@ -30,7 +31,8 @@ class CategorySummary {
 
   final List<CategorySummaryItem> categories;
 
-  factory CategorySummary.fromJson(Map<String, dynamic> json) => CategorySummary(
+  factory CategorySummary.fromJson(Map<String, dynamic> json) =>
+      CategorySummary(
         categories: (json['categories'] as List)
             .map((e) => CategorySummaryItem.fromJson(e as Map<String, dynamic>))
             .toList(),
@@ -38,7 +40,8 @@ class CategorySummary {
 
   int get total => categories.fold(0, (sum, c) => sum + c.count);
 
-  CategorySummaryItem of(Category category) => categories.firstWhere((c) => c.category == category);
+  CategorySummaryItem of(Category category) =>
+      categories.firstWhere((c) => c.category == category);
 
   /// 홈 알약 순서: 개수 내림차순, 기타는 항상 마지막(같은 개수면 서버 순서 유지).
   List<CategorySummaryItem> get sortedForHome {

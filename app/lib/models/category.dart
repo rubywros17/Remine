@@ -18,8 +18,10 @@ enum Category {
   /// 앱에 표시하는 이름.
   final String label;
 
-  static Category fromJson(String code) =>
-      values.firstWhere((c) => c.code == code, orElse: () => throw FormatException('알 수 없는 카테고리: $code'));
+  static Category fromJson(String code) => values.firstWhere(
+    (c) => c.code == code,
+    orElse: () => throw FormatException('알 수 없는 카테고리: $code'),
+  );
 
   String toJson() => code;
 }
@@ -32,6 +34,8 @@ enum CategorySource {
   const CategorySource(this.code);
   final String code;
 
-  static CategorySource fromJson(String code) =>
-      values.firstWhere((s) => s.code == code, orElse: () => throw FormatException('알 수 없는 출처: $code'));
+  static CategorySource fromJson(String code) => values.firstWhere(
+    (s) => s.code == code,
+    orElse: () => throw FormatException('알 수 없는 출처: $code'),
+  );
 }

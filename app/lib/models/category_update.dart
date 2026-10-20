@@ -17,9 +17,9 @@ class CategoryUpdate {
   final CategorySource categorySource;
 
   factory CategoryUpdate.fromJson(Map<String, dynamic> json) => CategoryUpdate(
-        id: (json['id'] as num).toInt(),
-        category: Category.fromJson(json['category'] as String),
-        autoCategory: Category.fromJson(json['autoCategory'] as String),
-        categorySource: CategorySource.fromJson(json['categorySource'] as String),
-      );
+    id: (json['id'] as num).toInt(),
+    category: Category.fromJson(json['category'] as String),
+    autoCategory: Category.fromJson(json['autoCategory'] as String),
+    categorySource: CategorySource.fromJson(json['categorySource'] as String),
+  );
 }
