@@ -1,5 +1,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 스크린샷 읽기. 13+는 READ_MEDIA_IMAGES, 14+의 "일부만 허용"은 READ_MEDIA_VISUAL_USER_SELECTED -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
+    <!-- OCR 원문이 든 로컬 DB가 Google 계정 백업으로 올라가지 않게 한다 -->
     <application
+        android:allowBackup="false"
         android:label="remine"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">

@@ -44,6 +44,11 @@ kotlin {
     }
 }
 
+dependencies {
+    // 한국어 OCR 모델을 앱에 포함(번들)한다. play-services 방식(첫 실행 다운로드)이 아니라 오프라인으로 동작한다.
+    implementation("com.google.mlkit:text-recognition-korean:16.0.1")
+}
+
 flutter {
     source = "../.."
 }
