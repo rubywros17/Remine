@@ -1,0 +1,26 @@
+import '../models/category.dart';
+import '../models/category_summary.dart';
+import '../models/category_update.dart';
+import '../models/interest.dart';
+import '../models/screenshot_item.dart';
+
+/// 화면이 데이터를 가져오는 유일한 경계.
+///
+/// 지금은 [FakeScreenshotRepository]만 있고, 3주차에 서버 API 구현으로 바꿔 끼운다(화면 코드는 그대로).
+/// 메서드는 서버 API와 1:1로 대응한다. (자바의 interface + 구현체 주입과 같은 구조)
+///
+/// [Dart 메모] `abstract interface class`는 "구현만 할 수 있는" 인터페이스다. `Future<T>`는 비동기 결과
+/// (자바의 CompletableFuture), `async/await`로 기다린다.
+abstract interface class ScreenshotRepository {
+  /// GET /api/screenshots?category=&tag=&page=&size= — 최신순, 분석된 캡처만.
+  Future<ScreenshotPage> list({Category? category, String? tag, int page = 0, int size = 30});
+
+  /// GET /api/categories/summary — 7개 카테고리 전부.
+  Future<CategorySummary> summary();
+
+  /// PATCH /api/screenshots/{id}/category — 같은 값이어도 categorySource가 USER가 된다.
+  Future<CategoryUpdate> updateCategory(int id, Category category);
+
+  /// 잊은 관심사 목록. (서버 GET /api/interests 형식이 정해지기 전의 임시 계약)
+  Future<List<Interest>> interests();
+}

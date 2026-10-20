@@ -101,7 +101,7 @@
 
 ## 6. 아이콘
 
-패키지 `lucide_icons_flutter`(ISC). 선 아이콘, 두께는 패키지 기본.
+패키지 `lucide_icons_flutter`(패키지 MIT, 아이콘 원본 Lucide는 ISC). 선 아이콘, 두께는 패키지 기본.
 
 | 카테고리 | 코드 값 | 라벨 | 아이콘 |
 |---|---|---|---|
