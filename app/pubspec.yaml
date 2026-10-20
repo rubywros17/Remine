@@ -1,0 +1,37 @@
+name: remine
+description: "Remine (리마인) — 스크린샷 자동 정리 + 잊은 관심사 알림 앱"
+publish_to: 'none' # pub.dev에 올리지 않는 앱
+
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # 카테고리·탭 아이콘 (ISC 라이선스)
+  lucide_icons_flutter: ^4.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+
+  # 폰트는 둘 다 SIL OFL 1.1 (라이선스 원문은 assets/fonts/*-OFL.txt)
+  fonts:
+    - family: Pretendard
+      fonts:
+        - asset: assets/fonts/Pretendard-Regular.otf
+          weight: 400
+        - asset: assets/fonts/Pretendard-SemiBold.otf
+          weight: 600
+        - asset: assets/fonts/Pretendard-Bold.otf
+          weight: 700
+    # 가변 폰트(굵기 300~700). 굵기는 TextStyle.fontVariations로 고른다.
+    - family: SpaceGrotesk
+      fonts:
+        - asset: assets/fonts/SpaceGrotesk.ttf
