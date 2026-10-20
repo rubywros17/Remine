@@ -1,5 +1,9 @@
+import 'dart:ui' show lerpDouble;
+
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
+import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../core/helpers.dart';
@@ -17,7 +21,8 @@ import 'category_screen.dart';
 ///
 /// - 위: 뒤로 + "현재 / 전체" 위치 알약(페이지와 함께 움직이지 않는다)
 /// - 가운데: [PageView] — 페이지마다 기울어진 이미지 카드 + 정보 카드(출처·카테고리 칩·요약·태그)
-/// - 이미지 카드를 아래로 쓸어내리면 닫힌다(Hero가 그리드의 그 항목으로 돌아간다)
+/// - 이미지 카드를 **아래로** 쓸어내리면 닫히고(Hero가 그리드의 그 항목으로 돌아간다),
+///   **위로 던지면** 휴지통으로 간다(시그니처 모션, 값은 [AppGesture], 명세는 docs/design.md).
 ///
 /// [Flutter 메모] PageView는 한 화면에 한 페이지씩 좌우로 넘기는 위젯이다. `allowImplicitScrolling`을 켜면
 /// 양옆 페이지를 미리 만들어 두어 넘길 때 바로 보인다(3주차 실제 이미지가 오면 여기서 precacheImage).
@@ -40,14 +45,28 @@ class DetailScreen extends StatefulWidget {
   State<DetailScreen> createState() => _DetailScreenState();
 }
 
+/// 위로 끄는 진행도(0~1.15, 1이 기준선)와 기준선 통과 여부. 오버레이(배경·휴지통 아이콘)가 이 값을 따라간다.
+typedef _ThrowView = (double progress, bool pastLine);
+
 class _DetailScreenState extends State<DetailScreen> {
   late final List<ScreenshotItem> _items = [...widget.items];
   late int _index = widget.initialIndex.clamp(0, _items.length - 1);
   late final PageController _pages = PageController(initialPage: _index);
 
+  /// 끄는 동안의 진행도. 값이 바뀌어도 페이지 전체를 다시 만들지 않도록 ValueNotifier로 따로 둔다.
+  final ValueNotifier<_ThrowView> _view = ValueNotifier((0.0, false));
+
+  /// 메뉴("⋯ → 휴지통으로")가 현재 카드를 위로 날려 보낼 수 있도록 카드 State에 닿는 키.
+  final Map<int, GlobalKey<_ThrowCardState>> _cardKeys = {};
+
+  /// 휴지통 처리 뒤 새로 나타난 항목의 도착 애니메이션을 한 번 재생하기 위한 표시.
+  int? _arrivalId;
+  int _arrivalToken = 0;
+
   @override
   void dispose() {
     _pages.dispose();
+    _view.dispose();
     super.dispose();
   }
 
@@ -62,35 +81,150 @@ class _DetailScreenState extends State<DetailScreen> {
     if (i >= 0) setState(() => _items[i] = updated);
   }
 
+  /// 휴지통 처리: 저장소에 반영 → 이 목록에서 제거 → 다음 항목(마지막이었으면 이전 항목)으로 → 되돌리기 안내.
+  /// 목록이 비면 그리드로 돌아간다.
+  Future<void> _trash(ScreenshotItem item) async {
+    final store = RemineScope.of(context);
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    final reduced = AppMotion.reduced(context);
+    final index = _items.indexWhere((s) => s.id == item.id);
+    if (index < 0) return;
+
+    await store.trash(item.id);
+    if (!mounted) return;
+    _view.value = (0.0, false);
+
+    final removed = _items[index];
+    final wasLast = index == _items.length - 1;
+    setState(() {
+      _items.removeAt(index);
+      _cardKeys.remove(removed.id);
+      if (_items.isNotEmpty) {
+        _index = wasLast ? _items.length - 1 : index;
+        if (!wasLast) {
+          _arrivalId = _items[_index].id;
+          _arrivalToken++;
+        }
+      }
+    });
+
+    if (_items.isEmpty) {
+      navigator.maybePop(); // 목록이 비면 그리드로
+    } else {
+      widget.onViewing?.call(_items[_index].id);
+    }
+
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          '휴지통으로 옮겼어',
+          style: AppText.label.copyWith(color: AppColors.white),
+        ),
+        duration: AppGesture.undoDuration,
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: AppColors.darkGray,
+        shape: const StadiumBorder(),
+        margin: const EdgeInsets.fromLTRB(
+          AppSpacing.screenPadding,
+          0,
+          AppSpacing.screenPadding,
+          AppSpacing.s16,
+        ),
+        action: SnackBarAction(
+          label: '되돌리기',
+          textColor: AppColors.lemon,
+          onPressed: () => _undo(store, removed, index),
+        ),
+      ),
+      // 애니메이션 줄이기: 스낵바도 효과 없이 바로 나타나고 사라진다.
+      snackBarAnimationStyle: reduced ? AnimationStyle.noAnimation : null,
+    );
+  }
+
+  /// 되돌리기. 이 화면이 아직 열려 있으면 원래 위치에 다시 끼우고 그 페이지로 이동한다.
+  /// 이미 닫혔으면(목록이 비어 그리드로 나간 경우) 저장소만 복원하고 그리드는 revision으로 갱신된다.
+  Future<void> _undo(
+    RemineStore store,
+    ScreenshotItem removed,
+    int index,
+  ) async {
+    await store.restore(removed.id);
+    if (!mounted) return;
+    final at = index.clamp(0, _items.length);
+    setState(() {
+      _items.insert(at, removed);
+      _index = at;
+    });
+    widget.onViewing?.call(removed.id);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _pages.hasClients) _pages.jumpToPage(at);
+    });
+  }
+
+  /// "⋯ → 휴지통으로": 카드가 위로 빨려 들어가는 같은 동작(애니메이션 줄이기면 즉시 처리).
+  void _requestTrash(ScreenshotItem item) {
+    final card = _cardKeys[item.id]?.currentState;
+    if (card != null) {
+      card.flyToTrash();
+    } else {
+      _trash(item);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.celadon,
-      body: SafeArea(
-        bottom: false,
-        child: Stack(
-          children: [
-            PageView.builder(
-              controller: _pages,
-              // 끝에서 멈춘다(첫·마지막 경계).
-              physics: const ClampingScrollPhysics(),
-              allowImplicitScrolling: true,
-              itemCount: _items.length,
-              onPageChanged: _onPageChanged,
-              findChildIndexCallback: (key) {
-                final id = (key as ValueKey<int>).value;
-                final i = _items.indexWhere((s) => s.id == id);
-                return i < 0 ? null : i;
-              },
-              itemBuilder: (context, i) => _DetailPage(
-                key: ValueKey(_items[i].id),
-                item: _items[i],
-                isCurrent: i == _index,
-                onChanged: _replaceItem,
-              ),
+      // 배경은 끄는 거리에 비례해 다크그레이로 어두워진다(최대 불투명도는 AppGesture.trashDimMaxOpacity).
+      body: ValueListenableBuilder<_ThrowView>(
+        valueListenable: _view,
+        builder: (context, view, child) {
+          final dim = view.$1.clamp(0.0, 1.0) * AppGesture.trashDimMaxOpacity;
+          return ColoredBox(
+            color: Color.alphaBlend(
+              AppColors.darkGray.withValues(alpha: dim),
+              AppColors.celadon,
             ),
-            _TopBar(position: _index + 1, total: _items.length),
-          ],
+            child: child,
+          );
+        },
+        child: SafeArea(
+          bottom: false,
+          child: Stack(
+            children: [
+              PageView.builder(
+                controller: _pages,
+                // 끝에서 멈춘다(첫·마지막 경계).
+                physics: const ClampingScrollPhysics(),
+                allowImplicitScrolling: true,
+                itemCount: _items.length,
+                onPageChanged: _onPageChanged,
+                findChildIndexCallback: (key) {
+                  final id = (key as ValueKey<int>).value;
+                  final i = _items.indexWhere((s) => s.id == id);
+                  return i < 0 ? null : i;
+                },
+                itemBuilder: (context, i) {
+                  final item = _items[i];
+                  return _DetailPage(
+                    key: ValueKey(item.id),
+                    item: item,
+                    isCurrent: i == _index,
+                    cardKey: _cardKeys.putIfAbsent(item.id, GlobalKey.new),
+                    view: _view,
+                    arriveToken: item.id == _arrivalId ? _arrivalToken : 0,
+                    onChanged: _replaceItem,
+                    onTrash: () => _trash(item),
+                    onRequestTrash: () => _requestTrash(item),
+                  );
+                },
+              ),
+              _TopBar(position: _index + 1, total: _items.length),
+              _TrashTarget(view: _view),
+            ],
+          ),
         ),
       ),
     );
@@ -99,6 +233,9 @@ class _DetailScreenState extends State<DetailScreen> {
 
 /// 상단 바가 차지하는 높이(뒤로 버튼 48 + 위 여백 8). 페이지 내용이 그 아래에서 시작하게 한다.
 const double _topBarHeight = 56;
+
+/// 휴지통 아이콘의 중심 y(화면 안전 영역 위쪽 기준). 카드가 빨려 들어가는 목적지이기도 하다.
+const double _trashIconCenterY = 8 + 28;
 
 /// 상단 바: 뒤로 가기 + "3 / 42" 위치 알약.
 class _TopBar extends StatelessWidget {
@@ -154,20 +291,92 @@ class _TopBar extends StatelessWidget {
   }
 }
 
+/// 화면 상단 중앙의 휴지통 아이콘. 위로 끌수록 커지고, 기준선을 넘으면 레몬으로 강조된다.
+/// 끌지 않을 때(그리고 애니메이션 줄이기일 때)는 보이지 않는다.
+class _TrashTarget extends StatelessWidget {
+  const _TrashTarget({required this.view});
+
+  final ValueListenable<_ThrowView> view;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      top: _trashIconCenterY - 28,
+      left: 0,
+      right: 0,
+      child: IgnorePointer(
+        child: ExcludeSemantics(
+          child: ValueListenableBuilder<_ThrowView>(
+            valueListenable: view,
+            builder: (context, v, _) {
+              final t = v.$1.clamp(0.0, 1.0);
+              if (t <= 0.01) return const SizedBox(height: 56);
+              final scale = lerpDouble(
+                AppGesture.trashIconMinScale,
+                AppGesture.trashIconMaxScale,
+                t,
+              )!;
+              return Center(
+                child: Opacity(
+                  opacity: t,
+                  // 기준선을 넘으면 살짝 더 커지며 강조(짧은 보간).
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween(end: v.$2 ? 1.18 : 1.0),
+                    duration: AppMotion.duration(context, MotionDuration.fast),
+                    curve: AppMotion.standard,
+                    builder: (context, pop, child) =>
+                        Transform.scale(scale: scale * pop, child: child),
+                    child: DecoratedBox(
+                      key: const ValueKey('trash-target'),
+                      decoration: BoxDecoration(
+                        color: v.$2 ? AppColors.lemon : AppColors.white,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const SizedBox(
+                        width: 56,
+                        height: 56,
+                        child: Icon(
+                          LucideIcons.trash2,
+                          size: 26,
+                          color: AppColors.ink,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// 한 항목의 페이지: 이미지 카드 + 정보 카드. 화면이 낮거나 글자가 크면 이 페이지만 세로로 스크롤된다.
 class _DetailPage extends StatefulWidget {
   const _DetailPage({
     super.key,
     required this.item,
     required this.isCurrent,
+    required this.cardKey,
+    required this.view,
+    required this.arriveToken,
     required this.onChanged,
+    required this.onTrash,
+    required this.onRequestTrash,
   });
 
   final ScreenshotItem item;
 
   /// 지금 보고 있는 페이지인가. 현재 페이지의 이미지 카드에만 Hero를 건다(이웃 페이지와 태그 중복 방지).
   final bool isCurrent;
+  final GlobalKey<_ThrowCardState> cardKey;
+  final ValueNotifier<_ThrowView> view;
+  final int arriveToken;
   final ValueChanged<ScreenshotItem> onChanged;
+  final Future<void> Function() onTrash;
+  final VoidCallback onRequestTrash;
 
   @override
   State<_DetailPage> createState() => _DetailPageState();
@@ -243,9 +452,13 @@ class _DetailPageState extends State<_DetailPage> {
                       vertical: AppSpacing.s16,
                     ),
                     child: _ThrowCard(
+                      key: widget.cardKey,
                       item: _item,
                       tag: tag,
                       isCurrent: widget.isCurrent,
+                      view: widget.view,
+                      arriveToken: widget.arriveToken,
+                      onTrash: widget.onTrash,
                     ),
                   ),
                 ),
@@ -253,6 +466,7 @@ class _DetailPageState extends State<_DetailPage> {
                   item: _item,
                   sameInterestCount: _sameInterestCount,
                   onEditCategory: _editCategory,
+                  onTrash: widget.onRequestTrash,
                   onMore: tag == null
                       ? null
                       : () => Navigator.of(context).push(
@@ -278,17 +492,30 @@ class _DetailPageState extends State<_DetailPage> {
 /// 크기는 주어진 영역(세로·가로)을 넘지 않게 비율 0.62로 맞추고, 안쪽 막대는 카드 크기에 비례한다.
 ///
 /// 세로 제스처는 이 카드에만 건다(정보 카드의 세로 스크롤·좌우 넘기기와 겹치지 않게):
-/// 아래로 쓸어내리면 닫힌다.
+/// - 아래로 쓸어내리면 닫힌다.
+/// - 위로 끌면 카드가 손가락을 따라 올라가고(축소·기울어짐), 배경이 어두워지며 휴지통 아이콘이 커진다.
+///   기준선(화면 높이 1/3) 또는 위쪽 속도 임계값을 넘겨 놓으면 휴지통으로 빨려 들어간다. 모자라면 스프링으로 복귀.
 class _ThrowCard extends StatefulWidget {
   const _ThrowCard({
+    super.key,
     required this.item,
     required this.tag,
     required this.isCurrent,
+    required this.view,
+    required this.onTrash,
+    this.arriveToken = 0,
   });
 
   final ScreenshotItem item;
   final String? tag;
   final bool isCurrent;
+  final ValueNotifier<_ThrowView> view;
+
+  /// 카드가 휴지통에 빨려 들어간 뒤(또는 줄이기 모드에서 바로) 호출되어 실제 처리를 맡긴다.
+  final Future<void> Function() onTrash;
+
+  /// 값이 바뀌면 도착 애니메이션(살짝 커지며 나타남)을 한 번 재생한다. 휴지통 처리 뒤 새로 보이는 항목용.
+  final int arriveToken;
 
   @override
   State<_ThrowCard> createState() => _ThrowCardState();
@@ -298,58 +525,202 @@ class _ThrowCardState extends State<_ThrowCard> with TickerProviderStateMixin {
   // 드래그로 움직인 세로 거리(아래가 +). 스프링 복귀 때는 이 컨트롤러 값이 곧 dy다.
   late final AnimationController _spring = AnimationController.unbounded(
     vsync: this,
-  )..addListener(() => setState(() => _dy = _spring.value));
+  )..addListener(_onSpring);
+  // 휴지통으로 빨려 들어가는 애니메이션(0 → 1).
+  late final AnimationController _fly = AnimationController(vsync: this)
+    ..addListener(() => setState(() {}));
+  // 휴지통 처리 뒤 새로 나타난 카드의 도착(0 → 1).
+  late final AnimationController _arrive = AnimationController(
+    vsync: this,
+    value: 1,
+  )..addListener(() => setState(() {}));
+
   double _dy = 0;
+  bool _past = false; // 기준선을 넘은 상태(햅틱을 한 번만 울리기 위해)
+  bool _flying = false;
+  Offset _flyTarget = Offset.zero;
+  double _flyStartDy = 0;
+  double _flyStartScale = 1;
+
+  @override
+  void didUpdateWidget(covariant _ThrowCard old) {
+    super.didUpdateWidget(old);
+    if (widget.arriveToken != old.arriveToken &&
+        widget.arriveToken != 0 &&
+        !AppMotion.reduced(context)) {
+      _arrive.duration = AppMotion.duration(context, MotionDuration.base);
+      _arrive.forward(from: 0);
+    }
+  }
 
   @override
   void dispose() {
     _spring.dispose();
+    _fly.dispose();
+    _arrive.dispose();
     super.dispose();
   }
 
   double get _screenHeight => MediaQuery.sizeOf(context).height;
+  double get _line => _screenHeight * AppGesture.trashLineFraction;
+  double get _upProgress => (-_dy / _line).clamp(0.0, 1.15);
+
+  void _publish() =>
+      widget.view.value = (_dy < -0.5 ? _upProgress : 0.0, _past);
+
+  void _onSpring() {
+    setState(() => _dy = _spring.value);
+    _past = _upProgress >= 1;
+    _publish();
+    // 스프링이 거의 멈추면 정확히 제자리로 맞춘다(아주 작은 잔여 오프셋·아이콘 표시 방지).
+    if (_dy.abs() < 0.5 && !_spring.isAnimating) {
+      _dy = 0;
+    }
+  }
 
   void _onDragStart(DragStartDetails d) {
+    if (_flying) return;
     _spring.stop();
   }
 
   void _onDragUpdate(DragUpdateDetails d) {
+    if (_flying) return;
     if (AppMotion.reduced(context)) {
       _dy += d.delta.dy; // 효과는 없지만 놓을 때 판단에 쓴다
       return;
     }
     setState(() => _dy += d.delta.dy);
+    final nowPast = _dy < 0 && _upProgress >= 1;
+    if (nowPast && !_past) {
+      HapticFeedback.mediumImpact(); // 기준선을 넘는 순간 한 번
+    }
+    _past = nowPast;
+    _publish();
   }
 
   void _onDragEnd(DragEndDetails d) {
-    final v = d.primaryVelocity ?? 0;
+    if (_flying) return;
+    final v = d.primaryVelocity ?? 0; // 위로 갈수록 음수(px/s)
+    final up = -_dy;
+    final trash =
+        _dy < 0 &&
+        (up >= _line ||
+            (v <= -AppGesture.trashFlingVelocity &&
+                up >= AppGesture.trashFlingMinDistance));
     final dismissDistance = _screenHeight * AppGesture.dismissFraction;
-    if (_dy > 0 &&
-        (_dy >= dismissDistance || v >= AppGesture.dismissFlingVelocity)) {
+    final dismiss =
+        _dy > 0 &&
+        (_dy >= dismissDistance || v >= AppGesture.dismissFlingVelocity);
+
+    if (trash) {
+      _commitTrash();
+    } else if (dismiss) {
       Navigator.of(context).maybePop(); // Hero가 이 항목의 그리드 썸네일로 돌아간다
-      return;
+    } else {
+      _springBack(v);
     }
-    _springBack(v);
   }
 
   void _springBack(double velocity) {
+    _past = false;
     if (AppMotion.reduced(context) || _dy == 0) {
       setState(() => _dy = 0);
+      _publish();
       return;
     }
     _spring.value = _dy;
     _spring.animateWith(SpringSimulation(AppMotion.spring, _dy, 0, velocity));
   }
 
+  /// 기준선을 넘겨 놓았을 때(또는 메뉴에서 호출): 휴지통으로 처리한다.
+  void _commitTrash() {
+    if (AppMotion.reduced(context)) {
+      // 애니메이션 줄이기: 효과 없이 바로 처리
+      _dy = 0;
+      _past = false;
+      widget.onTrash();
+      return;
+    }
+    _startFly();
+  }
+
+  /// 정보 카드의 "⋯ → 휴지통으로": 같은 동작을 제스처 없이 실행한다.
+  Future<void> flyToTrash() async {
+    if (_flying) return;
+    _dy = 0;
+    _commitTrash();
+  }
+
+  /// 카드가 휴지통 아이콘 위치로 빨려 들어간다(축소·투명화). 끝나면 실제 처리를 맡기고 아이콘을 숨긴다.
+  Future<void> _startFly() async {
+    final box = context.findRenderObject()! as RenderBox;
+    final center = box.localToGlobal(box.size.center(Offset.zero));
+    final size = MediaQuery.sizeOf(context);
+    final target = Offset(
+      size.width / 2,
+      MediaQuery.paddingOf(context).top + _trashIconCenterY,
+    );
+    _spring.stop();
+    _flyTarget = target - center;
+    _flyStartDy = _dy;
+    _flyStartScale = _scaleFor(_dy);
+    _flying = true;
+    // 아이콘은 강조된 채로 유지한다.
+    widget.view.value = (1.15, true);
+    _fly.duration = AppMotion.duration(context, MotionDuration.slow);
+    await _fly.forward(from: 0);
+    if (!mounted) return;
+    await widget.onTrash();
+    if (!mounted) return;
+    // 카드가 그대로 남아 있다면(처리 실패 등) 원래대로 돌려놓는다.
+    setState(() {
+      _flying = false;
+      _dy = 0;
+      _past = false;
+    });
+    _publish();
+  }
+
+  double _scaleFor(double dy) {
+    if (dy < 0) {
+      final t = (-dy / _line).clamp(0.0, 1.0);
+      return lerpDouble(1, AppGesture.trashCardMinScale, t)!;
+    }
+    final down = (dy / (_screenHeight * AppGesture.dismissFraction)).clamp(
+      0.0,
+      1.0,
+    );
+    return 1 - 0.08 * down;
+  }
+
   @override
   Widget build(BuildContext context) {
     final item = widget.item;
     final (_, block) = ThumbPlaceholder.colorsFor(item.id);
-    final visualDy = AppMotion.reduced(context) ? 0.0 : _dy;
-    // 아래로 끌수록 살짝 줄어든다.
-    final down = (visualDy / (_screenHeight * AppGesture.dismissFraction))
-        .clamp(0.0, 1.0);
-    final scale = visualDy > 0 ? 1 - 0.08 * down : 1.0;
+    final reduced = AppMotion.reduced(context);
+
+    // 화면에 보이는 변형(이동·축소·기울기·투명도). 줄이기 모드에서는 항상 제자리.
+    var dx = 0.0, dy = 0.0, scale = 1.0, angle = 0.0, opacity = 1.0;
+    if (!reduced) {
+      if (_flying) {
+        final p = AppMotion.emphasized.transform(_fly.value);
+        dx = lerpDouble(0, _flyTarget.dx, p)!;
+        dy = lerpDouble(_flyStartDy, _flyTarget.dy, p)!;
+        scale = lerpDouble(_flyStartScale, AppGesture.trashSuckScale, p)!;
+        angle = -AppGesture.trashCardTilt;
+        opacity = 1 - p;
+      } else {
+        dy = _dy;
+        scale = _scaleFor(_dy);
+        if (_dy < 0) {
+          angle = -AppGesture.trashCardTilt * (-_dy / _line).clamp(0.0, 1.0);
+        }
+      }
+      // 새로 나타난 카드: 살짝 작은 상태에서 커지며 나타난다.
+      final a = Curves.easeOutCubic.transform(_arrive.value);
+      scale *= lerpDouble(0.92, 1, a)!;
+      opacity *= lerpDouble(0.4, 1, a)!;
+    }
 
     final card = ExcludeSemantics(
       child: LayoutBuilder(
@@ -400,9 +771,15 @@ class _ThrowCardState extends State<_ThrowCard> with TickerProviderStateMixin {
       onVerticalDragStart: widget.isCurrent ? _onDragStart : null,
       onVerticalDragUpdate: widget.isCurrent ? _onDragUpdate : null,
       onVerticalDragEnd: widget.isCurrent ? _onDragEnd : null,
-      child: Transform.translate(
-        offset: Offset(0, visualDy),
-        child: Transform.scale(scale: scale, child: card),
+      child: Opacity(
+        opacity: opacity.clamp(0.0, 1.0),
+        child: Transform.translate(
+          offset: Offset(dx, dy),
+          child: Transform.rotate(
+            angle: angle,
+            child: Transform.scale(scale: scale, child: card),
+          ),
+        ),
       ),
     );
   }
@@ -463,17 +840,23 @@ class _CardContent extends StatelessWidget {
       );
 }
 
+enum _CardAction { trash }
+
 class _InfoCard extends StatelessWidget {
   const _InfoCard({
     required this.item,
     required this.sameInterestCount,
     required this.onEditCategory,
+    required this.onTrash,
     required this.onMore,
   });
 
   final ScreenshotItem item;
   final int sameInterestCount;
   final VoidCallback onEditCategory;
+
+  /// "⋯ → 휴지통으로" (위로 던지는 제스처와 같은 동작. 제스처가 어려운 사용자를 위한 대체 경로)
+  final VoidCallback onTrash;
   final VoidCallback? onMore;
 
   @override
@@ -493,7 +876,7 @@ class _InfoCard extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+          padding: const EdgeInsets.fromLTRB(20, 20, 8, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -534,58 +917,105 @@ class _InfoCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                ],
-              ),
-              const SizedBox(height: AppSpacing.s8),
-              Text(
-                item.summary ?? item.category.label,
-                style: AppText.cardTitle,
-              ),
-              const SizedBox(height: AppSpacing.s16),
-              Wrap(
-                spacing: AppSpacing.s8,
-                runSpacing: AppSpacing.s8,
-                children: [
-                  for (final t in item.tags) AppChip.hashtag(label: '#$t'),
-                ],
-              ),
-              if (onMore != null && sameInterestCount > 0) ...[
-                const SizedBox(height: AppSpacing.s20),
-                PressableScale(
-                  onTap: onMore,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(minHeight: 56),
-                    child: DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: AppColors.lemon,
-                        borderRadius: BorderRadius.circular(AppRadii.tile),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
+                  PopupMenuButton<_CardAction>(
+                    key: ValueKey('more-menu-${item.id}'),
+                    tooltip: '더 보기 메뉴',
+                    icon: const Icon(
+                      LucideIcons.ellipsis,
+                      size: 22,
+                      color: AppColors.ink,
+                    ),
+                    color: AppColors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadii.tile),
+                    ),
+                    popUpAnimationStyle: AppMotion.reduced(context)
+                        ? AnimationStyle.noAnimation
+                        : null,
+                    onSelected: (_) => onTrash(),
+                    itemBuilder: (context) => [
+                      PopupMenuItem(
+                        value: _CardAction.trash,
                         child: Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            Expanded(
-                              child: Text(
-                                '같은 관심사 캡처 $sameInterestCount장 더 보기',
-                                style: AppText.label.copyWith(fontSize: 15),
-                              ),
-                            ),
-                            const SizedBox(width: AppSpacing.s8),
                             const Icon(
-                              LucideIcons.arrowRight,
-                              size: 20,
+                              LucideIcons.trash2,
+                              size: 18,
                               color: AppColors.ink,
                             ),
+                            const SizedBox(width: AppSpacing.s12),
+                            Text('휴지통으로', style: AppText.label),
                           ],
                         ),
                       ),
-                    ),
+                    ],
                   ),
+                ],
+              ),
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: AppSpacing.s8),
+                    Text(
+                      item.summary ?? item.category.label,
+                      style: AppText.cardTitle,
+                    ),
+                    const SizedBox(height: AppSpacing.s16),
+                    Wrap(
+                      spacing: AppSpacing.s8,
+                      runSpacing: AppSpacing.s8,
+                      children: [
+                        for (final t in item.tags)
+                          AppChip.hashtag(label: '#$t'),
+                      ],
+                    ),
+                    if (onMore != null && sameInterestCount > 0) ...[
+                      const SizedBox(height: AppSpacing.s20),
+                      PressableScale(
+                        onTap: onMore,
+                        child: ConstrainedBox(
+                          constraints: const BoxConstraints(minHeight: 56),
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: AppColors.lemon,
+                              borderRadius: BorderRadius.circular(
+                                AppRadii.tile,
+                              ),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      '같은 관심사 캡처 $sameInterestCount장 더 보기',
+                                      style: AppText.label.copyWith(
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: AppSpacing.s8),
+                                  const Icon(
+                                    LucideIcons.arrowRight,
+                                    size: 20,
+                                    color: AppColors.ink,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-              ],
+              ),
             ],
           ),
         ),
