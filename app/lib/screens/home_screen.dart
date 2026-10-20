@@ -1,13 +1,16 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
 import '../core/helpers.dart';
 import '../core/tokens.dart';
+import '../data/device/device_services.dart';
 import '../data/remine_store.dart';
 import '../models/category_summary.dart';
 import '../models/interest.dart';
 import '../widgets/home_widgets.dart';
 import '../widgets/small_widgets.dart';
 import 'category_screen.dart';
+import 'debug_ocr_screen.dart';
 
 /// 홈(서랍 탭): 큰 제목 · 잊은 관심사 카드 · 카테고리 알약.
 class HomeScreen extends StatefulWidget {
@@ -43,6 +46,13 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  void _openDebugOcr(BuildContext context) {
+    final services = DeviceScope.maybeOf(context);
+    if (!kDebugMode || services == null) return;
+    Navigator.of(context)
+        .push(appRoute(context, (_) => DebugOcrScreen(services: services)));
+  }
+
   void _open(BuildContext context, CategoryScreen screen) {
     Navigator.of(context).push(appRoute(context, (_) => screen));
   }
@@ -65,7 +75,11 @@ class _HomeScreenState extends State<HomeScreen> {
           AppSpacing.s24,
         ),
         children: [
-          BrandHeader(pillText: formatWeekdayDate(store.now())),
+          // 디버그 빌드 + 기기 모드에서만: 워드마크를 길게 누르면 OCR 측정 화면. 릴리스에서는 이 분기가 통째로 빠진다.
+          GestureDetector(
+            onLongPress: kDebugMode ? () => _openDebugOcr(context) : null,
+            child: BrandHeader(pillText: formatWeekdayDate(store.now())),
+          ),
           const SizedBox(height: AppSpacing.s24),
           const HighlighterText(before: '잊고 있던 거,\n다시 ', highlight: '캐냈어요'),
           const SizedBox(height: AppSpacing.s24),

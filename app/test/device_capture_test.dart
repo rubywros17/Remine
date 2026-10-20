@@ -151,10 +151,8 @@ void main() {
       final reader = FakeGalleryReader(photos: fakePhotos(3));
       final progress = <int>[];
 
-      final run = await make(reader).run(
-        reader.photos,
-        onProgress: (done, total) => progress.add(done),
-      );
+      final run = await make(reader)
+          .run(reader.photos, onProgress: (done, total) => progress.add(done));
 
       expect(run.records, hasLength(2));
       expect(run.failed, 1);
@@ -255,8 +253,9 @@ void main() {
       for (final f in Directory('lib').listSync(recursive: true)) {
         if (f is! File || !f.path.endsWith('.dart')) continue;
         final s = f.readAsStringSync();
-        if (RegExp(r'HttpClient|package:http/|package:dio/|Socket\.connect|WebSocket')
-            .hasMatch(s)) {
+        if (RegExp(
+          r'HttpClient|package:http/|package:dio/|Socket\.connect|WebSocket',
+        ).hasMatch(s)) {
           hits.add(f.path);
         }
       }
