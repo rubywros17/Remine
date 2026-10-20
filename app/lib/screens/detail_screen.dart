@@ -126,6 +126,7 @@ class _DetailScreenState extends State<DetailScreen> {
         behavior: SnackBarBehavior.floating,
         backgroundColor: AppColors.darkGray,
         shape: const StadiumBorder(),
+        elevation: 0,
         margin: const EdgeInsets.fromLTRB(
           AppSpacing.screenPadding,
           0,
@@ -253,39 +254,43 @@ class _TopBar extends StatelessWidget {
         AppSpacing.screenPadding,
         0,
       ),
-      child: Row(
-        children: [
-          const BackButtonCircle(background: AppColors.white),
-          const SizedBox(width: AppSpacing.s12),
-          Expanded(
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: Semantics(
-                label: '$total장 중 $position번째',
-                excludeSemantics: true,
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: AppColors.white,
-                      borderRadius: BorderRadius.circular(AppRadii.pill),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 8,
+      // 높이를 48로 고정하지 않으면 Expanded 안의 Align이 세로로도 늘어나 바가 화면 전체 높이가 된다.
+      child: SizedBox(
+        height: 48,
+        child: Row(
+          children: [
+            const BackButtonCircle(background: AppColors.white),
+            const SizedBox(width: AppSpacing.s12),
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Semantics(
+                  label: '$total장 중 $position번째',
+                  excludeSemantics: true,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: AppColors.white,
+                        borderRadius: BorderRadius.circular(AppRadii.pill),
                       ),
-                      child: Text(
-                        '$position / $total',
-                        style: AppText.numBadge(),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 8,
+                        ),
+                        child: Text(
+                          '$position / $total',
+                          style: AppText.numBadge(),
+                        ),
                       ),
                     ),
                   ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

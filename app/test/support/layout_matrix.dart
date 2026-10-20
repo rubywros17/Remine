@@ -1,11 +1,13 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart' show kTouchSlop;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:remine/app.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:remine/widgets/small_widgets.dart';
 
 /// 여러 화면 크기·글자 크기에서 모든 화면이 RenderFlex overflow 없이 그려지는지 확인한다.
@@ -145,6 +147,58 @@ void defineLayoutMatrix({
         );
       });
       _expectClean('상세 $label', errors);
+    });
+
+    testWidgets('상세 넘기기·위치 알약 · $label', (tester) async {
+      final errors = await _errorsDuring(() async {
+        await _pump(tester, size, scale);
+        await _tap(tester, find.text('#니트가디건'));
+        await _tap(tester, find.byType(Hero));
+        expect(find.text('1 / 4'), findsOneWidget, reason: '위치 알약이 없다');
+        await tester.fling(
+          find.byType(PageView),
+          Offset(-size.width * 0.5, 0),
+          1500,
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('2 / 4'), findsOneWidget);
+      });
+      _expectClean('상세 넘기기 $label', errors);
+    });
+
+    testWidgets('상세 던지는 중(휴지통 아이콘·배경) · $label', (tester) async {
+      final errors = await _errorsDuring(() async {
+        await _pump(tester, size, scale);
+        await _tap(tester, find.text('#니트가디건'));
+        await _tap(tester, find.byType(Hero));
+        final card = find.descendant(
+          of: find.byType(PageView),
+          matching: find.byType(Hero),
+        );
+        // 위로 끌어 휴지통 아이콘이 나타난 중간 상태, 기준선을 넘은 강조 상태를 차례로 그려 본다.
+        final g = await tester.startGesture(tester.getCenter(card));
+        await g.moveBy(const Offset(0, -(kTouchSlop + 2)));
+        await g.moveBy(const Offset(0, -80));
+        await tester.pump();
+        expect(find.byKey(const ValueKey('trash-target')), findsOneWidget);
+        await g.moveBy(Offset(0, -size.height * 0.4));
+        await tester.pump();
+        await g.moveBy(Offset(0, size.height * 0.4 + 80)); // 놓지 않고 제자리로
+        await g.up();
+        await tester.pumpAndSettle();
+      });
+      _expectClean('상세 던지는 중 $label', errors);
+    });
+
+    testWidgets('상세 ⋯ 메뉴 · $label', (tester) async {
+      final errors = await _errorsDuring(() async {
+        await _pump(tester, size, scale);
+        await _tap(tester, find.text('#니트가디건'));
+        await _tap(tester, find.byType(Hero));
+        await _tap(tester, find.byIcon(LucideIcons.ellipsis));
+        expect(find.text('휴지통으로'), findsOneWidget, reason: '메뉴가 열리지 않았다');
+      });
+      _expectClean('상세 메뉴 $label', errors);
     });
 
     testWidgets('수정 시트 · $label', (tester) async {

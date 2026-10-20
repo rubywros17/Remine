@@ -196,6 +196,16 @@ void main() {
   });
 
   group('레이아웃', () {
+    testWidgets('상단 바(뒤로·위치 알약)는 화면 맨 위에 있다', (tester) async {
+      await _pumpApp(tester);
+      await _openShoppingDetail(tester);
+
+      final back = tester.getRect(find.byType(BackButtonCircle));
+      final pill = tester.getRect(find.text('1 / 6'));
+      expect(back.top, lessThan(24));
+      expect(pill.top, lessThan(48));
+    });
+
     testWidgets('이미지 카드가 남는 세로 공간의 가운데에 놓인다(위·아래 여백이 비슷하다)', (tester) async {
       await _pumpApp(tester);
       await _openShoppingDetail(tester);
