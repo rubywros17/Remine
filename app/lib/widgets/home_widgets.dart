@@ -107,7 +107,7 @@ class InterestCard extends StatelessWidget {
                 children: [
                   if (collageWidth > 0)
                     Positioned(
-                      right: -6,
+                      right: 16,
                       top: 12,
                       bottom: 12,
                       width: collageWidth,
@@ -120,7 +120,7 @@ class InterestCard extends StatelessWidget {
                       padding: EdgeInsets.fromLTRB(
                         20,
                         16,
-                        collageWidth > 0 ? collageWidth * 0.75 : 20,
+                        collageWidth > 0 ? 16 + collageWidth * 0.9 : 20,
                         16,
                       ),
                       child: Column(
@@ -196,7 +196,7 @@ class _Collage extends StatelessWidget {
     return ExcludeSemantics(
       child: LayoutBuilder(
         builder: (context, box) {
-          final thumbWidth = box.maxWidth * 0.56;
+          final thumbWidth = box.maxWidth * 0.5;
           final thumbHeight = (thumbWidth * 1.54).clamp(
             0.0,
             box.maxHeight * 0.85,
@@ -205,7 +205,7 @@ class _Collage extends StatelessWidget {
             children: [
               for (var i = 0; i < shown.length; i++)
                 Positioned(
-                  left: box.maxWidth * 0.05 + i * box.maxWidth * 0.16,
+                  left: box.maxWidth * 0.04 + i * box.maxWidth * 0.14,
                   top: 6.0 + i * 8,
                   width: thumbWidth,
                   height: thumbHeight,

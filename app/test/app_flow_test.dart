@@ -5,7 +5,9 @@ import 'package:remine/core/tokens.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
 import 'package:remine/models/category.dart';
 import 'package:remine/screens/analysis_screen.dart';
+import 'package:remine/widgets/home_widgets.dart';
 import 'package:remine/widgets/small_widgets.dart';
+import 'package:remine/widgets/thumb_placeholder.dart';
 
 final _now = DateTime(2026, 10, 19, 12, 0); // 월요일
 
@@ -51,6 +53,34 @@ void main() {
       expect(find.text('서랍'), findsOneWidget);
       expect(find.text('관심사'), findsOneWidget);
       expect(find.text('검색'), findsOneWidget);
+    });
+
+    testWidgets('관심사 카드의 콜라주는 회전한 모서리까지 카드 안쪽 여백 안에 있다', (tester) async {
+      await _pumpApp(tester);
+
+      final card = tester.getRect(find.byType(InterestCard));
+      final safe = card.deflate(8); // 테두리에서 최소 8px 떨어져야 한다
+      final thumbs = find.descendant(
+        of: find.byType(InterestCard),
+        matching: find.byType(ThumbPlaceholder),
+      );
+      expect(thumbs, findsNWidgets(3));
+      for (final element in thumbs.evaluate()) {
+        final finder = find.byElementPredicate((e) => e == element);
+        // getTopLeft 등은 부모의 회전을 포함한 화면 좌표라, 네 모서리가 곧 회전 후의 모양이다.
+        for (final corner in [
+          tester.getTopLeft(finder),
+          tester.getTopRight(finder),
+          tester.getBottomLeft(finder),
+          tester.getBottomRight(finder),
+        ]) {
+          expect(
+            safe.contains(corner),
+            isTrue,
+            reason: '썸네일 모서리 $corner 가 카드 $safe 밖',
+          );
+        }
+      }
     });
 
     testWidgets('알약은 개수 내림차순이고 기타가 마지막이며, 가장 많은 쇼핑만 셀라돈으로 채운다', (tester) async {
