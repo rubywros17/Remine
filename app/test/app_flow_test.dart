@@ -8,6 +8,7 @@ import 'package:remine/screens/analysis_screen.dart';
 import 'package:remine/widgets/home_widgets.dart';
 import 'package:remine/widgets/small_widgets.dart';
 import 'package:remine/widgets/thumb_placeholder.dart';
+import 'package:remine/widgets/wordmark.dart';
 
 final _now = DateTime(2026, 10, 19, 12, 0); // 월요일
 
@@ -34,7 +35,14 @@ void main() {
     testWidgets('제목·관심사 카드·알약·탭바를 그린다', (tester) async {
       await _pumpApp(tester);
 
-      expect(find.text('remine.'), findsOneWidget);
+      expect(find.byType(Wordmark), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (w) => w is Semantics && w.properties.label == 'Remine',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('re:mine', findRichText: true), findsOneWidget);
       expect(find.text('MON 10.19'), findsOneWidget);
       expect(find.byType(HighlighterText), findsOneWidget);
       expect(find.text('캐냈어요'), findsOneWidget);

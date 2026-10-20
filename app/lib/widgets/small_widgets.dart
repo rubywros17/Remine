@@ -3,6 +3,7 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../core/tokens.dart';
 import 'pressable_scale.dart';
+import 'wordmark.dart';
 
 /// 알약 모양 칩 하나. 선택(레몬)·중립(테두리)·해시태그(연셀라돈) 변형을 한 곳에서 만든다.
 class AppChip extends StatelessWidget {
@@ -241,7 +242,7 @@ class HighlighterText extends StatelessWidget {
   }
 }
 
-/// 상단 헤더: 왼쪽 `remine.`, 오른쪽 알약(날짜·상태). 알약은 폭이 모자라면 줄어든다(`FittedBox`).
+/// 상단 헤더: 왼쪽 `re:mine`([Wordmark]), 오른쪽 알약(날짜·상태). 알약은 폭이 모자라면 줄어든다(`FittedBox`).
 /// 글자 폭은 폰트·글자 크기에 따라 달라서 고정 폭을 가정하지 않는다.
 class BrandHeader extends StatelessWidget {
   const BrandHeader({
@@ -257,7 +258,7 @@ class BrandHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Text('remine.', style: AppText.brand(color: color)),
+        Wordmark(color: color),
         const SizedBox(width: AppSpacing.s12),
         Expanded(
           child: Align(
