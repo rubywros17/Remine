@@ -26,6 +26,13 @@ abstract interface class ScreenshotRepository {
   /// PATCH /api/screenshots/{id}/category — 같은 값이어도 categorySource가 USER가 된다.
   Future<CategoryUpdate> updateCategory(int id, Category category);
 
+  /// 캡처를 앱 휴지통으로 옮긴다. 목록·요약·관심사에서 빠진다.
+  /// **앱 안의 개념일 뿐**이다 — 실제 기기 사진 삭제·시스템 휴지통 이동·서버 삭제 API는 3주차 이후(spec F-06).
+  Future<void> trash(int id);
+
+  /// 휴지통에서 되돌린다(원래 정렬 위치로 돌아온다).
+  Future<void> restore(int id);
+
   /// 잊은 관심사 목록. (서버 GET /api/interests 형식이 정해지기 전의 임시 계약)
   Future<List<Interest>> interests();
 }

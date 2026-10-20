@@ -23,6 +23,20 @@ class RemineStore extends ChangeNotifier {
   /// 데이터가 바뀔 때마다 1씩 오른다. 화면은 이 값이 달라지면 다시 불러온다.
   int get revision => _revision;
 
+  /// 휴지통으로 옮긴다. 홈·카테고리의 개수와 목록이 바로 갱신된다.
+  Future<void> trash(int id) async {
+    await repository.trash(id);
+    _revision++;
+    notifyListeners();
+  }
+
+  /// 휴지통에서 되돌린다.
+  Future<void> restore(int id) async {
+    await repository.restore(id);
+    _revision++;
+    notifyListeners();
+  }
+
   Future<CategoryUpdate> changeCategory(int id, Category category) async {
     final result = await repository.updateCategory(id, category);
     _revision++;

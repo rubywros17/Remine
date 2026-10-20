@@ -19,12 +19,18 @@ class FakeScreenshotRepository implements ScreenshotRepository {
   final DateTime Function() _now;
   final List<ScreenshotItem> _items;
 
+  /// 앱 휴지통에 있는 캡처 id. 이 id들은 목록·요약·관심사에서 제외된다.
+  final Set<int> _trashed = {};
+
+  /// 테스트에서 휴지통 상태를 확인하기 위한 읽기 전용 보기.
+  Set<int> get trashedIds => Set.unmodifiable(_trashed);
+
   static const _topTagCount = 3;
   static const _recentCount = 4;
   static const _interestSpanDays = 14;
 
   List<ScreenshotItem> get _sorted {
-    final list = [..._items];
+    final list = _items.where((s) => !_trashed.contains(s.id)).toList();
     list.sort((a, b) {
       final byTime = b.takenAt.compareTo(a.takenAt);
       return byTime != 0
@@ -98,7 +104,7 @@ class FakeScreenshotRepository implements ScreenshotRepository {
   @override
   Future<CategoryUpdate> updateCategory(int id, Category category) async {
     final index = _items.indexWhere((s) => s.id == id);
-    if (index < 0) {
+    if (index < 0 || _trashed.contains(id)) {
       throw StateError('스크린샷을 찾을 수 없어요: $id'); // 서버는 404
     }
     // 같은 값이어도 USER가 된다(= 사용자 확인). autoCategory는 바뀌지 않는다. 태그는 그대로.
@@ -113,6 +119,19 @@ class FakeScreenshotRepository implements ScreenshotRepository {
       autoCategory: updated.autoCategory ?? updated.category,
       categorySource: CategorySource.user,
     );
+  }
+
+  @override
+  Future<void> trash(int id) async {
+    if (!_items.any((s) => s.id == id)) {
+      throw StateError('스크린샷을 찾을 수 없어요: $id');
+    }
+    _trashed.add(id);
+  }
+
+  @override
+  Future<void> restore(int id) async {
+    _trashed.remove(id); // 정렬은 taken_at 기준이라 원래 자리로 자동 복귀
   }
 
   @override

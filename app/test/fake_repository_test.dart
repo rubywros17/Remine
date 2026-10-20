@@ -103,6 +103,64 @@ void main() {
     });
   });
 
+  group('휴지통', () {
+    test('휴지통 항목은 목록·요약·관심사에서 빠지고 복원하면 원래 자리로 돌아온다', () async {
+      final repo = _repo();
+      final before = (await repo.list(
+        category: Category.shopping,
+        size: 100,
+      )).items;
+      final target = before[1]; // 두 번째(최신순)
+
+      await repo.trash(target.id);
+
+      final list = (await repo.list(
+        category: Category.shopping,
+        size: 100,
+      )).items;
+      expect(list.map((s) => s.id), isNot(contains(target.id)));
+      expect(list.length, 5);
+      final summary = await repo.summary();
+      expect(summary.of(Category.shopping).count, 5);
+      expect(summary.total, 29);
+      expect(
+        summary.of(Category.shopping).recentAssetIds,
+        isNot(contains(target.localAssetId)),
+      );
+      expect(repo.trashedIds, {target.id});
+
+      await repo.restore(target.id);
+
+      final restored = (await repo.list(
+        category: Category.shopping,
+        size: 100,
+      )).items;
+      expect(restored.map((s) => s.id), before.map((s) => s.id)); // 같은 순서
+      expect((await repo.summary()).total, 30);
+      expect(repo.trashedIds, isEmpty);
+    });
+
+    test('관심사 횟수에서도 빠진다', () async {
+      final repo = _repo();
+      final interest = (await repo.interests()).first; // 니트가디건 ×4
+      await repo.trash(interest.screenshotIds.first);
+
+      expect((await repo.interests()).first.captureCount, 3);
+    });
+
+    test('휴지통 항목은 카테고리를 수정할 수 없다', () async {
+      final repo = _repo();
+      final target = (await repo.list(size: 100)).items.first;
+      await repo.trash(target.id);
+
+      expect(repo.updateCategory(target.id, Category.etc), throwsStateError);
+    });
+
+    test('없는 id는 휴지통에 넣을 수 없다', () async {
+      expect(_repo().trash(9999), throwsStateError);
+    });
+  });
+
   group('잊은 관심사', () {
     test('니트가디건 ×4, 9일째 잠자는 중이다', () async {
       final interests = await _repo().interests();
