@@ -1,8 +1,18 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:remine/data/device/device_capture_service.dart';
+import 'package:remine/data/device/device_services.dart';
 import 'package:remine/data/device/gallery_reader.dart';
+import 'package:remine/data/device/ocr_store.dart';
+import 'package:remine/data/device/ocr_temp_files.dart';
 import 'package:remine/data/device/ocr_engine.dart';
+
+/// 1x1 투명 PNG(썸네일 디코딩 확인용).
+final _png1x1 = base64Decode(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+);
 
 /// 테스트용 갤러리. 사진 바이트는 id를 그대로 인코딩한 값이다.
 class FakeGalleryReader implements GalleryReader {
@@ -59,7 +69,7 @@ class FakeGalleryReader implements GalleryReader {
 
   @override
   Future<Uint8List?> thumbnail(String photoId, {int size = 220}) async =>
-      photoId == 'missing' ? null : Uint8List.fromList([137, 80, 78, 71]);
+      photoId == 'missing' ? null : _png1x1;
 
   @override
   Future<Uint8List?> bytes(String photoId) async =>
@@ -98,3 +108,24 @@ class FakeOcrEngine implements OcrEngine {
   @override
   Future<void> close() async {}
 }
+
+/// 화면 테스트용 서비스 묶음. 임시 폴더는 [tmp](없으면 시스템 임시 폴더 아래 고정 이름).
+DeviceServices fakeServices(
+  FakeGalleryReader reader, {
+  FakeOcrEngine? ocr,
+  OcrStore? store,
+  Directory? tmp,
+  Directory? exportTo,
+}) => DeviceServices(
+  reader: reader,
+  capture: DeviceCaptureService(
+    reader: reader,
+    ocr: ocr ?? FakeOcrEngine(),
+    store: store ?? InMemoryOcrStore(),
+    temp: OcrTempFiles(
+      tmp ?? Directory('${Directory.systemTemp.path}/remine_fake_ocr'),
+    ),
+    now: () => DateTime(2026, 10, 19, 12),
+  ),
+  exportDir: () async => exportTo ?? Directory.systemTemp,
+);

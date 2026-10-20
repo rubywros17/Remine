@@ -6,9 +6,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:remine/app.dart';
+import 'package:remine/data/device/device_services.dart';
+import 'package:remine/data/device/gallery_reader.dart';
+import 'package:remine/screens/debug_ocr_screen.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:remine/widgets/small_widgets.dart';
+import 'package:remine/widgets/wordmark.dart';
+
+import 'fake_device.dart';
 
 /// 여러 화면 크기·글자 크기에서 모든 화면이 RenderFlex overflow 없이 그려지는지 확인한다.
 /// Flutter는 넘침을 예외로 보고하므로, 화면을 띄우고 조작하는 동안 보고된 오류를 전부 모아
@@ -57,6 +63,7 @@ Future<void> _pump(
   Size size,
   double scale, {
   String start = '',
+  DeviceServices? device,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -68,6 +75,7 @@ Future<void> _pump(
       repository: FakeScreenshotRepository(now: () => _now),
       now: () => _now,
       startScreen: start,
+      device: device,
     ),
   );
   await tester.pumpAndSettle();
@@ -219,6 +227,51 @@ void defineLayoutMatrix({
         expect(find.text('이거 어디 서랍이야?'), findsOneWidget);
       });
       _expectClean('수정 시트 $label', errors);
+    });
+
+    testWidgets('사진 권한 거부 · $label', (tester) async {
+      final errors = await _errorsDuring(() async {
+        final reader = FakeGalleryReader(
+          accessState: GalleryAccess.denied,
+          grantOnRequest: GalleryAccess.denied,
+        );
+        await _pump(tester, size, scale, device: fakeServices(reader));
+        expect(find.text('설정 열기'), findsOneWidget);
+      });
+      _expectClean('권한 거부 $label', errors);
+    });
+
+    testWidgets('사진 일부만 허용(안내 띠 + 홈) · $label', (tester) async {
+      final errors = await _errorsDuring(() async {
+        final reader = FakeGalleryReader(grantOnRequest: GalleryAccess.limited);
+        await _pump(tester, size, scale, device: fakeServices(reader));
+        expect(find.text('다시 고르기'), findsOneWidget);
+        expect(find.byType(Wordmark), findsOneWidget);
+      });
+      _expectClean('일부 허용 $label', errors);
+    });
+
+    testWidgets('디버그 OCR 측정 화면 · $label', (tester) async {
+      final errors = await _errorsDuring(() async {
+        final reader = FakeGalleryReader(photos: fakePhotos(40));
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1.0;
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.view.reset);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await tester.pumpWidget(
+          MaterialApp(home: DebugOcrScreen(services: fakeServices(reader))),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('전체 선택'), warnIfMissed: false);
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byKey(const ValueKey('album-RemineExperiment')),
+          warnIfMissed: false,
+        );
+        await tester.pumpAndSettle();
+      });
+      _expectClean('디버그 OCR $label', errors);
     });
 
     testWidgets('첫 분석 · $label', (tester) async {

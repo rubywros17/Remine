@@ -239,54 +239,60 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
 
   Widget _bottomPanel() {
     final canRun = !_running && _selected.isNotEmpty;
+    // 아주 작은 화면에서도 격자가 밀려나지 않게, 아래 패널은 화면의 40%까지만 쓰고 넘치면 스크롤한다.
     return Material(
       color: AppColors.chip,
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.screenPadding),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              _running
-                  ? '처리 중 $_done / ${_selected.length}'
-                  : '${_selected.length}장 선택 · 최근 ${DeviceCaptureService.maxPhotos}장까지',
-              style: AppText.label,
-            ),
-            if (_status.isNotEmpty) ...[
-              const SizedBox(height: AppSpacing.s4),
-              Text(_status, style: AppText.caption),
-            ],
-            const SizedBox(height: AppSpacing.s12),
-            Wrap(
-              spacing: AppSpacing.s8,
-              runSpacing: AppSpacing.s8,
-              children: [
-                if (_running)
-                  AppButton(label: '멈추기', onTap: () => _cancel = true)
-                else ...[
-                  AppButton(
-                    label: _selected.length == _photos.length
-                        ? '선택 해제'
-                        : '전체 선택',
-                    onTap: _photos.isEmpty ? null : _toggleAll,
-                    outlined: true,
-                  ),
-                  AppButton(label: 'OCR 실행', onTap: canRun ? _run : null),
-                  AppButton(
-                    label: 'JSON 내보내기',
-                    onTap: _records.isEmpty ? null : _export,
-                    outlined: true,
-                  ),
-                  AppButton(
-                    label: '저장된 결과 지우기',
-                    onTap: _clearLocal,
-                    outlined: true,
-                  ),
-                ],
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.4,
+        ),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(AppSpacing.screenPadding),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _running
+                    ? '처리 중 $_done / ${_selected.length}'
+                    : '${_selected.length}장 선택 · 최근 ${DeviceCaptureService.maxPhotos}장까지',
+                style: AppText.label,
+              ),
+              if (_status.isNotEmpty) ...[
+                const SizedBox(height: AppSpacing.s4),
+                Text(_status, style: AppText.caption),
               ],
-            ),
-          ],
+              const SizedBox(height: AppSpacing.s12),
+              Wrap(
+                spacing: AppSpacing.s8,
+                runSpacing: AppSpacing.s8,
+                children: [
+                  if (_running)
+                    AppButton(label: '멈추기', onTap: () => _cancel = true)
+                  else ...[
+                    AppButton(
+                      label: _selected.length == _photos.length
+                          ? '선택 해제'
+                          : '전체 선택',
+                      onTap: _photos.isEmpty ? null : _toggleAll,
+                      outlined: true,
+                    ),
+                    AppButton(label: 'OCR 실행', onTap: canRun ? _run : null),
+                    AppButton(
+                      label: 'JSON 내보내기',
+                      onTap: _records.isEmpty ? null : _export,
+                      outlined: true,
+                    ),
+                    AppButton(
+                      label: '저장된 결과 지우기',
+                      onTap: _clearLocal,
+                      outlined: true,
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
