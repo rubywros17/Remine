@@ -36,6 +36,8 @@ String formatStamp(DateTime d) =>
 Route<T> appRoute<T>(BuildContext context, WidgetBuilder builder) {
   final duration = AppMotion.duration(context, MotionDuration.slow);
   return PageRouteBuilder<T>(
+    // 전환이 끝나면 아래 화면을 그리지 않는다(opaque).
+    opaque: true,
     transitionDuration: duration,
     reverseTransitionDuration: duration,
     pageBuilder: (context, animation, secondaryAnimation) => builder(context),

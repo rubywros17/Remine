@@ -31,6 +31,11 @@ class _CategoryScreenState extends State<CategoryScreen> {
   List<ScreenshotItem> _items = const [];
   bool _loaded = false;
 
+  // 상세를 보고 돌아왔을 때 마지막으로 본 타일이 화면에 보이게 하는 데 쓴다.
+  final Map<int, GlobalKey> _tileKeys = {};
+  List<int> _openSnapshot = const []; // 상세를 열 때의 목록(id 순서)
+  int? _lastViewing;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -71,6 +76,51 @@ class _CategoryScreenState extends State<CategoryScreen> {
       _items = filtered.items;
       _loaded = true;
     });
+    // 목록이 바뀐 뒤(카테고리 수정·휴지통)에도 마지막으로 본 항목(또는 이웃)이 보이게 다시 맞춘다.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final id = _lastViewing;
+      if (mounted && id != null) _reveal(id);
+    });
+  }
+
+  void _openDetail(int index) {
+    _openSnapshot = _items.map((s) => s.id).toList();
+    _lastViewing = _items[index].id;
+    Navigator.of(context).push(
+      appRoute(
+        context,
+        (_) => DetailScreen(
+          items: List.of(_items),
+          initialIndex: index,
+          onViewing: (id) {
+            _lastViewing = id;
+            _reveal(id);
+          },
+        ),
+      ),
+    );
+  }
+
+  /// [id] 항목의 타일이 보이게 즉시 스크롤한다. 그 항목이 이 그리드에서 빠졌으면(카테고리 수정·휴지통)
+  /// 상세를 열 때의 순서에서 가장 가까운 남은 항목으로 대신한다. Hero가 돌아올 자리가 화면 안에 있게 하려는 것.
+  void _reveal(int id) {
+    final order = _openSnapshot;
+    final start = order.indexOf(id);
+    if (start < 0) return;
+    for (var d = 0; d < order.length; d++) {
+      for (final i in {start + d, start - d}) {
+        if (i < 0 || i >= order.length) continue;
+        final ctx = _tileKeys[order[i]]?.currentContext;
+        if (ctx != null && ctx.mounted) {
+          Scrollable.ensureVisible(
+            ctx,
+            alignment: 0.5,
+            duration: Duration.zero,
+          );
+          return;
+        }
+      }
+    }
   }
 
   void _selectTag(String? tag) {
@@ -121,7 +171,12 @@ class _CategoryScreenState extends State<CategoryScreen> {
               const SizedBox(height: AppSpacing.s16),
               _TagRow(tags: _allTags, selected: _tag, onSelect: _selectTag),
               const SizedBox(height: AppSpacing.s20),
-              if (_loaded) _StaggeredGrid(items: _items),
+              if (_loaded)
+                _StaggeredGrid(
+                  items: _items,
+                  keyFor: (id) => _tileKeys.putIfAbsent(id, GlobalKey.new),
+                  onOpen: _openDetail,
+                ),
             ],
           ),
         ),
@@ -184,9 +239,15 @@ class _TagRow extends StatelessWidget {
 /// 두 열로 나누고 높이를 달리해 엇갈리게 쌓는다. (한 화면에 담기는 개수가 적어 단순 Column 두 개로 만들었다.
 /// 실제 서버 연동에서 수백 장이 되면 지연 로딩 그리드로 바꾼다.)
 class _StaggeredGrid extends StatelessWidget {
-  const _StaggeredGrid({required this.items});
+  const _StaggeredGrid({
+    required this.items,
+    required this.keyFor,
+    required this.onOpen,
+  });
 
   final List<ScreenshotItem> items;
+  final GlobalKey Function(int id) keyFor;
+  final ValueChanged<int> onOpen; // 목록 안의 위치(index)
 
   static const _heights = [230.0, 170.0, 200.0, 250.0, 160.0];
 
@@ -204,8 +265,11 @@ class _StaggeredGrid extends StatelessWidget {
       final tile = Padding(
         padding: const EdgeInsets.only(bottom: AppSpacing.s12),
         child: _Tile(
+          key: ValueKey('tile-${items[i].id}'),
           item: items[i],
           height: _heights[(items[i].id + i) % _heights.length],
+          anchorKey: keyFor(items[i].id),
+          onTap: () => onOpen(i),
         ),
       );
       (i.isEven ? left : right).add(tile);
@@ -228,20 +292,29 @@ class _StaggeredGrid extends StatelessWidget {
 }
 
 class _Tile extends StatelessWidget {
-  const _Tile({required this.item, required this.height});
+  const _Tile({
+    super.key,
+    required this.item,
+    required this.height,
+    required this.anchorKey,
+    required this.onTap,
+  });
 
   final ScreenshotItem item;
   final double height;
 
+  /// 상세에서 돌아올 때 이 타일이 보이게 스크롤하려고 쓰는 키.
+  final GlobalKey anchorKey;
+  final VoidCallback onTap;
+
   @override
   Widget build(BuildContext context) {
     return PressableScale(
-      onTap: () =>
-          Navigator.of(context)
-              .push(appRoute(context, (_) => DetailScreen(item: item))),
+      onTap: onTap,
       label:
           '${item.summary ?? item.category.label}, ${formatMonthDay(item.takenAt)}',
       child: SizedBox(
+        key: anchorKey,
         height: height,
         child: Hero(
           tag: 'screenshot-${item.id}',

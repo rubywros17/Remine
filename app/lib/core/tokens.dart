@@ -152,3 +152,37 @@ abstract final class AppMotion {
   static Duration duration(BuildContext context, MotionDuration d) =>
       reduced(context) ? Duration.zero : _durations[d]!;
 }
+
+/// 상세 화면 제스처 값(좌우 넘기기 · 아래로 닫기 · 위로 던져 휴지통). 값의 근거와 동작은 docs/design.md.
+/// 손가락 감각은 실기기에서 조정하므로 숫자는 전부 여기 한 곳에 둔다.
+abstract final class AppGesture {
+  /// 위로 끌어 이 높이(화면 높이 비율)를 넘으면 휴지통 기준선 통과.
+  static const double trashLineFraction = 1 / 3;
+
+  /// 놓을 때 위쪽 속도(px/s)가 이 값 이상이면 기준선 전이라도 휴지통으로 던진 것으로 본다.
+  static const double trashFlingVelocity = 1200;
+
+  /// 휴지통 플링으로 인정하려면 최소한 이만큼(px)은 끌어야 한다(스치기 방지).
+  static const double trashFlingMinDistance = 24;
+
+  /// 끄는 거리에 비례해 어두워지는 배경(다크그레이)의 최대 불투명도.
+  static const double trashDimMaxOpacity = 0.72;
+
+  /// 끌수록 카드가 줄어드는 최소 배율, 기울어지는 최대 각도(라디안).
+  static const double trashCardMinScale = 0.86;
+  static const double trashCardTilt = 0.06;
+
+  /// 휴지통 아이콘이 끌수록 커지는 범위.
+  static const double trashIconMinScale = 0.6;
+  static const double trashIconMaxScale = 1.4;
+
+  /// 빨려 들어간 카드의 최종 배율.
+  static const double trashSuckScale = 0.1;
+
+  /// 아래로 쓸어 닫기: 화면 높이 비율 또는 아래쪽 속도(px/s).
+  static const double dismissFraction = 0.18;
+  static const double dismissFlingVelocity = 800;
+
+  /// 휴지통으로 옮긴 뒤 "되돌리기"를 보여주는 시간.
+  static const Duration undoDuration = Duration(seconds: 4);
+}
