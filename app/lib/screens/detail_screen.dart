@@ -296,7 +296,7 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-/// 화면 상단 중앙의 휴지통 아이콘. 위로 끌수록 커지고, 기준선을 넘으면 레몬으로 강조된다.
+/// 화면 상단 중앙의 휴지통 아이콘. 위로 끌수록 커지고, 기준선을 넘으면 검은 원 + 레몬 아이콘으로 강조된다.
 /// 끌지 않을 때(그리고 애니메이션 줄이기일 때)는 보이지 않는다.
 class _TrashTarget extends StatelessWidget {
   const _TrashTarget({required this.view});
@@ -334,16 +334,20 @@ class _TrashTarget extends StatelessWidget {
                     child: DecoratedBox(
                       key: const ValueKey('trash-target'),
                       decoration: BoxDecoration(
-                        color: v.$2 ? AppColors.lemon : AppColors.white,
+                        color: v.$2
+                            ? AppColors.trashActiveBackground
+                            : AppColors.white,
                         shape: BoxShape.circle,
                       ),
-                      child: const SizedBox(
+                      child: SizedBox(
                         width: 56,
                         height: 56,
                         child: Icon(
                           LucideIcons.trash2,
                           size: 26,
-                          color: AppColors.ink,
+                          color: v.$2
+                              ? AppColors.trashActiveIcon
+                              : AppColors.ink,
                         ),
                       ),
                     ),

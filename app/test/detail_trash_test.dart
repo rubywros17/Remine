@@ -69,6 +69,10 @@ Color _trashTargetColor(WidgetTester tester) {
   return (box.decoration as BoxDecoration).color!;
 }
 
+Color _trashIconColor(WidgetTester tester) => tester
+    .widget<Icon>(find.descendant(of: _trashTarget, matching: find.byType(Icon)))
+    .color!;
+
 void main() {
   group('끄는 동안', () {
     testWidgets('카드가 손가락을 따라 올라가며 줄어들고, 휴지통 아이콘이 나타나 끌수록 커진다', (tester) async {
@@ -120,11 +124,13 @@ void main() {
 
       final g = await _dragUp(tester, 200);
       expect(_trashTargetColor(tester), AppColors.white); // 아직 기준선 전
+      expect(_trashIconColor(tester), AppColors.ink);
       expect(_haptics, isEmpty);
 
       await g.moveBy(const Offset(0, -120)); // 기준선 통과
       await tester.pump();
-      expect(_trashTargetColor(tester), AppColors.lemon); // 강조
+      expect(_trashTargetColor(tester), AppColors.trashActiveBackground); // 강조
+      expect(_trashIconColor(tester), AppColors.lemon);
       expect(_haptics, ['HapticFeedbackType.mediumImpact']);
 
       await g.moveBy(const Offset(0, -40)); // 더 올려도 다시 울리지 않는다

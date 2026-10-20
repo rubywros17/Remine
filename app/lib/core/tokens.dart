@@ -18,6 +18,10 @@ abstract final class AppColors {
   static const chip = Color(0xFFEEF0F0);
   static const border = Color(0xFFE1E3E3);
   static const white = Color(0xFFFFFFFF);
+
+  /// 휴지통 기준선을 넘었을 때 아이콘 배경(원)과 아이콘.
+  static const trashActiveBackground = Color(0xFF111111);
+  static const trashActiveIcon = lemon;
 }
 
 /// 가짜 썸네일(색 블록)용 색 쌍: (바탕, 안쪽 블록). 실제 스크린샷 대신 쓴다.
