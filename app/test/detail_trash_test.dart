@@ -156,7 +156,9 @@ void main() {
 
       final g = await _dragUp(tester, 330);
       await g.up();
-      await tester.pumpAndSettle();
+      // 스낵바는 4초 뒤 사라지므로 pumpAndSettle로 끝까지 가지 않고, 모션이 끝날 만큼만 진행한다.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 900));
 
       // 휴지통으로 이동, 같은 자리에 다음 항목
       expect(repo.trashedIds, {5});
@@ -168,6 +170,7 @@ void main() {
       expect(find.text('휴지통으로 옮겼어'), findsOneWidget);
       expect(find.text('되돌리기'), findsOneWidget);
 
+      await tester.pump(const Duration(milliseconds: 500)); // 스낵바가 올라오는 모션이 끝나야 눌린다
       await tester.tap(find.text('되돌리기'));
       await tester.pumpAndSettle();
 
@@ -252,7 +255,8 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('more-menu-5')));
       await tester.pumpAndSettle();
       await tester.tap(find.text('휴지통으로'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 900));
 
       expect(repo.trashedIds, {5});
       expect(find.text('1 / 5'), findsOneWidget);
