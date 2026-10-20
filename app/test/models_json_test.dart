@@ -16,7 +16,9 @@ void main() {
                "category":"ETC","summary":null,"tags":[]}],
      "page":0,"size":30,"totalElements":2,"totalPages":1}''';
 
-    final page = ScreenshotPage.fromJson(jsonDecode(json) as Map<String, dynamic>);
+    final page = ScreenshotPage.fromJson(
+      jsonDecode(json) as Map<String, dynamic>,
+    );
 
     expect(page.totalElements, 2);
     expect(page.items.first.id, 7);
@@ -33,7 +35,9 @@ void main() {
     {"categories":[{"category":"SHOPPING","count":42,"topTags":["니트"],"recentAssetIds":["a1","a2"]},
                    {"category":"ETC","count":0,"topTags":[],"recentAssetIds":[]}]}''';
 
-    final summary = CategorySummary.fromJson(jsonDecode(json) as Map<String, dynamic>);
+    final summary = CategorySummary.fromJson(
+      jsonDecode(json) as Map<String, dynamic>,
+    );
 
     expect(summary.categories.length, 2);
     expect(summary.total, 42);
@@ -41,9 +45,12 @@ void main() {
   });
 
   test('PATCH /api/screenshots/{id}/category 응답', () {
-    const json = '{"id":5,"category":"PLACE","autoCategory":"SHOPPING","categorySource":"USER"}';
+    const json =
+        '{"id":5,"category":"PLACE","autoCategory":"SHOPPING","categorySource":"USER"}';
 
-    final update = CategoryUpdate.fromJson(jsonDecode(json) as Map<String, dynamic>);
+    final update = CategoryUpdate.fromJson(
+      jsonDecode(json) as Map<String, dynamic>,
+    );
 
     expect(update.category, Category.place);
     expect(update.autoCategory, Category.shopping);

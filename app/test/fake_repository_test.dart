@@ -12,7 +12,10 @@ void main() {
       final summary = await _repo().summary();
 
       expect(summary.total, 30);
-      expect(summary.categories.map((c) => c.category), Category.values); // 7개 전부, 서버 순서
+      expect(
+        summary.categories.map((c) => c.category),
+        Category.values,
+      ); // 7개 전부, 서버 순서
       expect(summary.of(Category.shopping).count, 6);
       for (final c in Category.values.where((c) => c != Category.shopping)) {
         expect(summary.of(c).count, 4);
@@ -28,9 +31,15 @@ void main() {
 
       final shopping = await _repo().list(category: Category.shopping);
       expect(shopping.totalElements, 6);
-      expect(shopping.items.every((s) => s.category == Category.shopping), isTrue);
+      expect(
+        shopping.items.every((s) => s.category == Category.shopping),
+        isTrue,
+      );
 
-      final tagged = await _repo().list(category: Category.shopping, tag: '니트가디건');
+      final tagged = await _repo().list(
+        category: Category.shopping,
+        tag: '니트가디건',
+      );
       expect(tagged.totalElements, 4);
     });
 
@@ -74,7 +83,8 @@ void main() {
       final summary = await repo.summary();
       expect(summary.of(Category.shopping).count, 5);
       expect(summary.of(Category.place).count, 5);
-      final moved = (await repo.list(category: Category.place)).items.firstWhere((s) => s.id == target.id);
+      final moved = (await repo.list(category: Category.place)).items
+          .firstWhere((s) => s.id == target.id);
       expect(moved.tags, target.tags);
     });
 
