@@ -195,7 +195,16 @@ void defineLayoutMatrix({
         await _pump(tester, size, scale);
         await _tap(tester, find.text('#니트가디건'));
         await _tap(tester, find.byType(Hero));
-        await _tap(tester, find.byIcon(LucideIcons.ellipsis));
+        // 아주 낮은 화면에서는 위쪽 끝으로 스크롤하면 상단 바에 가려지므로 가운데로 맞춘 뒤 누른다.
+        final menu = find.byIcon(LucideIcons.ellipsis);
+        Scrollable.ensureVisible(
+          tester.element(menu.first),
+          alignment: 0.5,
+          duration: Duration.zero,
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(menu.first);
+        await tester.pumpAndSettle();
         expect(find.text('휴지통으로'), findsOneWidget, reason: '메뉴가 열리지 않았다');
       });
       _expectClean('상세 메뉴 $label', errors);
