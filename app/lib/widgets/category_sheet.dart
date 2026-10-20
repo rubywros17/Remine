@@ -179,7 +179,7 @@ class _CategoryTile extends StatelessWidget {
       child: AnimatedContainer(
         duration: AppMotion.duration(context, MotionDuration.fast),
         curve: AppMotion.standard,
-        height: 64,
+        constraints: const BoxConstraints(minHeight: 64),
         padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
           color: selected ? AppColors.lemon : AppColors.white,

@@ -240,3 +240,47 @@ class HighlighterText extends StatelessWidget {
     );
   }
 }
+
+/// 상단 헤더: 왼쪽 `remine.`, 오른쪽 알약(날짜·상태). 알약은 폭이 모자라면 줄어든다(`FittedBox`).
+/// 글자 폭은 폰트·글자 크기에 따라 달라서 고정 폭을 가정하지 않는다.
+class BrandHeader extends StatelessWidget {
+  const BrandHeader({
+    super.key,
+    required this.pillText,
+    this.color = AppColors.ink,
+  });
+
+  final String pillText;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Text('remine.', style: AppText.brand(color: color)),
+        const SizedBox(width: AppSpacing.s12),
+        Expanded(
+          child: Align(
+            alignment: Alignment.centerRight,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(AppRadii.pill),
+                  border: Border.all(color: color, width: 1.2),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  child: Text(pillText, style: AppText.numBadge(color: color)),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}

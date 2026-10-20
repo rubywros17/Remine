@@ -13,6 +13,8 @@ import '../widgets/thumb_placeholder.dart';
 import 'category_screen.dart';
 
 /// 스크린샷 상세: 셀라돈 배경, 기울어진 이미지 카드, 하단 카드(출처·카테고리 칩·요약·태그·"더 보기").
+///
+/// 레이아웃: 화면이 낮거나 글자가 크면 페이지 전체가 스크롤되고, 높이가 넉넉하면 정보 카드가 맨 아래에 붙는다.
 class DetailScreen extends StatefulWidget {
   const DetailScreen({super.key, required this.item});
 
@@ -75,43 +77,67 @@ class _DetailScreenState extends State<DetailScreen> {
       backgroundColor: AppColors.celadon,
       body: SafeArea(
         bottom: false,
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.s12,
-                AppSpacing.s8,
-                AppSpacing.screenPadding,
-                0,
-              ),
-              child: const Align(
-                alignment: Alignment.centerLeft,
-                child: BackButtonCircle(background: AppColors.white),
-              ),
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(vertical: AppSpacing.s16),
-                child: _ImageCard(item: _item, tag: tag),
-              ),
-            ),
-            _InfoCard(
-              item: _item,
-              sameInterestCount: _sameInterestCount,
-              onEditCategory: _editCategory,
-              onMore: tag == null
-                  ? null
-                  : () => Navigator.of(context).push(
-                      appRoute(
-                        context,
-                        (_) => CategoryScreen(
-                          category: _item.category,
-                          initialTag: tag,
+        child: LayoutBuilder(
+          builder: (context, box) {
+            // 이미지 영역 높이는 화면 높이에 비례(240~420). 글자가 들어가지 않아 내용과 무관하게 정할 수 있다.
+            final imageAreaHeight = (box.maxHeight * 0.42).clamp(240.0, 420.0);
+            // [Flutter 메모] 스크롤 안 Column은 높이가 무한이라 Expanded를 못 쓴다. 최소 높이 = 화면 높이로 두고
+            // spaceBetween으로 남는 높이를 위/아래 사이에 둔다(낮으면 스크롤).
+            return SingleChildScrollView(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minHeight: box.maxHeight),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Column(
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.fromLTRB(
+                            AppSpacing.s12,
+                            AppSpacing.s8,
+                            AppSpacing.screenPadding,
+                            0,
+                          ),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: BackButtonCircle(
+                              background: AppColors.white,
+                            ),
+                          ),
                         ),
-                      ),
+                        SizedBox(
+                          height: imageAreaHeight,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: AppSpacing.s16,
+                            ),
+                            child: _ImageCard(item: _item, tag: tag),
+                          ),
+                        ),
+                      ],
                     ),
-            ),
-          ],
+                    _InfoCard(
+                      item: _item,
+                      sameInterestCount: _sameInterestCount,
+                      onEditCategory: _editCategory,
+                      onMore: tag == null
+                          ? null
+                          : () => Navigator.of(context).push(
+                              appRoute(
+                                context,
+                                (_) => CategoryScreen(
+                                  category: _item.category,
+                                  initialTag: tag,
+                                ),
+                              ),
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
@@ -119,6 +145,7 @@ class _DetailScreenState extends State<DetailScreen> {
 }
 
 /// 기울어진 흰 이미지 카드(플레이스홀더) + #태그 스티커. 카드는 Hero로 그리드 썸네일에서 이어진다.
+/// 크기는 주어진 영역(세로·가로)을 넘지 않게 비율 0.62로 맞추고, 안쪽 막대는 카드 크기에 비례한다.
 class _ImageCard extends StatelessWidget {
   const _ImageCard({required this.item, required this.tag});
 
@@ -129,7 +156,6 @@ class _ImageCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final (_, block) = ThumbPlaceholder.colorsFor(item.id);
     return ExcludeSemantics(
-      // 사용할 수 있는 영역을 세로·가로 모두 넘지 않게 비율 0.62로 맞춘다.
       child: LayoutBuilder(
         builder: (context, box) {
           var width = box.maxHeight * 0.62;
@@ -152,36 +178,8 @@ class _ImageCard extends StatelessWidget {
                             borderRadius: BorderRadius.circular(AppRadii.card),
                           ),
                           child: Padding(
-                            padding: const EdgeInsets.all(AppSpacing.s16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  flex: 5,
-                                  child: DecoratedBox(
-                                    decoration: BoxDecoration(
-                                      color: block.withValues(alpha: 0.55),
-                                      borderRadius: BorderRadius.circular(
-                                        AppRadii.tile,
-                                      ),
-                                    ),
-                                    child: const SizedBox.expand(),
-                                  ),
-                                ),
-                                const SizedBox(height: AppSpacing.s12),
-                                _bar(double.infinity, AppColors.chip),
-                                const SizedBox(height: AppSpacing.s8),
-                                _bar(120, AppColors.chip),
-                                const SizedBox(height: AppSpacing.s8),
-                                _bar(64, AppColors.border),
-                                const Spacer(),
-                                _bar(
-                                  double.infinity,
-                                  AppColors.darkGray,
-                                  height: 34,
-                                ),
-                              ],
-                            ),
+                            padding: EdgeInsets.all(width * 0.07),
+                            child: _CardContent(block: block),
                           ),
                         ),
                       ),
@@ -201,17 +199,61 @@ class _ImageCard extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _bar(double width, Color color, {double height = 10}) => SizedBox(
-    width: width,
-    height: height,
-    child: DecoratedBox(
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(AppRadii.pill),
-      ),
-    ),
-  );
+/// 이미지 카드 안쪽(가짜 화면): 큰 블록 + 글자 막대들. 막대는 카드 폭 비율이고, 카드가 낮으면 블록만 남긴다.
+class _CardContent extends StatelessWidget {
+  const _CardContent({required this.block});
+
+  final Color block;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, box) {
+        final showBars = box.maxHeight >= 150;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: block.withValues(alpha: 0.55),
+                  borderRadius: BorderRadius.circular(AppRadii.tile),
+                ),
+                child: const SizedBox.expand(),
+              ),
+            ),
+            if (showBars) ...[
+              const SizedBox(height: AppSpacing.s12),
+              _bar(1.0, AppColors.chip),
+              const SizedBox(height: AppSpacing.s8),
+              _bar(0.6, AppColors.chip),
+              const SizedBox(height: AppSpacing.s8),
+              _bar(0.3, AppColors.border),
+              const SizedBox(height: AppSpacing.s12),
+              _bar(1.0, AppColors.darkGray, height: 28),
+            ],
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _bar(double widthFactor, Color color, {double height = 10}) =>
+      FractionallySizedBox(
+        widthFactor: widthFactor,
+        alignment: Alignment.centerLeft,
+        child: SizedBox(
+          height: height,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: color,
+              borderRadius: BorderRadius.circular(AppRadii.pill),
+            ),
+          ),
+        ),
+      );
 }
 
 class _InfoCard extends StatelessWidget {
@@ -242,25 +284,25 @@ class _InfoCard extends StatelessWidget {
       ),
       child: SafeArea(
         top: false,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.sizeOf(context).height * 0.55,
-          ),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        source,
-                        style: AppText.caption.copyWith(fontSize: 13),
-                      ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  // 출처 글자는 남는 폭 안에서 줄바꿈·말줄임, 카테고리 칩도 폭이 모자라면 줄어든다.
+                  Expanded(
+                    child: Text(
+                      source,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppText.caption.copyWith(fontSize: 13),
                     ),
-                    // 카테고리 칩: 누르면 수정 시트
-                    PressableScale(
+                  ),
+                  const SizedBox(width: AppSpacing.s8),
+                  Flexible(
+                    child: PressableScale(
                       onTap: onEditCategory,
                       label: '카테고리 ${item.category.label}, 눌러서 수정',
                       child: ConstrainedBox(
@@ -282,57 +324,60 @@ class _InfoCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: AppSpacing.s8),
-                Text(
-                  item.summary ?? item.category.label,
-                  style: AppText.cardTitle,
-                ),
-                const SizedBox(height: AppSpacing.s16),
-                Wrap(
-                  spacing: AppSpacing.s8,
-                  runSpacing: AppSpacing.s8,
-                  children: [
-                    for (final t in item.tags) AppChip.hashtag(label: '#$t'),
-                  ],
-                ),
-                if (onMore != null && sameInterestCount > 0) ...[
-                  const SizedBox(height: AppSpacing.s20),
-                  PressableScale(
-                    onTap: onMore,
-                    child: SizedBox(
-                      width: double.infinity,
-                      height: 56,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: AppColors.lemon,
-                          borderRadius: BorderRadius.circular(AppRadii.tile),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppSpacing.s8),
+              Text(
+                item.summary ?? item.category.label,
+                style: AppText.cardTitle,
+              ),
+              const SizedBox(height: AppSpacing.s16),
+              Wrap(
+                spacing: AppSpacing.s8,
+                runSpacing: AppSpacing.s8,
+                children: [
+                  for (final t in item.tags) AppChip.hashtag(label: '#$t'),
+                ],
+              ),
+              if (onMore != null && sameInterestCount > 0) ...[
+                const SizedBox(height: AppSpacing.s20),
+                PressableScale(
+                  onTap: onMore,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 56),
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: AppColors.lemon,
+                        borderRadius: BorderRadius.circular(AppRadii.tile),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
                         ),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  '같은 관심사 캡처 $sameInterestCount장 더 보기',
-                                  style: AppText.label.copyWith(fontSize: 15),
-                                ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '같은 관심사 캡처 $sameInterestCount장 더 보기',
+                                style: AppText.label.copyWith(fontSize: 15),
                               ),
-                              const Icon(
-                                LucideIcons.arrowRight,
-                                size: 20,
-                                color: AppColors.ink,
-                              ),
-                            ],
-                          ),
+                            ),
+                            const SizedBox(width: AppSpacing.s8),
+                            const Icon(
+                              LucideIcons.arrowRight,
+                              size: 20,
+                              color: AppColors.ink,
+                            ),
+                          ],
                         ),
                       ),
                     ),
                   ),
-                ],
+                ),
               ],
-            ),
+            ],
           ),
         ),
       ),

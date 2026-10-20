@@ -65,28 +65,7 @@ class _HomeScreenState extends State<HomeScreen> {
           AppSpacing.s24,
         ),
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('remine.', style: AppText.brand()),
-              DecoratedBox(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(AppRadii.pill),
-                  border: Border.all(color: AppColors.ink, width: 1.2),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 6,
-                  ),
-                  child: Text(
-                    formatWeekdayDate(store.now()),
-                    style: AppText.numBadge(),
-                  ),
-                ),
-              ),
-            ],
-          ),
+          BrandHeader(pillText: formatWeekdayDate(store.now())),
           const SizedBox(height: AppSpacing.s24),
           const HighlighterText(before: '잊고 있던 거,\n다시 ', highlight: '캐냈어요'),
           const SizedBox(height: AppSpacing.s24),
@@ -104,15 +83,27 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: AppSpacing.s32),
           ],
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text('내 캡처 서랍', style: AppText.sectionTitle),
-              Text(
-                '${summary.total} shots',
-                style: AppText.numBadge(color: AppColors.inkSub)
-                    .copyWith(fontSize: 14),
+              // 두 글자 모두 폭이 모자라면 줄어들고(말줄임) 넘치지 않는다.
+              Flexible(
+                child: Text(
+                  '내 캡처 서랍',
+                  style: AppText.sectionTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: AppSpacing.s12),
+              Flexible(
+                child: Text(
+                  '${summary.total} shots',
+                  style: AppText.numBadge(color: AppColors.inkSub)
+                      .copyWith(fontSize: 14),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
             ],
           ),
