@@ -288,6 +288,8 @@
 - [x] 이미지 수신 API(multipart, 메모리 전용)와 "빈 OCR + 이미지" 분류 경로
 - [x] 사용자 카테고리 수정(F-05): `auto_category` + `category_source(AUTO/USER)`, 같은 값 수정 = USER
 - [ ] 실사용 정확도 조회 API(`GET /api/categories/accuracy`) — 5주차 Key Numbers 측정 시 구현
+- [ ] 3주차 서버 연동 시 `GET /api/screenshots` 항목에 `autoCategory`, `categorySource` 추가 (수정 시트의 "AI는 X라고 했어요"에 필요. 서버 변경은 연동 PR에서)
+- [ ] `GET /api/interests` 응답 형식 (앱의 임시 모델 `Interest`: tag, category, captureCount, spanDays, dormantDays, screenshotIds)
 - [ ] 관심사 감지 규칙의 기준값 (기간, 횟수)
 - [ ] 하이브리드 기준값 재검증 (ML Kit OCR, 더 큰 표본)
 - [ ] 분류 힌트 입력(앱 이름, 인스타 저장 컬렉션 이름 등 화면 상단 문구) — **ML Kit(텍스트 위치 정보) 도입 후 재검토.**
