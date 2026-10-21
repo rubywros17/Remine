@@ -3,7 +3,9 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:remine/app.dart';
+import 'package:remine/core/tokens.dart';
 import 'package:remine/data/device/gallery_reader.dart';
 import 'package:remine/screens/debug_ocr_screen.dart';
 import 'package:remine/widgets/wordmark.dart';
@@ -221,6 +223,147 @@ void main() {
         await tester.pump();
         expect(find.text('300장 선택 · 최근 300장까지'), findsOneWidget);
       });
+    });
+
+    testWidgets('하단 패널 배경은 화면 전체 폭이고 아래 시스템 영역(제스처 바)까지 채운다', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.padding = const FakeViewPadding(top: 24, bottom: 34);
+      tester.view.viewPadding = const FakeViewPadding(top: 24, bottom: 34);
+      addTearDown(tester.view.reset);
+      final reader = FakeGalleryReader(photos: fakePhotos(3));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DebugOcrScreen(services: fakeServices(reader, exportTo: out)),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final panel = tester.getRect(find.byKey(const ValueKey('bottom-panel')));
+      expect(panel.left, 0);
+      expect(panel.right, 390);
+      expect(panel.bottom, 844); // 하단 시스템 영역까지
+      // 버튼은 시스템 영역 위에 있다(내용만 안쪽 여백)
+      expect(
+        tester.getRect(find.text('OCR 실행')).bottom,
+        lessThanOrEqualTo(844 - 34),
+      );
+    });
+
+    testWidgets(
+      '선택 표시: 사진이 0.86배로 줄고 15%만 어두워지며, 바깥에 3px 딥 셀라돈 테두리가 생기고 체크 원이 테두리 모서리에 붙는다',
+      (tester) async {
+        await pumpScreen(tester);
+        final tile = find.byKey(const ValueKey('photo-p0'));
+        final photo = find.descendant(
+          of: tile,
+          matching: find.byType(ClipRRect),
+        );
+        final before = tester.getRect(photo);
+        Finder dim() => find.descendant(
+          of: tile,
+          matching: find.byWidgetPredicate(
+            (w) => w is ColoredBox && w.color == AppColors.selectionDim,
+          ),
+        );
+        Finder whiteRing() => find.descendant(
+          of: tile,
+          matching: find.byWidgetPredicate(
+            (w) =>
+                w is DecoratedBox &&
+                w.decoration is BoxDecoration &&
+                (w.decoration as BoxDecoration).border?.top.color ==
+                    AppColors.white,
+          ),
+        );
+
+        // 미선택: 흰 테두리 빈 원 + 얇은 그림자, 어둡게 없음
+        expect(whiteRing(), findsOneWidget);
+        final ring =
+            tester.widget<DecoratedBox>(whiteRing()).decoration
+                as BoxDecoration;
+        expect(ring.boxShadow, isNotEmpty);
+        expect(dim(), findsNothing);
+        expect(
+          tester
+              .widget<AnimatedOpacity>(
+                find.descendant(
+                  of: tile,
+                  matching: find.byType(AnimatedOpacity),
+                ),
+              )
+              .opacity,
+          0,
+        ); // 테두리는 선택했을 때만 보인다
+
+        await tester.tap(tile);
+        await tester.pumpAndSettle();
+
+        final after = tester.getRect(photo);
+        expect(after.width, closeTo(before.width * 0.86, 0.5));
+        expect(after.center, before.center);
+        expect(AppColors.selectionDim.a, closeTo(0.15, 0.01));
+        expect(dim(), findsOneWidget);
+        // 바깥쪽 3px 딥 셀라돈 테두리: 줄어든 사진을 감싸고, 반경은 줄어든 반경 + 3
+        final borderBox = find.descendant(
+          of: tile,
+          matching: find.byKey(const ValueKey('thumb-border')),
+        );
+        final border = tester.getRect(borderBox);
+        expect(border.left, closeTo(after.left - 3, 0.5));
+        expect(border.right, closeTo(after.right + 3, 0.5));
+        expect(border.top, closeTo(after.top - 3, 0.5));
+        final deco =
+            tester.widget<DecoratedBox>(borderBox).decoration as BoxDecoration;
+        expect(deco.border!.top.color, AppColors.celadonDeep);
+        expect(deco.border!.top.width, 3);
+        expect(deco.borderRadius, BorderRadius.circular(12 * 0.86 + 3));
+        expect(
+          tester
+              .widget<AnimatedOpacity>(
+                find.ancestor(
+                  of: borderBox,
+                  matching: find.byType(AnimatedOpacity),
+                ),
+              )
+              .opacity,
+          1,
+        );
+        // 체크 원은 테두리까지 포함한 우상단 모서리 안쪽 6px에 있다
+        final check = tester.getRect(
+          find.descendant(of: tile, matching: find.byIcon(LucideIcons.check)),
+        );
+        expect(check.center.dx, closeTo(border.right - 6 - 11, 1));
+        expect(check.center.dy, closeTo(border.top + 6 + 11, 1));
+      },
+    );
+
+    testWidgets('애니메이션 줄이기: 축소가 바로 적용된다', (tester) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(disableAnimations: true);
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+      await pumpScreen(tester);
+      final tile = find.byKey(const ValueKey('photo-p0'));
+      final photo = find.descendant(of: tile, matching: find.byType(ClipRRect));
+      final before = tester.getRect(photo);
+
+      await tester.tap(tile);
+      await tester.pump(); // 프레임 한 번이면 끝난다(추가 시간 진행 없음)
+      await tester.pump();
+
+      expect(tester.getRect(photo).width, closeTo(before.width * 0.86, 0.5));
+      // 테두리도 즉시 나타난다
+      expect(
+        tester
+            .widget<AnimatedOpacity>(
+              find.descendant(of: tile, matching: find.byType(AnimatedOpacity)),
+            )
+            .opacity,
+        1,
+      );
+      expect(tester.binding.transientCallbackCount, 0);
     });
 
     testWidgets('아무것도 안 고르면 실행할 수 없고, 결과가 없으면 내보낼 수 없다', (tester) async {

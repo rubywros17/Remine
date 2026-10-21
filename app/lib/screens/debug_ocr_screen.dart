@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../core/tokens.dart';
 import '../data/device/device_capture_service.dart';
@@ -11,6 +10,7 @@ import '../data/device/ocr_export.dart';
 import '../data/device/ocr_store.dart';
 import '../widgets/app_button.dart';
 import '../widgets/pressable_scale.dart';
+import '../widgets/selectable_thumb.dart';
 import '../widgets/small_widgets.dart';
 
 /// [디버그 전용] 고른 사진의 OCR 결과를 JSON으로 내보내 ML Kit 기준으로 다시 측정한다.
@@ -142,6 +142,7 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
+        bottom: false, // 아래 시스템 영역은 하단 패널 배경이 채운다
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -236,10 +237,9 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
               : () => setState(
                   () => on ? _selected.remove(p.id) : _selected.add(p.id),
                 ),
-          child: _Thumb(
-            reader: widget.services.reader,
-            photoId: p.id,
+          child: SelectableThumb(
             selected: on,
+            child: _PhotoImage(reader: widget.services.reader, photoId: p.id),
           ),
         );
       },
@@ -249,58 +249,66 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
   Widget _bottomPanel() {
     final canRun = !_running && _selected.isNotEmpty;
     // 아주 작은 화면에서도 격자가 밀려나지 않게, 아래 패널은 화면의 40%까지만 쓰고 넘치면 스크롤한다.
-    return Material(
-      color: AppColors.chip,
-      child: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxHeight: MediaQuery.sizeOf(context).height * 0.4,
-        ),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(AppSpacing.screenPadding),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                _running
-                    ? '처리 중 $_done / ${_selected.length}'
-                    : '${_selected.length}장 선택 · 최근 ${DeviceCaptureService.maxPhotos}장까지',
-                style: AppText.label,
-              ),
-              if (_status.isNotEmpty) ...[
-                const SizedBox(height: AppSpacing.s4),
-                Text(_status, style: AppText.caption),
-              ],
-              const SizedBox(height: AppSpacing.s12),
-              Wrap(
-                spacing: AppSpacing.s8,
-                runSpacing: AppSpacing.s8,
+    // 배경은 화면 전체 폭 + 하단 시스템 영역까지 채우고(SizedBox 가로 최대), 안쪽 여백은 내용에만 준다.
+    return SizedBox(
+      width: double.infinity,
+      child: Material(
+        key: const ValueKey('bottom-panel'),
+        color: AppColors.chip,
+        child: SafeArea(
+          top: false,
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(context).height * 0.4,
+            ),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(AppSpacing.screenPadding),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (_running)
-                    AppButton(label: '멈추기', onTap: () => _cancel = true)
-                  else ...[
-                    AppButton(
-                      label: _selected.length == _photos.length
-                          ? '선택 해제'
-                          : '전체 선택',
-                      onTap: _photos.isEmpty ? null : _toggleAll,
-                      outlined: true,
-                    ),
-                    AppButton(label: 'OCR 실행', onTap: canRun ? _run : null),
-                    AppButton(
-                      label: 'JSON 내보내기',
-                      onTap: _records.isEmpty ? null : _export,
-                      outlined: true,
-                    ),
-                    AppButton(
-                      label: '저장된 결과 지우기',
-                      onTap: _clearLocal,
-                      outlined: true,
-                    ),
+                  Text(
+                    _running
+                        ? '처리 중 $_done / ${_selected.length}'
+                        : '${_selected.length}장 선택 · 최근 ${DeviceCaptureService.maxPhotos}장까지',
+                    style: AppText.label,
+                  ),
+                  if (_status.isNotEmpty) ...[
+                    const SizedBox(height: AppSpacing.s4),
+                    Text(_status, style: AppText.caption),
                   ],
+                  const SizedBox(height: AppSpacing.s12),
+                  Wrap(
+                    spacing: AppSpacing.s8,
+                    runSpacing: AppSpacing.s8,
+                    children: [
+                      if (_running)
+                        AppButton(label: '멈추기', onTap: () => _cancel = true)
+                      else ...[
+                        AppButton(
+                          label: _selected.length == _photos.length
+                              ? '선택 해제'
+                              : '전체 선택',
+                          onTap: _photos.isEmpty ? null : _toggleAll,
+                          outlined: true,
+                        ),
+                        AppButton(label: 'OCR 실행', onTap: canRun ? _run : null),
+                        AppButton(
+                          label: 'JSON 내보내기',
+                          onTap: _records.isEmpty ? null : _export,
+                          outlined: true,
+                        ),
+                        AppButton(
+                          label: '저장된 결과 지우기',
+                          onTap: _clearLocal,
+                          outlined: true,
+                        ),
+                      ],
+                    ],
+                  ),
                 ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -308,65 +316,29 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
   }
 }
 
-class _Thumb extends StatefulWidget {
-  const _Thumb({
-    required this.reader,
-    required this.photoId,
-    required this.selected,
-  });
+/// 갤러리 썸네일 한 장을 불러와 보여 준다(선택 표시는 [SelectableThumb]가 맡는다).
+class _PhotoImage extends StatefulWidget {
+  const _PhotoImage({required this.reader, required this.photoId});
 
   final GalleryReader reader;
   final String photoId;
-  final bool selected;
 
   @override
-  State<_Thumb> createState() => _ThumbState();
+  State<_PhotoImage> createState() => _PhotoImageState();
 }
 
-class _ThumbState extends State<_Thumb> {
+class _PhotoImageState extends State<_PhotoImage> {
   late final Future<Uint8List?> _bytes = widget.reader.thumbnail(
     widget.photoId,
   );
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          ColoredBox(
-            color: AppColors.chip,
-            child: FutureBuilder<Uint8List?>(
-              future: _bytes,
-              builder: (context, snap) => snap.data == null
-                  ? const SizedBox.shrink()
-                  : Image.memory(snap.data!, fit: BoxFit.cover),
-            ),
-          ),
-          if (widget.selected)
-            ColoredBox(color: AppColors.lemon.withValues(alpha: 0.4)),
-          if (widget.selected)
-            const Positioned(
-              top: 6,
-              right: 6,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: AppColors.ink,
-                  shape: BoxShape.circle,
-                ),
-                child: Padding(
-                  padding: EdgeInsets.all(3),
-                  child: Icon(
-                    LucideIcons.check,
-                    size: 14,
-                    color: AppColors.lemon,
-                  ),
-                ),
-              ),
-            ),
-        ],
-      ),
+    return FutureBuilder<Uint8List?>(
+      future: _bytes,
+      builder: (context, snap) => snap.data == null
+          ? const SizedBox.shrink()
+          : Image.memory(snap.data!, fit: BoxFit.cover),
     );
   }
 }
