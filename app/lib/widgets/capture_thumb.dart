@@ -21,6 +21,7 @@ class CaptureThumb extends StatefulWidget {
     required this.seed,
     this.radius = AppRadii.card,
     this.size = 360,
+    this.aspect,
     this.child,
   });
 
@@ -32,6 +33,9 @@ class CaptureThumb extends StatefulWidget {
 
   /// 요청할 썸네일 한 변(px). 클수록 선명하지만 무겁다.
   final int size;
+
+  /// 사진의 폭/높이 비율. 주면 그 비율대로 썸네일을 받아(정사각 크롭 없이) 카드에 사진 전체가 보인다.
+  final double? aspect;
   final Widget? child;
 
   @override
@@ -42,6 +46,7 @@ class _CaptureThumbState extends State<CaptureThumb> {
   GalleryReader? _reader;
   Future<Uint8List?>? _bytes;
   String? _loadedFor;
+  double? _loadedAspect;
 
   @override
   void didChangeDependencies() {
@@ -62,9 +67,15 @@ class _CaptureThumbState extends State<CaptureThumb> {
     if (reader == null) {
       _bytes = null;
       _loadedFor = null;
-    } else if (_loadedFor != widget.assetId) {
+    } else if (_loadedFor != widget.assetId || _loadedAspect != widget.aspect) {
       _loadedFor = widget.assetId;
-      _bytes = reader.thumbnail(widget.assetId, size: widget.size);
+      _loadedAspect = widget.aspect;
+      final aspect = widget.aspect;
+      _bytes = reader.thumbnail(
+        widget.assetId,
+        size: widget.size,
+        height: aspect == null ? null : (widget.size / aspect).round(),
+      );
     }
   }
 

@@ -129,7 +129,11 @@ abstract interface class GalleryReader {
   /// 최신순 최대 [limit]장.
   Future<List<GalleryPhoto>> recent(String albumId, {int limit = 300});
 
-  Future<Uint8List?> thumbnail(String photoId, {int size = 220});
+  /// 썸네일. [height]를 주면 [size] × [height]로(사진 비율에 맞춰) 요청한다 — 정사각으로 요청하면 가운데만 잘려 나온다.
+  Future<Uint8List?> thumbnail(String photoId, {int size = 220, int? height});
+
+  /// 사진의 폭/높이 비율(회전 반영). 알 수 없으면 null.
+  Future<double?> aspectRatio(String photoId);
 
   /// OCR 입력용 원본 바이트.
   Future<Uint8List?> bytes(String photoId);

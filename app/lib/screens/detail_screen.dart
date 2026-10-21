@@ -57,6 +57,34 @@ typedef _ThrowView = (double progress, bool pastLine);
 /// 이미지 카드의 화면 읽기용 동작(보이는 UI 없음). 라벨은 스크린 리더가 동작 목록에서 읽는다.
 const trashSemanticsAction = CustomSemanticsAction(label: '휴지통으로 옮기기');
 
+/// 사진 비율을 모를 때 쓰는 이미지 카드 기본 비율(폭/높이).
+const double detailCardDefaultAspect = 0.62;
+
+/// 이미지 카드 안쪽(사진) 폭이 바깥 폭에서 차지하는 비율. 나머지 0.14는 좌우 흰 테두리(0.07씩)다.
+const double _cardInnerFraction = 0.86;
+
+/// 영역([areaWidth] × [areaHeight]) 안에 들어가는 **가장 큰** 이미지 카드의 바깥 폭.
+///
+/// 폭은 영역 폭의 86%까지, 높이는 영역 높이까지이고 사진 비율([aspect], 폭/높이)을 지킨다.
+/// 테두리를 포함한 카드 높이는 `폭 × (0.86 / 비율 + 0.14)`이므로, 세로로 긴 사진은 높이 기준으로 폭이 정해진다.
+/// 사진 안쪽 영역의 비율이 사진과 같아 `cover`로 그려도 잘리지 않는다.
+double detailCardWidth({
+  required double areaWidth,
+  required double areaHeight,
+  double? aspect,
+}) {
+  final a = (aspect ?? detailCardDefaultAspect).clamp(0.2, 5.0);
+  final byWidth = areaWidth * 0.86;
+  final byHeight = areaHeight / (_cardInnerFraction / a + 0.14);
+  return byWidth < byHeight ? byWidth : byHeight;
+}
+
+/// [detailCardWidth]로 정한 폭의 카드 바깥 높이(테두리 포함).
+double detailCardHeight(double width, {double? aspect}) {
+  final a = (aspect ?? detailCardDefaultAspect).clamp(0.2, 5.0);
+  return width * (_cardInnerFraction / a + 0.14);
+}
+
 class _DetailScreenState extends State<DetailScreen> {
   late final List<ScreenshotItem> _items = [...widget.items];
   late int _index = widget.initialIndex.clamp(0, _items.length - 1);
@@ -124,7 +152,7 @@ class _DetailScreenState extends State<DetailScreen> {
     messenger.showSnackBar(
       SnackBar(
         content: Text(
-          '휴지통으로 옮겼어',
+          '휴지통으로 옮겼어요',
           style: AppText.label.copyWith(color: AppColors.white),
         ),
         duration: AppGesture.undoDuration,
@@ -442,52 +470,59 @@ class _DetailPageState extends State<_DetailPage> {
     final tag = _mainTag;
     return LayoutBuilder(
       builder: (context, box) {
-        // 이미지 영역 높이는 화면 높이에 비례(240~460). 글자가 들어가지 않아 내용과 무관하게 정할 수 있다.
-        final imageAreaHeight = (box.maxHeight * 0.46).clamp(240.0, 460.0);
-        // 스크롤 안 Column은 높이가 무한이라 Expanded를 못 쓴다. 최소 높이 = 화면 높이로 두고 spaceBetween으로
-        // 세 묶음(상단 여백 / 이미지 / 정보 카드) 사이에 남는 높이를 나눈다 → 이미지 카드가 남는 공간의 가운데에 놓인다.
+        // 이미지 영역은 상단 바와 정보 카드 사이의 **남는 높이를 모두** 차지한다(최소 240, 모자라면 페이지가 스크롤).
+        // 스크롤 안 Column은 높이가 무한이라 Expanded를 못 쓴다 → 최소 높이 = 화면 높이로 두고 IntrinsicHeight로
+        // 정보 카드의 고유 높이를 먼저 정한 뒤, 남는 높이를 Expanded(이미지 영역)에 준다.
         return SingleChildScrollView(
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: box.maxHeight),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: _topBarHeight),
-                SizedBox(
-                  key: ValueKey('image-area-${_item.id}'),
-                  height: imageAreaHeight,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: AppSpacing.s16,
-                    ),
-                    child: _ThrowCard(
-                      item: _item,
-                      tag: tag,
-                      isCurrent: widget.isCurrent,
-                      view: widget.view,
-                      arriveToken: widget.arriveToken,
-                      onTrash: widget.onTrash,
-                    ),
-                  ),
-                ),
-                _InfoCard(
-                  item: _item,
-                  sameInterestCount: _sameInterestCount,
-                  onEditCategory: _editCategory,
-                  onMore: tag == null
-                      ? null
-                      : () => Navigator.of(context).push(
-                          appRoute(
-                            context,
-                            (_) => CategoryScreen(
-                              category: _item.category,
-                              initialTag: tag,
-                            ),
+            child: IntrinsicHeight(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: _topBarHeight),
+                  Expanded(
+                    key: ValueKey('image-area-${_item.id}'),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 240),
+                      // IntrinsicHeight는 자식의 고유 높이를 묻는데 LayoutBuilder(카드)는 대답하지 못한다.
+                      // 그래서 고유 높이를 묻지 않고 영역을 그대로 채우는 레이아웃으로 한 번 감싼다.
+                      child: CustomSingleChildLayout(
+                        delegate: const _FillAreaDelegate(),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: AppSpacing.s8,
+                          ),
+                          child: _ThrowCard(
+                            item: _item,
+                            tag: tag,
+                            isCurrent: widget.isCurrent,
+                            view: widget.view,
+                            arriveToken: widget.arriveToken,
+                            onTrash: widget.onTrash,
                           ),
                         ),
-                ),
-              ],
+                      ),
+                    ),
+                  ),
+                  _InfoCard(
+                    item: _item,
+                    sameInterestCount: _sameInterestCount,
+                    onEditCategory: _editCategory,
+                    onMore: tag == null
+                        ? null
+                        : () => Navigator.of(context).push(
+                            appRoute(
+                              context,
+                              (_) => CategoryScreen(
+                                category: _item.category,
+                                initialTag: tag,
+                              ),
+                            ),
+                          ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -496,8 +531,25 @@ class _DetailPageState extends State<_DetailPage> {
   }
 }
 
+/// 주어진 제약을 그대로 채우고 자식에게도 그 제약을 준다. [SizedBox.expand]와 같지만 고유 높이를 묻지 않아
+/// [IntrinsicHeight] 안에서도 안전하다.
+class _FillAreaDelegate extends SingleChildLayoutDelegate {
+  const _FillAreaDelegate();
+
+  @override
+  Size getSize(BoxConstraints constraints) => constraints.biggest;
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
+      constraints;
+
+  @override
+  bool shouldRelayout(covariant _FillAreaDelegate old) => false;
+}
+
 /// 기울어진 흰 이미지 카드(플레이스홀더) + #태그 스티커. 현재 페이지에서는 Hero로 그리드 썸네일과 이어진다.
-/// 크기는 주어진 영역(세로·가로)을 넘지 않게 비율 0.62로 맞추고, 안쪽 막대는 카드 크기에 비례한다.
+/// 크기는 [detailCardWidth] 규칙: 영역 안에서 **사진의 실제 비율**을 지키는 가장 큰 카드(폭은 영역의 86%까지).
+/// 비율을 모르면 0.62. 가짜 데이터 모드의 안쪽 막대는 카드 크기에 비례한다.
 ///
 /// 세로 제스처는 이 카드에만 건다(정보 카드의 세로 스크롤·좌우 넘기기와 겹치지 않게):
 /// - 아래로 쓸어내리면 닫힌다.
@@ -548,6 +600,29 @@ class _ThrowCardState extends State<_ThrowCard> with TickerProviderStateMixin {
   Offset _flyTarget = Offset.zero;
   double _flyStartDy = 0;
   double _flyStartScale = 1;
+
+  /// 사진의 실제 폭/높이 비율. 읽어 오기 전·못 읽으면 null → 기본 비율로 그린다(가짜 데이터 모드는 항상 null).
+  double? _aspect;
+  String? _aspectFor;
+
+  // InheritedWidget(DeviceScope)은 initState가 아니라 didChangeDependencies부터 읽을 수 있다.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reader = DeviceScope.maybeOf(context)?.reader;
+    final id = widget.item.localAssetId;
+    if (reader != null && _aspectFor != id) {
+      _aspectFor = id;
+      reader
+          .aspectRatio(id)
+          .then((a) {
+            if (mounted && a != null && a != _aspect) {
+              setState(() => _aspect = a);
+            }
+          })
+          .catchError((_) {}); // 비율을 못 읽어도 기본 비율로 그린다
+    }
+  }
 
   @override
   void didUpdateWidget(covariant _ThrowCard old) {
@@ -746,8 +821,12 @@ class _ThrowCardState extends State<_ThrowCard> with TickerProviderStateMixin {
     final card = ExcludeSemantics(
       child: LayoutBuilder(
         builder: (context, box) {
-          var width = box.maxHeight * 0.62;
-          if (width > box.maxWidth * 0.68) width = box.maxWidth * 0.68;
+          // 영역 안에서 사진 비율을 지키는 가장 큰 카드. 세로로 긴 사진이면 높이 기준으로 폭이 정해진다.
+          final width = detailCardWidth(
+            areaWidth: box.maxWidth,
+            areaHeight: box.maxHeight,
+            aspect: _aspect,
+          );
           final visual = Transform.rotate(
             angle: decorAngle(item.id, max: 0.07),
             child: DecoratedBox(
@@ -757,14 +836,14 @@ class _ThrowCardState extends State<_ThrowCard> with TickerProviderStateMixin {
               ),
               child: Padding(
                 padding: EdgeInsets.all(width * 0.07),
-                child: _CardContent(item: item, block: block),
+                child: _CardContent(item: item, block: block, aspect: _aspect),
               ),
             ),
           );
           return Center(
             child: SizedBox(
               width: width,
-              height: width / 0.62,
+              height: detailCardHeight(width, aspect: _aspect),
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
@@ -820,10 +899,13 @@ class _ThrowCardState extends State<_ThrowCard> with TickerProviderStateMixin {
 /// 이미지 카드 안쪽. 기기 모드에서는 **기기 사진**(없으면 "사진이 없어요" 자리 표시)이 카드를 채운다.
 /// 가짜 데이터 모드(크롬·테스트)에서는 큰 블록 + 글자 막대들이다. 막대는 카드 폭 비율이고, 카드가 낮으면 블록만 남긴다.
 class _CardContent extends StatelessWidget {
-  const _CardContent({required this.item, required this.block});
+  const _CardContent({required this.item, required this.block, this.aspect});
 
   final ScreenshotItem item;
   final Color block;
+
+  /// 사진의 폭/높이 비율(알 때만). 썸네일을 이 비율로 받아 카드에 사진 전체가 보이게 한다.
+  final double? aspect;
 
   @override
   Widget build(BuildContext context) {
@@ -833,6 +915,7 @@ class _CardContent extends StatelessWidget {
         seed: item.id,
         radius: AppRadii.tile,
         size: 720,
+        aspect: aspect,
       );
     }
     return LayoutBuilder(
@@ -946,7 +1029,9 @@ class _InfoCard extends StatelessWidget {
                           : '카테고리 ${item.category.label}, 눌러서 수정',
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(minHeight: 48),
+                        // widthFactor: 1 — 칸을 칩 폭에만 맞춘다(없으면 가용 폭 전체로 늘어나 칩이 가운데에 뜬다).
                         child: Center(
+                          widthFactor: 1,
                           child: AppChip.outlined(
                             label: item.category.label,
                             leading: Icon(
