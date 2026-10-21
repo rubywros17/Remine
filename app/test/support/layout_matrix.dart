@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' hide Category;
@@ -6,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:remine/app.dart';
+import 'package:remine/data/device/device_capture_service.dart';
 import 'package:remine/data/device/device_services.dart';
 import 'package:remine/data/device/gallery_reader.dart';
 import 'package:remine/data/device/privacy/local_verdict_store.dart';
@@ -350,6 +352,46 @@ void defineLayoutMatrix({
       _expectClean('분석 제외 $label', errors);
     });
 
+    testWidgets('디버그 OCR 처리 중(999 / 999 + 진행 막대) · $label', (tester) async {
+      final done = Completer<void>();
+      addTearDown(() {
+        if (!done.isCompleted) done.complete();
+      });
+      final errors = await _errorsDuring(() async {
+        final reader = _AllPhotosReader(fakePhotos(999));
+        final base = fakeServices(reader);
+        final services = DeviceServices(
+          reader: reader,
+          capture: _StallingCapture(base.capture, done.future),
+          settings: base.settings,
+          exportDir: base.exportDir,
+        );
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1.0;
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.view.reset);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await tester.pumpWidget(
+          MaterialApp(home: DebugOcrScreen(services: services)),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('전체 선택'), warnIfMissed: false);
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('OCR 실행')); // 아주 작은 화면에서는 패널 안을 스크롤해야 보인다
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('OCR 실행'), warnIfMissed: false);
+        await tester.pump();
+        await tester.pump();
+        expect(find.text('처리 중 999 / 999'), findsOneWidget);
+        expect(find.byKey(const ValueKey('ocr-progress')), findsOneWidget);
+        expect(find.text('멈추기'), findsOneWidget);
+        done.complete(); // 끝나면 원래 버튼들이 돌아온다
+        await tester.pumpAndSettle();
+        expect(find.text('멈추기'), findsNothing);
+      });
+      _expectClean('처리 중 $label', errors);
+    });
+
     testWidgets('디버그 앱 이름별 개수 시트 · $label', (tester) async {
       final errors = await _errorsDuring(() async {
         final reader = FakeGalleryReader(
@@ -387,5 +429,39 @@ void defineLayoutMatrix({
       );
       _expectClean('첫 분석 $label', errors);
     });
+  }
+}
+
+/// 앨범의 사진을 장수 제한 없이 돌려주는 갤러리(999장 화면을 만들려는 테스트용).
+class _AllPhotosReader extends FakeGalleryReader {
+  _AllPhotosReader(List<GalleryPhoto> all) : super(photos: all);
+
+  @override
+  Future<List<GalleryPhoto>> recent(String albumId, {int limit = 300}) async =>
+      photos;
+}
+
+/// 전부 처리했다고 알린 직후 [release]될 때까지 끝나지 않는 서비스(처리 중 화면을 붙잡아 둔다).
+class _StallingCapture extends DeviceCaptureService {
+  _StallingCapture(DeviceCaptureService base, this.release)
+    : super(
+        reader: base.reader,
+        ocr: base.ocr,
+        store: base.store,
+        temp: base.temp,
+        verdicts: base.verdicts,
+      );
+
+  final Future<void> release;
+
+  @override
+  Future<OcrRun> run(
+    List<GalleryPhoto> photos, {
+    void Function(int done, int total)? onProgress,
+    bool Function()? isCancelled,
+  }) async {
+    onProgress?.call(photos.length, photos.length);
+    await release;
+    return const OcrRun(records: [], failed: 0, skipped: 0);
   }
 }
