@@ -3,15 +3,18 @@ import 'dart:ui' show lerpDouble;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
+import 'package:flutter/semantics.dart' show CustomSemanticsAction;
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../core/helpers.dart';
 import '../core/tokens.dart';
+import '../data/device/device_services.dart';
 import '../data/remine_store.dart';
 import '../data/remote/api_client.dart' show ApiException;
 import '../models/category_update.dart';
 import '../models/screenshot_item.dart';
+import '../widgets/capture_thumb.dart';
 import '../widgets/category_sheet.dart';
 import '../widgets/home_widgets.dart';
 import '../widgets/pressable_scale.dart';
@@ -50,6 +53,9 @@ class DetailScreen extends StatefulWidget {
 /// 위로 끄는 진행도(0~1.15, 1이 기준선)와 기준선 통과 여부. 오버레이(배경·휴지통 아이콘)가 이 값을 따라간다.
 typedef _ThrowView = (double progress, bool pastLine);
 
+/// 이미지 카드의 화면 읽기용 동작(보이는 UI 없음). 라벨은 스크린 리더가 동작 목록에서 읽는다.
+const trashSemanticsAction = CustomSemanticsAction(label: '휴지통으로 옮기기');
+
 class _DetailScreenState extends State<DetailScreen> {
   late final List<ScreenshotItem> _items = [...widget.items];
   late int _index = widget.initialIndex.clamp(0, _items.length - 1);
@@ -57,9 +63,6 @@ class _DetailScreenState extends State<DetailScreen> {
 
   /// 끄는 동안의 진행도. 값이 바뀌어도 페이지 전체를 다시 만들지 않도록 ValueNotifier로 따로 둔다.
   final ValueNotifier<_ThrowView> _view = ValueNotifier((0.0, false));
-
-  /// 메뉴("⋯ → 휴지통으로")가 현재 카드를 위로 날려 보낼 수 있도록 카드 State에 닿는 키.
-  final Map<int, GlobalKey<_ThrowCardState>> _cardKeys = {};
 
   /// 휴지통 처리 뒤 새로 나타난 항목의 도착 애니메이션을 한 번 재생하기 위한 표시.
   int? _arrivalId;
@@ -101,7 +104,6 @@ class _DetailScreenState extends State<DetailScreen> {
     final wasLast = index == _items.length - 1;
     setState(() {
       _items.removeAt(index);
-      _cardKeys.remove(removed.id);
       if (_items.isNotEmpty) {
         _index = wasLast ? _items.length - 1 : index;
         if (!wasLast) {
@@ -167,16 +169,6 @@ class _DetailScreenState extends State<DetailScreen> {
     });
   }
 
-  /// "⋯ → 휴지통으로": 카드가 위로 빨려 들어가는 같은 동작(애니메이션 줄이기면 즉시 처리).
-  void _requestTrash(ScreenshotItem item) {
-    final card = _cardKeys[item.id]?.currentState;
-    if (card != null) {
-      card.flyToTrash();
-    } else {
-      _trash(item);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -216,12 +208,10 @@ class _DetailScreenState extends State<DetailScreen> {
                     key: ValueKey(item.id),
                     item: item,
                     isCurrent: i == _index,
-                    cardKey: _cardKeys.putIfAbsent(item.id, GlobalKey.new),
                     view: _view,
                     arriveToken: item.id == _arrivalId ? _arrivalToken : 0,
                     onChanged: _replaceItem,
                     onTrash: () => _trash(item),
-                    onRequestTrash: () => _requestTrash(item),
                   );
                 },
               ),
@@ -371,24 +361,20 @@ class _DetailPage extends StatefulWidget {
     super.key,
     required this.item,
     required this.isCurrent,
-    required this.cardKey,
     required this.view,
     required this.arriveToken,
     required this.onChanged,
     required this.onTrash,
-    required this.onRequestTrash,
   });
 
   final ScreenshotItem item;
 
   /// 지금 보고 있는 페이지인가. 현재 페이지의 이미지 카드에만 Hero를 건다(이웃 페이지와 태그 중복 방지).
   final bool isCurrent;
-  final GlobalKey<_ThrowCardState> cardKey;
   final ValueNotifier<_ThrowView> view;
   final int arriveToken;
   final ValueChanged<ScreenshotItem> onChanged;
   final Future<void> Function() onTrash;
-  final VoidCallback onRequestTrash;
 
   @override
   State<_DetailPage> createState() => _DetailPageState();
@@ -475,7 +461,6 @@ class _DetailPageState extends State<_DetailPage> {
                       vertical: AppSpacing.s16,
                     ),
                     child: _ThrowCard(
-                      key: widget.cardKey,
                       item: _item,
                       tag: tag,
                       isCurrent: widget.isCurrent,
@@ -489,7 +474,6 @@ class _DetailPageState extends State<_DetailPage> {
                   item: _item,
                   sameInterestCount: _sameInterestCount,
                   onEditCategory: _editCategory,
-                  onTrash: widget.onRequestTrash,
                   onMore: tag == null
                       ? null
                       : () => Navigator.of(context).push(
@@ -520,7 +504,6 @@ class _DetailPageState extends State<_DetailPage> {
 ///   기준선(화면 높이 1/3) 또는 위쪽 속도 임계값을 넘겨 놓으면 휴지통으로 빨려 들어간다. 모자라면 스프링으로 복귀.
 class _ThrowCard extends StatefulWidget {
   const _ThrowCard({
-    super.key,
     required this.item,
     required this.tag,
     required this.isCurrent,
@@ -667,7 +650,7 @@ class _ThrowCardState extends State<_ThrowCard> with TickerProviderStateMixin {
     _startFly();
   }
 
-  /// 정보 카드의 "⋯ → 휴지통으로": 같은 동작을 제스처 없이 실행한다.
+  /// 이미지 카드의 화면 읽기용 동작 "휴지통으로 옮기기": 위로 던지는 것과 같은 동작을 제스처 없이 실행한다.
   Future<void> flyToTrash() async {
     if (_flying) return;
     _dy = 0;
@@ -759,7 +742,7 @@ class _ThrowCardState extends State<_ThrowCard> with TickerProviderStateMixin {
               ),
               child: Padding(
                 padding: EdgeInsets.all(width * 0.07),
-                child: _CardContent(block: block),
+                child: _CardContent(item: item, block: block),
               ),
             ),
           );
@@ -789,18 +772,27 @@ class _ThrowCardState extends State<_ThrowCard> with TickerProviderStateMixin {
       ),
     );
 
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onVerticalDragStart: widget.isCurrent ? _onDragStart : null,
-      onVerticalDragUpdate: widget.isCurrent ? _onDragUpdate : null,
-      onVerticalDragEnd: widget.isCurrent ? _onDragEnd : null,
-      child: Opacity(
-        opacity: opacity.clamp(0.0, 1.0),
-        child: Transform.translate(
-          offset: Offset(dx, dy),
-          child: Transform.rotate(
-            angle: angle,
-            child: Transform.scale(scale: scale, child: card),
+    // 화면 읽기(TalkBack 등) 전용 동작. 화면에 보이는 버튼은 없다 — 삭제는 위로 던지기뿐이고,
+    // 스크린 리더 사용자는 이미지 카드의 동작 목록에서 같은 동작을 고른다.
+    return Semantics(
+      container: true,
+      label: '캡처 이미지',
+      customSemanticsActions: widget.isCurrent && !_flying
+          ? {trashSemanticsAction: () => flyToTrash()}
+          : const {},
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onVerticalDragStart: widget.isCurrent ? _onDragStart : null,
+        onVerticalDragUpdate: widget.isCurrent ? _onDragUpdate : null,
+        onVerticalDragEnd: widget.isCurrent ? _onDragEnd : null,
+        child: Opacity(
+          opacity: opacity.clamp(0.0, 1.0),
+          child: Transform.translate(
+            offset: Offset(dx, dy),
+            child: Transform.rotate(
+              angle: angle,
+              child: Transform.scale(scale: scale, child: card),
+            ),
           ),
         ),
       ),
@@ -808,14 +800,24 @@ class _ThrowCardState extends State<_ThrowCard> with TickerProviderStateMixin {
   }
 }
 
-/// 이미지 카드 안쪽(가짜 화면): 큰 블록 + 글자 막대들. 막대는 카드 폭 비율이고, 카드가 낮으면 블록만 남긴다.
+/// 이미지 카드 안쪽. 기기 모드에서는 **기기 사진**(없으면 "사진이 없어요" 자리 표시)이 카드를 채운다.
+/// 가짜 데이터 모드(크롬·테스트)에서는 큰 블록 + 글자 막대들이다. 막대는 카드 폭 비율이고, 카드가 낮으면 블록만 남긴다.
 class _CardContent extends StatelessWidget {
-  const _CardContent({required this.block});
+  const _CardContent({required this.item, required this.block});
 
+  final ScreenshotItem item;
   final Color block;
 
   @override
   Widget build(BuildContext context) {
+    if (DeviceScope.maybeOf(context) != null) {
+      return CaptureThumb(
+        assetId: item.localAssetId,
+        seed: item.id,
+        radius: AppRadii.tile,
+        size: 720,
+      );
+    }
     return LayoutBuilder(
       builder: (context, box) {
         final showBars = box.maxHeight >= 150;
@@ -863,8 +865,6 @@ class _CardContent extends StatelessWidget {
       );
 }
 
-enum _CardAction { trash }
-
 /// 기기에서 분류한 캡처(음수 id)의 카테고리 수정 버튼이 막힌 이유.
 const deviceClassifiedNotice = '기기에서 분류한 캡처라 아직 바꿀 수 없어요';
 
@@ -873,7 +873,6 @@ class _InfoCard extends StatelessWidget {
     required this.item,
     required this.sameInterestCount,
     required this.onEditCategory,
-    required this.onTrash,
     required this.onMore,
   });
 
@@ -881,8 +880,6 @@ class _InfoCard extends StatelessWidget {
   final int sameInterestCount;
   final VoidCallback onEditCategory;
 
-  /// "⋯ → 휴지통으로" (위로 던지는 제스처와 같은 동작. 제스처가 어려운 사용자를 위한 대체 경로)
-  final VoidCallback onTrash;
   final VoidCallback? onMore;
 
   @override
@@ -902,7 +899,7 @@ class _InfoCard extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 8, 16),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -948,107 +945,65 @@ class _InfoCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  PopupMenuButton<_CardAction>(
-                    key: ValueKey('more-menu-${item.id}'),
-                    tooltip: '더 보기 메뉴',
-                    icon: const Icon(
-                      LucideIcons.ellipsis,
-                      size: 22,
-                      color: AppColors.ink,
-                    ),
-                    color: AppColors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppRadii.tile),
-                    ),
-                    popUpAnimationStyle: AppMotion.reduced(context)
-                        ? AnimationStyle.noAnimation
-                        : null,
-                    onSelected: (_) => onTrash(),
-                    itemBuilder: (context) => [
-                      PopupMenuItem(
-                        value: _CardAction.trash,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              LucideIcons.trash2,
-                              size: 18,
-                              color: AppColors.ink,
-                            ),
-                            const SizedBox(width: AppSpacing.s12),
-                            Text('휴지통으로', style: AppText.label),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
                 ],
               ),
-              Padding(
-                padding: const EdgeInsets.only(right: 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (item.id < 0) ...[
-                      Text(deviceClassifiedNotice, style: AppText.caption),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (item.id < 0) ...[
+                    Text(deviceClassifiedNotice, style: AppText.caption),
+                  ],
+                  const SizedBox(height: AppSpacing.s8),
+                  Text(
+                    item.summary ?? item.category.label,
+                    style: AppText.cardTitle,
+                  ),
+                  const SizedBox(height: AppSpacing.s16),
+                  Wrap(
+                    spacing: AppSpacing.s8,
+                    runSpacing: AppSpacing.s8,
+                    children: [
+                      for (final t in item.tags) AppChip.hashtag(label: '#$t'),
                     ],
-                    const SizedBox(height: AppSpacing.s8),
-                    Text(
-                      item.summary ?? item.category.label,
-                      style: AppText.cardTitle,
-                    ),
-                    const SizedBox(height: AppSpacing.s16),
-                    Wrap(
-                      spacing: AppSpacing.s8,
-                      runSpacing: AppSpacing.s8,
-                      children: [
-                        for (final t in item.tags)
-                          AppChip.hashtag(label: '#$t'),
-                      ],
-                    ),
-                    if (onMore != null && sameInterestCount > 0) ...[
-                      const SizedBox(height: AppSpacing.s20),
-                      PressableScale(
-                        onTap: onMore,
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(minHeight: 56),
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: AppColors.lemon,
-                              borderRadius: BorderRadius.circular(
-                                AppRadii.tile,
-                              ),
+                  ),
+                  if (onMore != null && sameInterestCount > 0) ...[
+                    const SizedBox(height: AppSpacing.s20),
+                    PressableScale(
+                      onTap: onMore,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 56),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: AppColors.lemon,
+                            borderRadius: BorderRadius.circular(AppRadii.tile),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
                             ),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 12,
-                              ),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      '같은 관심사 캡처 $sameInterestCount장 더 보기',
-                                      style: AppText.label.copyWith(
-                                        fontSize: 15,
-                                      ),
-                                    ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    '같은 관심사 캡처 $sameInterestCount장 더 보기',
+                                    style: AppText.label.copyWith(fontSize: 15),
                                   ),
-                                  const SizedBox(width: AppSpacing.s8),
-                                  const Icon(
-                                    LucideIcons.arrowRight,
-                                    size: 20,
-                                    color: AppColors.ink,
-                                  ),
-                                ],
-                              ),
+                                ),
+                                const SizedBox(width: AppSpacing.s8),
+                                const Icon(
+                                  LucideIcons.arrowRight,
+                                  size: 20,
+                                  color: AppColors.ink,
+                                ),
+                              ],
                             ),
                           ),
                         ),
                       ),
-                    ],
+                    ),
                   ],
-                ),
+                ],
               ),
             ],
           ),

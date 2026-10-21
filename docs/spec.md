@@ -110,7 +110,7 @@
 - 새 카테고리를 만드는 **사용자 정의 카테고리**와는 별개이며 MVP 이후다.
 
 **F-06. 사진 정리(휴지통)** — 앱 내 휴지통(이번 단계) / 기기·서버 삭제(3주차 이후)
-- 상세 화면에서 캡처를 **위로 던져** 휴지통으로 옮긴다(`⋯` → "휴지통으로"도 가능). 되돌리기는 몇 초(4초) 동안 스낵바로 제공한다. 모션·제스처 명세는 [design.md](design.md)의 상세 화면.
+- 상세 화면에서 캡처를 **위로 던져** 휴지통으로 옮긴다(보이는 메뉴는 없고, 화면 읽기 동작 "휴지통으로 옮기기"로도 가능). 되돌리기는 몇 초(4초) 동안 스낵바로 제공한다. 모션·제스처 명세는 [design.md](design.md)의 상세 화면.
 - **지금 구현 범위(앱 내 휴지통)**: 앱의 Repository에만 `trash`/`restore` 개념이 있다. 휴지통 항목은 목록·카테고리 개수·대표 태그·최신 썸네일·관심사 집계에서 빠지고, 되돌리면 원래 위치(`taken_at` 최신순)로 돌아온다. 휴지통 항목의 카테고리는 수정할 수 없다. **서버와 기기 사진은 건드리지 않는다.**
 - **3주차 이후 범위(미정, 제안만)**: ① 실제 **기기 사진 삭제 또는 시스템 휴지통 이동**(안드로이드는 `MediaStore` 휴지통 API/삭제 권한 확인이 필요, 사용자 확인 절차 설계) ② **서버 삭제 API**(예: `DELETE /api/screenshots/{id}` 또는 휴지통 상태 동기화 — 서버에 이미 저장된 OCR 텍스트·카테고리·태그·요약을 어떻게 지울지, 휴지통 보관 기간) ③ 휴지통 화면(목록·비우기·복원). MVP 범위 밖이라 구현하지 않고 제안으로만 둔다.
 - 개인정보: 휴지통으로 옮기는 것은 서버 전송과 무관하다. 서버 삭제가 생기면 "저장하는 항목(OCR 텍스트·카테고리·태그·요약)"의 삭제 방식을 처리방침에 명시한다.
@@ -220,7 +220,7 @@
 | Method | Path | 설명 |
 |---|---|---|
 | POST | `/api/devices` | 기기 등록 (FCM 토큰 포함) |
-| GET | `/api/config` | 분석 설정 조회(헤더 불필요). `{imageThresholdChars:150, maxBatchSize:20, imageMaxBytes:1048576, imageMaxLongSide:1024, imageContentType:"image/jpeg", maxRequestBytes:12582912}` — 모두 서버 설정(`remine.*`)에서 읽는다 |
+| GET | `/api/config` | 분석 설정 조회(헤더 불필요). `{imageThresholdChars:150, maxBatchSize:20, imageMaxBytes:1048576, imageMaxLongSide:1024, imageContentType:"image/jpeg", maxRequestBytes:12582912, classifyIntervalMs:0}` — 모두 서버 설정(`remine.*`)에서 읽는다. `classifyIntervalMs`는 장당 분류 최소 간격(gemini면 `min-interval-ms`, 가짜 분류기는 0)이며 앱이 남은 시간을 처음부터 예상하는 데 쓴다 |
 | POST | `/api/screenshots/analyze` | OCR 텍스트 배치(최대 20장, 초과 시 400) 전송 → 분류 결과 반환 `{analyzed, skipped, failed}`. 일부 분류가 실패해도 200이며 실패한 캡처는 `failed`(`localAssetId`, `reason`)에 담기고 미분석으로 남는다(같은 요청을 다시 보내면 재분석). 요청 형식은 둘 중 하나: ① `application/json` — 기존 본문(이미지 없음), ② `multipart/form-data` — 아래 |
 
 **analyze multipart 형식**: `request` 파트(텍스트, 위 JSON 본문과 같은 스키마) + 이미지 파트 `image.<localAssetId>`(JPEG, 캡처당 최대 1개, 이미지는 동의한 경우의 짧은 OCR 캡처에만). 이미지는 저장·로그하지 않는다.
