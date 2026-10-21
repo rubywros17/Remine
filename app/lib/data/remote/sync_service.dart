@@ -74,7 +74,7 @@ class SyncService {
             e.modifiedAt == photo.modifiedAt;
         if (!upToDate) pending.add(photo);
       }
-      status.begin(pending.length);
+      status.begin(pending.length, intervalMs: config.classifyIntervalMs);
       var deviceIdNow = deviceId;
       for (var i = 0; i < pending.length; i += config.maxBatchSize) {
         final chunk = pending.sublist(
@@ -208,10 +208,13 @@ class SyncService {
       round++;
       final AnalyzeResult result;
       try {
+        status.setWaiting(send.length); // 화면이 "분류하는 중"을 보여 준다
         result = await api.analyze(currentDevice, [
           for (final o in send.values) o.toItem(),
         ]);
+        status.setWaiting(0);
       } on ApiException catch (e) {
+        status.setWaiting(0);
         if (e.failure == ApiFailure.rejected &&
             e.statusCode == 404 &&
             !reregistered) {

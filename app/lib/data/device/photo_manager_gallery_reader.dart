@@ -66,12 +66,18 @@ class PhotoManagerGalleryReader implements GalleryReader {
     final assets = await path.getAssetListRange(start: 0, end: limit);
     final photos = <GalleryPhoto>[];
     for (final a in assets) {
+      final fileName = await a.titleAsync;
+      final modified = a.modifiedDateSecond ?? 0;
       photos.add(
         GalleryPhoto(
           id: a.id,
-          fileName: await a.titleAsync,
-          takenAt: a.createDateTime,
-          modifiedAt: a.modifiedDateSecond ?? 0,
+          fileName: fileName,
+          takenAt: resolveTakenAt(
+            created: a.createDateTime,
+            fileName: fileName,
+            modifiedAtSeconds: modified,
+          ),
+          modifiedAt: modified,
         ),
       );
     }

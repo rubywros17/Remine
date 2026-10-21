@@ -76,6 +76,42 @@ class GalleryPhoto {
   final int modifiedAt;
 }
 
+final _fileNameDate = RegExp(r'(\d{4})(\d{2})(\d{2})[_-](\d{2})(\d{2})(\d{2})');
+
+/// 갤럭시 스크린샷 파일명(`Screenshot_20261008_170925_Instagram.jpg`)에서 찍은 시각을 읽는다. 없거나 날짜가 말이 안 되면 null.
+DateTime? takenAtFromFileName(String fileName) {
+  final m = _fileNameDate.firstMatch(fileName);
+  if (m == null) return null;
+  final n = [for (var i = 1; i <= 6; i++) int.parse(m.group(i)!)];
+  final t = DateTime(n[0], n[1], n[2], n[3], n[4], n[5]);
+  // DateTime은 13월 같은 값을 다음 해로 넘겨 버리므로, 읽은 값 그대로인지 확인한다.
+  final same =
+      t.year == n[0] && t.month == n[1] && t.day == n[2] && t.hour == n[3];
+  return same && n[0] >= 2000 && n[0] <= 2100 ? t : null;
+}
+
+/// 목록에 보일 "찍은 시각". 우선순위: 촬영 시각([created]) → 파일명의 날짜 → 수정 시각.
+///
+/// 단, [created]와 파일명 날짜가 하루 넘게 다르면 **파일명을 믿는다**. 사진을 `adb push`·복사로 옮기면
+/// 갤러리가 "찍은 시각"을 옮긴 날로 기록해 전부 같은 날로 보이기 때문이다(갤럭시 스크린샷 파일명은 실제 촬영 시각).
+/// [created]가 없거나 1970년(알 수 없음)이면 건너뛴다.
+DateTime resolveTakenAt({
+  DateTime? created,
+  required String fileName,
+  required int modifiedAtSeconds,
+}) {
+  final createdOk = created != null && created.year >= 2000 ? created : null;
+  final named = takenAtFromFileName(fileName);
+  if (createdOk != null && named != null) {
+    return createdOk.difference(named).abs() > const Duration(days: 1)
+        ? named
+        : createdOk;
+  }
+  return createdOk ??
+      named ??
+      DateTime.fromMillisecondsSinceEpoch(modifiedAtSeconds * 1000);
+}
+
 /// 기기 갤러리를 읽는 경계. 구현은 photo_manager, 테스트는 Fake로 바꿔 끼운다.
 /// 이미지는 기기 밖으로 나가지 않는다 — 여기서 나온 바이트는 기기 안 OCR에만 쓴다.
 abstract interface class GalleryReader {

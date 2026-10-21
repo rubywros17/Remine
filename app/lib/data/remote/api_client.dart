@@ -39,6 +39,7 @@ class ApiConfig {
     required this.imageMaxBytes,
     required this.imageMaxLongSide,
     required this.maxRequestBytes,
+    this.classifyIntervalMs = 0,
   });
 
   final int imageThresholdChars;
@@ -47,12 +48,16 @@ class ApiConfig {
   final int imageMaxLongSide;
   final int maxRequestBytes;
 
+  /// 서버가 캡처 한 장을 분류하는 데 드는 최소 간격(ms). 남은 시간을 처음부터 예상하는 데 쓴다. 옛 서버에는 없어 0.
+  final int classifyIntervalMs;
+
   factory ApiConfig.fromJson(Map<String, dynamic> j) => ApiConfig(
     imageThresholdChars: (j['imageThresholdChars'] as num).toInt(),
     maxBatchSize: (j['maxBatchSize'] as num).toInt(),
     imageMaxBytes: (j['imageMaxBytes'] as num).toInt(),
     imageMaxLongSide: (j['imageMaxLongSide'] as num).toInt(),
     maxRequestBytes: (j['maxRequestBytes'] as num).toInt(),
+    classifyIntervalMs: (j['classifyIntervalMs'] as num?)?.toInt() ?? 0,
   );
 }
 

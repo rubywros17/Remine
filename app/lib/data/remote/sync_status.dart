@@ -31,6 +31,8 @@ class SyncStatus extends ChangeNotifier {
   DateTime? _startedAt;
   SyncIssue _issue = SyncIssue.none;
   int _failedCount = 0;
+  int _intervalMs = 0;
+  int _waiting = 0;
   final Map<Category, int> _counts = {};
 
   bool get running => _running;
@@ -44,19 +46,34 @@ class SyncStatus extends ChangeNotifier {
   /// 이번 실행에서 지금까지 분류된 카테고리별 장수.
   Map<Category, int> get counts => Map.unmodifiable(_counts);
 
-  /// 남은 예상 시간. 몇 장이라도 처리해 속도를 알 수 있기 전에는 null.
+  /// 지금 서버 응답을 기다리고 있는 장수(0이면 기다리는 중이 아니다). 화면이 "분류하는 중"을 보여 주는 데 쓴다.
+  int get waiting => _waiting;
+
+  /// 서버가 알려 준 장당 분류 간격(ms). 0이면 모른다/대기 없음.
+  int get intervalMs => _intervalMs;
+
+  /// 남은 예상 시간. 처음에는 서버가 알려 준 호출 간격으로 어림하고(없으면 null),
+  /// 몇 장 처리해 실제 속도를 알게 되면 그 속도로 계산한다.
   Duration? get eta {
     final start = _startedAt;
-    if (!_running || start == null || _done < minSamplesForEta) return null;
+    if (!_running || start == null) return null;
+    final remaining = _total - _done;
+    if (_done < minSamplesForEta) {
+      return _intervalMs > 0
+          ? Duration(milliseconds: _intervalMs * remaining)
+          : null;
+    }
     final perItem = _now().difference(start).inMilliseconds / _done;
-    return Duration(milliseconds: (perItem * (_total - _done)).round());
+    return Duration(milliseconds: (perItem * remaining).round());
   }
 
   /// 이만큼은 처리해 봐야 속도를 믿고 예상 시간을 보여 준다.
   static const minSamplesForEta = 5;
 
-  void begin(int total) {
+  void begin(int total, {int intervalMs = 0}) {
     _running = true;
+    _intervalMs = intervalMs;
+    _waiting = 0;
     _done = 0;
     _total = total;
     _startedAt = _now();
@@ -71,12 +88,20 @@ class SyncStatus extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// 서버에 [count]장을 보내고 응답을 기다리는 동안 켠다(응답이 오면 0으로).
+  void setWaiting(int count) {
+    if (_waiting == count) return;
+    _waiting = count;
+    notifyListeners();
+  }
+
   void count(Category category) {
     _counts[category] = (_counts[category] ?? 0) + 1;
   }
 
   void finish({SyncIssue issue = SyncIssue.none, int failedCount = 0}) {
     _running = false;
+    _waiting = 0;
     _issue = issue;
     _failedCount = failedCount;
     notifyListeners();
@@ -98,6 +123,15 @@ class SyncStatus extends ChangeNotifier {
     }
   }
 
+  /// 서버 응답을 기다리는 동안 보여 줄 문장. 숫자가 한참 안 바뀌어도 멈춘 게 아니라는 걸 알려 준다.
+  String? get waitingMessage {
+    if (_waiting == 0) return null;
+    final batch = _intervalMs > 0
+        ? ' 한 묶음에 ${formatBatchTime(Duration(milliseconds: _intervalMs * _waiting))} 정도 걸려요.'
+        : '';
+    return '$_waiting장을 분류하는 중이에요.$batch';
+  }
+
   /// [SyncIssue]를 사용자에게 보여 줄 문장. 개인정보나 원인 상세는 담지 않는다.
   String? get issueMessage => switch (_issue) {
     SyncIssue.none => null,
@@ -115,4 +149,13 @@ String formatEta(Duration eta) {
   final hours = minutes ~/ 60;
   final rest = minutes % 60;
   return rest == 0 ? '약 $hours시간 남았어요' : '약 $hours시간 $rest분 남았어요';
+}
+
+/// 한 묶음이 걸리는 시간 문구: "약 1분 30초", "약 40초".
+String formatBatchTime(Duration d) {
+  final seconds = d.inSeconds;
+  if (seconds < 60) return '약 $seconds초';
+  final m = seconds ~/ 60;
+  final r = seconds % 60;
+  return r == 0 ? '약 $m분' : '약 $m분 $r초';
 }

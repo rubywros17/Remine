@@ -41,7 +41,7 @@ class AnalysisScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final status = this.status;
     if (status == null) {
-      return _scaffold(context, done, total, _counts, null, onHome);
+      return _scaffold(context, done, total, _counts, null, null, onHome);
     }
     // [Flutter 메모] ListenableBuilder는 ChangeNotifier가 알릴 때마다 builder만 다시 실행한다.
     return ListenableBuilder(
@@ -58,6 +58,7 @@ class AnalysisScreen extends StatelessWidget {
               : status.running
               ? '남은 시간을 계산하고 있어요'
               : null,
+          status.waitingMessage,
           onHome,
         );
       },
@@ -70,6 +71,7 @@ class AnalysisScreen extends StatelessWidget {
     int total,
     Map<Category, int> counts,
     String? etaText,
+    String? waitingText,
     VoidCallback? onHome,
   ) {
     return Scaffold(
@@ -137,6 +139,10 @@ class AnalysisScreen extends StatelessWidget {
                             ],
                           ),
                         ),
+                        if (waitingText != null) ...[
+                          const SizedBox(height: AppSpacing.s16),
+                          _WorkingNote(text: waitingText),
+                        ],
                         const SizedBox(height: AppSpacing.s32),
                         const _CollageBand(),
                         const SizedBox(height: AppSpacing.s24),
@@ -233,6 +239,43 @@ class _CollageBand extends StatelessWidget {
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// "N장을 분류하는 중" 안내. 서버 응답을 기다리는 동안 숫자가 안 바뀌어도 멈춘 게 아니라는 걸 막대가 움직여 보여 준다.
+/// 모션 줄이기 설정이면 움직이는 막대 없이 글자만 보여 준다.
+class _WorkingNote extends StatelessWidget {
+  const _WorkingNote({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      liveRegion: true,
+      label: text,
+      excludeSemantics: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (!AppMotion.reduced(context)) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadii.pill),
+              child: const LinearProgressIndicator(
+                minHeight: 4,
+                color: AppColors.celadon,
+                backgroundColor: Color(0x33FFFFFF),
+              ),
+            ),
+            const SizedBox(height: AppSpacing.s8),
+          ],
+          Text(
+            text,
+            style: AppText.body.copyWith(fontSize: 14, color: AppColors.white),
+          ),
+        ],
       ),
     );
   }

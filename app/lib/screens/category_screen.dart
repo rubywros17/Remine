@@ -7,7 +7,7 @@ import '../models/category.dart';
 import '../models/screenshot_item.dart';
 import '../widgets/pressable_scale.dart';
 import '../widgets/small_widgets.dart';
-import '../widgets/thumb_placeholder.dart';
+import '../widgets/capture_thumb.dart';
 import 'detail_screen.dart';
 
 /// 카테고리 상세: 큰 제목 + 거대한 개수, 태그 칩 필터, 높이가 다른 2열 엇갈림 그리드.
@@ -318,7 +318,8 @@ class _Tile extends StatelessWidget {
         height: height,
         child: Hero(
           tag: 'screenshot-${item.id}',
-          child: ThumbPlaceholder(
+          child: CaptureThumb(
+            assetId: item.localAssetId,
             seed: item.id,
             child: Positioned(
               left: 12,
