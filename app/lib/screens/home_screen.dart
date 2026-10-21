@@ -30,6 +30,9 @@ class _HomeScreenState extends State<HomeScreen> {
   Interest? _interest;
   int _excludedCount = 0;
 
+  /// 불러오기 요청 번호. 늦게 도착한 옛 응답이 새 결과를 덮어쓰지 않게 한다.
+  int _loadSeq = 0;
+
   // store가 알리면(예: 카테고리 수정) 이 메서드가 다시 불려 데이터를 새로 읽는다.
   @override
   void didChangeDependencies() {
@@ -42,12 +45,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _load(RemineStore store, DeviceServices? device) async {
+    final seq = ++_loadSeq;
     final summary = await store.repository.summary();
     final interests = await store.repository.interests();
     final excluded = device == null
         ? 0
         : (await device.capture.verdicts.deviceOnly(hidden: true)).length;
-    if (!mounted) return;
+    if (!mounted || seq != _loadSeq) return;
     setState(() {
       _excludedCount = excluded;
       _summary = summary;

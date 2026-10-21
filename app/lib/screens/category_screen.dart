@@ -31,6 +31,9 @@ class _CategoryScreenState extends State<CategoryScreen> {
   List<ScreenshotItem> _items = const [];
   bool _loaded = false;
 
+  /// 불러오기 요청 번호. 응답이 순서 없이 도착해도(동기화 배치·카테고리 수정이 겹칠 때) 가장 마지막 요청의 결과만 화면에 쓴다.
+  int _loadSeq = 0;
+
   // 상세를 보고 돌아왔을 때 마지막으로 본 타일이 화면에 보이게 하는 데 쓴다.
   final Map<int, GlobalKey> _tileKeys = {};
   List<int> _openSnapshot = const []; // 상세를 열 때의 목록(id 순서)
@@ -47,6 +50,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
   }
 
   Future<void> _load(RemineStore store) async {
+    final seq = ++_loadSeq;
     final repo = store.repository;
     final summary = await repo.summary();
     // 칩에 쓸 태그는 이 카테고리 전체에서, 그리드는 선택된 태그로 거른 결과.
@@ -56,7 +60,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
       tag: _tag,
       size: 100,
     );
-    if (!mounted) return;
+    if (!mounted || seq != _loadSeq) return; // 더 새 요청이 있으면 이 옛 응답은 버린다
 
     final counts = <String, int>{};
     for (final s in all.items) {

@@ -359,35 +359,5 @@ class AppTabBar extends StatelessWidget {
   }
 }
 
-/// 첫 분석 화면 하단의 개인정보 안내 카드 (해요체).
-class PrivacyCard extends StatelessWidget {
-  const PrivacyCard({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(AppRadii.tile),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.s16),
-        child: Row(
-          children: [
-            const Icon(LucideIcons.lock, size: 18, color: AppColors.ink),
-            const SizedBox(width: AppSpacing.s12),
-            Expanded(
-              child: Text(
-                '은행·메신저 캡처, 민감한 정보가 보이는 캡처는 폰 밖으로 안 나가요.',
-                style: AppText.body.copyWith(fontSize: 14, height: 1.4),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 /// 장식 회전 각도(라디안)를 id로 고정한다: -max ~ +max.
 double decorAngle(int seed, {double max = 0.06}) => ((seed % 5) - 2) / 2 * max;

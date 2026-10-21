@@ -21,6 +21,7 @@ import '../widgets/pressable_scale.dart';
 import '../widgets/small_widgets.dart';
 import '../widgets/thumb_placeholder.dart';
 import 'category_screen.dart';
+import 'photo_viewer_screen.dart';
 
 /// 스크린샷 상세. 들어온 목록(카테고리 전체 또는 선택된 태그로 거른 결과) 안에서 좌우로 넘긴다.
 ///
@@ -650,6 +651,20 @@ class _ThrowCardState extends State<_ThrowCard> with TickerProviderStateMixin {
     _startFly();
   }
 
+  /// 이미지를 누르면 전체 화면 보기(확대·축소, 아래로 쓸거나 X로 닫기). 던지는 중에는 열지 않는다.
+  void _openViewer() {
+    if (_flying || _dy != 0) return;
+    Navigator.of(context).push(
+      appRoute(
+        context,
+        (_) => PhotoViewerScreen(
+          assetId: widget.item.localAssetId,
+          seed: widget.item.id,
+        ),
+      ),
+    );
+  }
+
   /// 이미지 카드의 화면 읽기용 동작 "휴지통으로 옮기기": 위로 던지는 것과 같은 동작을 제스처 없이 실행한다.
   Future<void> flyToTrash() async {
     if (_flying) return;
@@ -777,11 +792,13 @@ class _ThrowCardState extends State<_ThrowCard> with TickerProviderStateMixin {
     return Semantics(
       container: true,
       label: '캡처 이미지',
+      onTap: widget.isCurrent ? _openViewer : null, // 전체 화면 보기
       customSemanticsActions: widget.isCurrent && !_flying
           ? {trashSemanticsAction: () => flyToTrash()}
           : const {},
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
+        onTap: widget.isCurrent ? _openViewer : null,
         onVerticalDragStart: widget.isCurrent ? _onDragStart : null,
         onVerticalDragUpdate: widget.isCurrent ? _onDragUpdate : null,
         onVerticalDragEnd: widget.isCurrent ? _onDragEnd : null,
@@ -915,7 +932,11 @@ class _InfoCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: AppSpacing.s8),
-                  Flexible(
+                  // 칩은 자기 크기대로 오른쪽 끝에 붙는다(폭이 모자라면 화면 폭의 절반까지만 커진다).
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.sizeOf(context).width * 0.5,
+                    ),
                     child: PressableScale(
                       key: ValueKey('category-chip-${item.id}'),
                       // 기기에서 분류한 캡처(id < 0)는 아직 서버에 없어 수정할 수 없다 → 비활성화.
