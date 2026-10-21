@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 디버그 빌드 전용(src/debug). 실기기는 `adb reverse tcp:8080 tcp:8080`으로 PC 서버를 localhost로 본다.
+     릴리스에는 이 파일이 없어서 HTTPS가 아닌 연결은 모두 막힌다. -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>
