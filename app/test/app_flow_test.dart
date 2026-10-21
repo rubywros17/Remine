@@ -345,7 +345,7 @@ void main() {
       expect(find.text('128'), findsOneWidget);
       expect(find.text('/ 300장 꺼냈어요'), findsOneWidget);
       expect(find.text('DIGGING…'), findsOneWidget);
-      expect(find.textContaining('폰 밖으로 안 나가요'), findsOneWidget);
+      expect(find.text(PrivacyNote.text), findsOneWidget);
       for (final c in Category.values) {
         expect(find.text(c.label), findsOneWidget, reason: c.label);
       }

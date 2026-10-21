@@ -8,6 +8,7 @@ import 'package:remine/app.dart';
 import 'package:remine/core/tokens.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
 import 'package:remine/screens/detail_screen.dart' show trashSemanticsAction;
+import 'package:remine/widgets/small_widgets.dart' show AppChip;
 import 'package:remine/screens/photo_viewer_screen.dart';
 
 final _now = DateTime(2026, 10, 19, 12, 0);
@@ -173,7 +174,7 @@ void main() {
       expect(find.text('무선 이어폰 최저가 비교'), findsNothing);
       expect(_trashTarget, findsNothing);
       // 안내 + 되돌리기
-      expect(find.text('휴지통으로 옮겼어'), findsOneWidget);
+      expect(find.text('휴지통으로 옮겼어요'), findsOneWidget);
       expect(find.text('되돌리기'), findsOneWidget);
 
       await tester.pump(
@@ -297,7 +298,7 @@ void main() {
 
       expect(repo.trashedIds, {5});
       expect(find.text('1 / 5'), findsOneWidget);
-      expect(find.text('휴지통으로 옮겼어'), findsOneWidget);
+      expect(find.text('휴지통으로 옮겼어요'), findsOneWidget);
       handle.dispose();
     });
   });
@@ -335,8 +336,12 @@ void main() {
       await _openShoppingDetail(tester);
 
       final card = tester.getRect(find.byKey(const ValueKey('info-card-5')));
+      // 누르는 칸(PressableScale)이 아니라 눈에 보이는 칩 자체의 오른쪽 끝을 잰다.
       final chip = tester.getRect(
-        find.byKey(const ValueKey('category-chip-5')),
+        find.descendant(
+          of: find.byKey(const ValueKey('category-chip-5')),
+          matching: find.byType(AppChip),
+        ),
       );
       // 카드 안쪽 여백(20)만 남기고 오른쪽 끝에 붙는다.
       expect(card.right - chip.right, closeTo(20, 1));

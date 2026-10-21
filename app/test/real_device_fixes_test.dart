@@ -16,9 +16,9 @@ class _PhotoReader extends FakeGalleryReader {
   final List<String> thumbRequests = [];
 
   @override
-  Future<Uint8List?> thumbnail(String photoId, {int size = 220}) {
+  Future<Uint8List?> thumbnail(String photoId, {int size = 220, int? height}) {
     thumbRequests.add(photoId);
-    return super.thumbnail(photoId, size: size);
+    return super.thumbnail(photoId, size: size, height: height);
   }
 }
 

@@ -72,8 +72,17 @@ class FakeGalleryReader implements GalleryReader {
   }
 
   @override
-  Future<Uint8List?> thumbnail(String photoId, {int size = 220}) async =>
-      photoId == 'missing' ? null : _png1x1;
+  Future<Uint8List?> thumbnail(
+    String photoId, {
+    int size = 220,
+    int? height,
+  }) async => photoId == 'missing' ? null : _png1x1;
+
+  /// 사진 id별 비율(테스트가 채운다). 없으면 알 수 없음(null).
+  final Map<String, double> aspects = {};
+
+  @override
+  Future<double?> aspectRatio(String photoId) async => aspects[photoId];
 
   @override
   Future<Uint8List?> bytes(String photoId) async =>
