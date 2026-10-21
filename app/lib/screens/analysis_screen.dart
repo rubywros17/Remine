@@ -269,7 +269,7 @@ class _Counter extends StatelessWidget {
 class PrivacyNote extends StatelessWidget {
   const PrivacyNote({super.key});
 
-  static const text = '은행·메신저·민감한 캡처는 폰 밖으로 안 나가요';
+  static const text = '은행·메신저·민감한 캡처는 기기 밖으로 전송되지 않아요';
 
   @override
   Widget build(BuildContext context) {
