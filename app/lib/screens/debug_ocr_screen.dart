@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../core/tokens.dart';
 import '../data/device/device_capture_service.dart';
@@ -11,6 +10,7 @@ import '../data/device/ocr_export.dart';
 import '../data/device/ocr_store.dart';
 import '../widgets/app_button.dart';
 import '../widgets/pressable_scale.dart';
+import '../widgets/selectable_thumb.dart';
 import '../widgets/small_widgets.dart';
 
 /// [디버그 전용] 고른 사진의 OCR 결과를 JSON으로 내보내 ML Kit 기준으로 다시 측정한다.
@@ -237,10 +237,9 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
               : () => setState(
                   () => on ? _selected.remove(p.id) : _selected.add(p.id),
                 ),
-          child: _Thumb(
-            reader: widget.services.reader,
-            photoId: p.id,
+          child: SelectableThumb(
             selected: on,
+            child: _PhotoImage(reader: widget.services.reader, photoId: p.id),
           ),
         );
       },
@@ -317,110 +316,29 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
   }
 }
 
-class _Thumb extends StatefulWidget {
-  const _Thumb({
-    required this.reader,
-    required this.photoId,
-    required this.selected,
-  });
+/// 갤러리 썸네일 한 장을 불러와 보여 준다(선택 표시는 [SelectableThumb]가 맡는다).
+class _PhotoImage extends StatefulWidget {
+  const _PhotoImage({required this.reader, required this.photoId});
 
   final GalleryReader reader;
   final String photoId;
-  final bool selected;
 
   @override
-  State<_Thumb> createState() => _ThumbState();
+  State<_PhotoImage> createState() => _PhotoImageState();
 }
 
-class _ThumbState extends State<_Thumb> {
+class _PhotoImageState extends State<_PhotoImage> {
   late final Future<Uint8List?> _bytes = widget.reader.thumbnail(
     widget.photoId,
   );
 
-  static const _radius = 12.0;
-  static const _circle = 22.0;
-  static const _corner = 6.0;
-
   @override
   Widget build(BuildContext context) {
-    final selected = widget.selected;
-    // 애니메이션 줄이기면 duration이 0이라 축소가 즉시 적용된다.
-    final duration = AppMotion.duration(context, MotionDuration.fast);
-    return LayoutBuilder(
-      builder: (context, box) {
-        // 축소된 사진의 모서리에 체크 원을 맞추기 위한 한쪽 여백.
-        final inset = selected
-            ? box.maxWidth * (1 - AppGesture.selectedPhotoScale) / 2
-            : 0.0;
-        return Stack(
-          children: [
-            Positioned.fill(
-              child: AnimatedScale(
-                scale: selected ? AppGesture.selectedPhotoScale : 1.0,
-                duration: duration,
-                curve: AppMotion.standard,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(_radius),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      ColoredBox(
-                        color: AppColors.chip,
-                        child: FutureBuilder<Uint8List?>(
-                          future: _bytes,
-                          builder: (context, snap) => snap.data == null
-                              ? const SizedBox.shrink()
-                              : Image.memory(snap.data!, fit: BoxFit.cover),
-                        ),
-                      ),
-                      if (selected)
-                        const ColoredBox(color: AppColors.selectionDim),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            // 우상단 원: 선택 = 검은 원 + 레몬 체크(축소된 사진 모서리에 맞춤), 미선택 = 흰 테두리 빈 원 + 얇은 그림자
-            AnimatedPositioned(
-              duration: duration,
-              curve: AppMotion.standard,
-              top: _corner + inset,
-              right: _corner + inset,
-              child: selected
-                  ? const DecoratedBox(
-                      decoration: BoxDecoration(
-                        color: AppColors.ink,
-                        shape: BoxShape.circle,
-                      ),
-                      child: SizedBox(
-                        width: _circle,
-                        height: _circle,
-                        child: Icon(
-                          LucideIcons.check,
-                          size: 14,
-                          color: AppColors.lemon,
-                        ),
-                      ),
-                    )
-                  : const DecoratedBox(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.fromBorderSide(
-                          BorderSide(color: AppColors.white, width: 2),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.selectionRingShadow,
-                            blurRadius: 3,
-                          ),
-                        ],
-                      ),
-                      child: SizedBox(width: _circle, height: _circle),
-                    ),
-            ),
-          ],
-        );
-      },
+    return FutureBuilder<Uint8List?>(
+      future: _bytes,
+      builder: (context, snap) => snap.data == null
+          ? const SizedBox.shrink()
+          : Image.memory(snap.data!, fit: BoxFit.cover),
     );
   }
 }
