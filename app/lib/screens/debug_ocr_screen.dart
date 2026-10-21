@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 
 import '../core/tokens.dart';
@@ -8,7 +6,10 @@ import '../data/device/device_services.dart';
 import '../data/device/gallery_reader.dart';
 import '../data/device/ocr_export.dart';
 import '../data/device/ocr_store.dart';
+import '../data/device/privacy/app_rules.dart';
+import '../data/remine_store.dart';
 import '../widgets/app_button.dart';
+import '../widgets/gallery_thumb.dart';
 import '../widgets/pressable_scale.dart';
 import '../widgets/selectable_thumb.dart';
 import '../widgets/small_widgets.dart';
@@ -98,11 +99,12 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
       isCancelled: () => _cancel,
     );
     if (!mounted) return;
+    RemineScope.maybeOf(context)?.refresh(); // 홈 집계에 기기 안 분류 결과 반영
     setState(() {
       _running = false;
       _records = run.records;
       _status =
-          '${run.records.length}장 완료 · 이전 결과 재사용 ${run.skipped}장 · 실패 ${run.failed}장';
+          '${run.records.length}장 완료 · 이전 결과 재사용 ${run.skipped}장 · 앱 이름으로 OCR 생략 ${run.byApp}장 · 실패 ${run.failed}장';
     });
   }
 
@@ -119,12 +121,30 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
   }
 
   Future<void> _clearLocal() async {
-    await _capture.store.clear();
+    await _capture.clearAll();
     if (!mounted) return;
+    RemineScope.maybeOf(context)?.refresh();
     setState(() {
       _records = const [];
       _status = '폰에 저장된 OCR 결과를 지웠어.';
     });
+  }
+
+  /// 이 앨범 전체의 파일명 앱 이름별 장수(앱 이름과 개수만 — OCR은 하지 않는다).
+  Future<void> _showAppCounts() async {
+    final id = _albumId;
+    if (id == null) return;
+    setState(() => _status = '앨범 전체 파일명을 읽는 중…');
+    final photos = await _capture.all(id);
+    if (!mounted) return;
+    setState(() => _status = '');
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppColors.background,
+      builder: (_) =>
+          _AppCountSheet(total: photos.length, counts: countByApp(photos)),
+    );
   }
 
   void _toggleAll() {
@@ -239,7 +259,7 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
                 ),
           child: SelectableThumb(
             selected: on,
-            child: _PhotoImage(reader: widget.services.reader, photoId: p.id),
+            child: GalleryThumb(reader: widget.services.reader, photoId: p.id),
           ),
         );
       },
@@ -299,6 +319,11 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
                           outlined: true,
                         ),
                         AppButton(
+                          label: '앱 이름별 개수',
+                          onTap: _albumId == null ? null : _showAppCounts,
+                          outlined: true,
+                        ),
+                        AppButton(
                           label: '저장된 결과 지우기',
                           onTap: _clearLocal,
                           outlined: true,
@@ -316,29 +341,83 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
   }
 }
 
-/// 갤러리 썸네일 한 장을 불러와 보여 준다(선택 표시는 [SelectableThumb]가 맡는다).
-class _PhotoImage extends StatefulWidget {
-  const _PhotoImage({required this.reader, required this.photoId});
+String _kindLabel(AppCount c) => switch (c.kind) {
+  AppKind.messenger => '메신저 → 대화',
+  AppKind.financial => '금융 → 기타·숨김',
+  null => c.name == null ? '앱 이름 없음' : '목록에 없음',
+};
 
-  final GalleryReader reader;
-  final String photoId;
+/// "파일명 앱 이름별 개수". 목록에 없음으로 나온 이름이 `app_rules.dart`에 추가할 후보다.
+class _AppCountSheet extends StatelessWidget {
+  const _AppCountSheet({required this.total, required this.counts});
 
-  @override
-  State<_PhotoImage> createState() => _PhotoImageState();
-}
-
-class _PhotoImageState extends State<_PhotoImage> {
-  late final Future<Uint8List?> _bytes = widget.reader.thumbnail(
-    widget.photoId,
-  );
+  final int total;
+  final List<AppCount> counts;
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<Uint8List?>(
-      future: _bytes,
-      builder: (context, snap) => snap.data == null
-          ? const SizedBox.shrink()
-          : Image.memory(snap.data!, fit: BoxFit.cover),
+    return SafeArea(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * 0.7,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.screenPadding,
+                AppSpacing.s20,
+                AppSpacing.screenPadding,
+                AppSpacing.s8,
+              ),
+              child: Text(
+                '앱 이름별 개수 · 전체 $total장',
+                style: AppText.sectionTitle,
+              ),
+            ),
+            Flexible(
+              child: ListView.builder(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.screenPadding,
+                  vertical: AppSpacing.s8,
+                ),
+                itemCount: counts.length,
+                itemBuilder: (_, i) {
+                  final c = counts[i];
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            c.name ?? '(앱 이름 없음)',
+                            style: AppText.label,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.s12),
+                        Flexible(
+                          child: Text(
+                            '${c.count}장 · ${_kindLabel(c)}',
+                            style: AppText.caption,
+                            textAlign: TextAlign.end,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

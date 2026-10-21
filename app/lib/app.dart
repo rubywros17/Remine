@@ -5,9 +5,11 @@ import 'package:flutter/material.dart';
 import 'core/tokens.dart';
 import 'data/device/device_services.dart';
 import 'data/fake_screenshot_repository.dart';
+import 'data/local_merged_repository.dart';
 import 'data/remine_store.dart';
 import 'data/screenshot_repository.dart';
 import 'screens/analysis_screen.dart';
+import 'screens/consent_screen.dart';
 import 'screens/permission_gate.dart';
 import 'screens/shell_screen.dart';
 
@@ -39,10 +41,18 @@ class RemineApp extends StatefulWidget {
 }
 
 class _RemineAppState extends State<RemineApp> {
+  // 기기 모드면 서버(지금은 가짜) 데이터에 기기 안 분류 결과를 합쳐 보여 준다.
   late final RemineStore _store = RemineStore(
-    widget.repository ?? FakeScreenshotRepository(now: widget.now),
+    _withLocal(widget.repository ?? FakeScreenshotRepository(now: widget.now)),
     now: widget.now,
   );
+
+  ScreenshotRepository _withLocal(ScreenshotRepository base) {
+    final device = widget.device;
+    return device == null
+        ? base
+        : LocalMergedRepository(base, device.capture.verdicts);
+  }
 
   @override
   void dispose() {
@@ -71,7 +81,13 @@ class _RemineAppState extends State<RemineApp> {
             ? const AnalysisScreen()
             : device == null
             ? const ShellScreen()
-            : PermissionGate(reader: device.reader, child: const ShellScreen()),
+            : PermissionGate(
+                reader: device.reader,
+                child: ConsentGate(
+                  settings: device.settings,
+                  child: const ShellScreen(),
+                ),
+              ),
         builder: device == null
             ? null
             : (context, child) => DeviceScope(services: device, child: child!),
