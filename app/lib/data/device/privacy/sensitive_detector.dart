@@ -95,7 +95,7 @@ final _accountPattern = RegExp(
 );
 final _accountContext = RegExp(
   r'계좌|입금|출금|예금주|무통장|'
-  r'은행|국민|신한|우리|하나|농협|기업|카카오뱅크|토스뱅크|케이뱅크|새마을|우체국|수협|SC제일|씨티|'
+  r'은행|국민|신한|우리은행|하나은행|농협|기업은행|카카오뱅크|토스뱅크|케이뱅크|새마을|우체국|수협|SC제일|씨티|'
   r'bank',
   caseSensitive: false,
 );

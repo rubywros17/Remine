@@ -1,0 +1,144 @@
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:path/path.dart' as p;
+import 'package:remine/data/device/local_db.dart';
+import 'package:remine/data/device/ocr_store.dart';
+import 'package:remine/data/device/privacy/local_verdict_store.dart';
+import 'package:remine/data/device/privacy/privacy_filter.dart';
+import 'package:remine/data/device/settings_store.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+// 실제 SQLite(sqflite_common_ffi)로 DB v1 → v2 업그레이드를 검증한다.
+const _card = '4111 1111 1111 1111';
+const _phone = '010-7777-8888';
+
+void main() {
+  sqfliteFfiInit();
+  final factory = databaseFactoryFfi;
+  late Directory dir;
+  late String path;
+
+  setUp(() async {
+    dir = await Directory.systemTemp.createTemp('remine_db_');
+    path = p.join(dir.path, 'remine_ocr.db');
+  });
+  tearDown(() => dir.delete(recursive: true));
+
+  LocalDb open() => LocalDb(
+    path: path,
+    factory: factory,
+    now: () => DateTime(2026, 10, 21),
+  );
+
+  /// 필터가 생기기 전(v1)의 DB 파일을 만든다.
+  Future<void> createV1() async {
+    final db = await factory.openDatabase(
+      path,
+      options: OpenDatabaseOptions(
+        version: 1,
+        onCreate: (db, _) => db.execute(
+          'CREATE TABLE ocr_result ('
+          'asset_id TEXT PRIMARY KEY, file_name TEXT NOT NULL, '
+          'date_modified INTEGER NOT NULL, text TEXT NOT NULL, '
+          'char_count INTEGER NOT NULL, ocr_at INTEGER NOT NULL, '
+          'engine TEXT NOT NULL)',
+        ),
+      ),
+    );
+    Future<void> row(String id, String file, String text) => db.insert(
+      'ocr_result',
+      {
+        'asset_id': id,
+        'file_name': file,
+        'date_modified': 1000,
+        'text': text,
+        'char_count': OcrRecord.countChars(text),
+        'ocr_at': 0,
+        'engine': 'mlkit-korean',
+      },
+    );
+    await row('card', 'Screenshot_1.png', '카드번호 $_card 유효기간');
+    await row('phone', 'Screenshot_2.png', '예약 문의 $_phone 입니다');
+    await row('chat', 'Screenshot_20261019_120000_KakaoTalk.jpg', '내일 봐');
+    await row('plain', 'Screenshot_3.png', '니트 가디건 39,000원');
+    await db.close();
+  }
+
+  test('v1 DB를 열면 v2로 올라가며 기존 행이 필터를 다시 통과한다', () async {
+    await createV1();
+    final local = open();
+    final ocr = SqfliteOcrStore(local);
+    final verdicts = SqfliteLocalVerdictStore(local);
+
+    expect((await ocr.find('card'))!.text, isEmpty);
+    expect((await ocr.find('card'))!.charCount, greaterThan(0));
+    expect((await ocr.find('phone'))!.text, '예약 문의 [전화번호] 입니다');
+    expect((await ocr.find('chat'))!.text, isEmpty);
+    expect((await ocr.find('plain'))!.text, '니트 가디건 39,000원');
+
+    final card = (await verdicts.find('card'))!;
+    expect(card.route, LocalRoute.deviceOnly);
+    expect(card.hidden, isTrue);
+    expect(card.reasons, ['CARD']);
+    expect((await verdicts.find('phone'))!.route, LocalRoute.textOnly);
+    expect((await verdicts.find('chat'))!.hidden, isFalse);
+    expect((await verdicts.find('plain'))!.route, LocalRoute.normal);
+
+    final db = await local.db;
+    expect(await db.getVersion(), 2);
+    await local.close();
+  });
+
+  test('업그레이드 뒤 DB 파일 바이트에 지운 원문이 남아 있지 않다', () async {
+    await createV1();
+    final local = open();
+    await local.db; // 업그레이드 실행
+    await local.close();
+
+    final bytes = [
+      for (final f in dir.listSync().whereType<File>()) ...f.readAsBytesSync(),
+    ];
+    final dump = latin1.decode(bytes);
+    expect(dump, isNot(contains(_card)));
+    expect(dump, isNot(contains('7777-8888')));
+    expect(dump, contains('ocr_result')); // 파일을 제대로 읽었는지 확인
+  });
+
+  test('새 설치(v2 바로 생성)도 같은 표를 만든다', () async {
+    final local = open();
+    final verdicts = SqfliteLocalVerdictStore(local);
+    final settings = SqfliteSettingsStore(local);
+
+    expect(await settings.imageConsent(), isNull);
+    await settings.setImageConsent(true);
+    expect(await settings.imageConsent(), isTrue);
+    await settings.setImageConsent(false);
+    expect(await settings.imageConsent(), isFalse);
+
+    StoredVerdict v(String id, LocalVerdict j, int min) => StoredVerdict.of(
+      j,
+      assetId: id,
+      takenAt: DateTime(2026, 10, 19, 12, min),
+      modifiedAt: 1,
+      now: DateTime(2026, 10, 21),
+    );
+    await verdicts.save(v('a', judgeByText('카드 $_card'), 1));
+    await verdicts.save(
+      v('b', judgeByApp('Screenshot_20261019_120000_KakaoTalk.jpg')!, 2),
+    );
+    final firstId = (await verdicts.find('a'))!.localId;
+    await verdicts.save(v('a', judgeByText('카드 $_card'), 3)); // 같은 asset → 덮어쓰기
+    expect((await verdicts.find('a'))!.localId, firstId); // 번호 유지
+
+    expect((await verdicts.deviceOnly(hidden: true)).map((x) => x.assetId), [
+      'a',
+    ]);
+    expect((await verdicts.deviceOnly(hidden: false)).map((x) => x.assetId), [
+      'b',
+    ]);
+    expect((await verdicts.deviceOnly()).length, 2);
+    await local.close();
+  });
+}

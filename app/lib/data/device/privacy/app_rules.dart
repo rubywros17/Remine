@@ -5,7 +5,7 @@ import '../gallery_reader.dart';
 /// 갤럭시 스크린샷 파일명은 `Screenshot_20241021_141546_KakaoTalk.jpg`처럼 끝에 앱 이름이 붙는다.
 /// 이름은 정규화한 뒤 **완전 일치**로만 비교한다(부분 일치는 "카카오맵"이 "카카오톡"으로 걸리는 식의 오탐이 난다).
 /// 한글·영문 이름을 둘 다 넣는다 — 실기기의 실제 이름은 디버그 측정 화면의 "앱 이름별 개수"로 확인한다.
-enum AppKind { messenger, financial }
+enum AppKind { messenger, financial, privateApp }
 
 const _messengerApps = [
   'KakaoTalk', '카카오톡',
@@ -17,6 +17,7 @@ const _messengerApps = [
   'Slack',
   'Signal',
   'Band', '밴드',
+  'WeChat', '위챗',
 ];
 
 const _financialApps = [
@@ -54,15 +55,28 @@ const _financialApps = [
   'Naver Pay', '네이버페이',
   'Kakao Pay', '카카오페이',
   'Payco', '페이코',
+  'Alipay', '알리페이',
+  'KB', // 실기기에서 "KB"로만 찍히는 KB 금융 앱
+];
+
+/// 금융은 아니지만 통화 기록·연락처가 보여서 숨기는 앱(금융과 같이 기타 + 숨김).
+const _privateApps = [
+  'Phone', '전화',
+  'Call', '통화',
+  'Call settings', '통화 설정',
 ];
 
 /// 비교용 정규화: 소문자로 바꾸고 글자·숫자가 아닌 문자(공백·`.`·`-`·`_`)를 지운다.
-String normalizeAppName(String name) =>
-    name.toLowerCase().replaceAll(RegExp(r'[^0-9a-z가-힣ㄱ-ㅎ]'), '');
+/// 파일명 끝의 "(1)", "()"는 먼저 떼어 낸다(예: `Messages(1)`, `One UI Home(1)`, `NOL()`).
+String normalizeAppName(String name) => name
+    .replaceAll(RegExp(r'\(\d*\)\s*$'), '')
+    .toLowerCase()
+    .replaceAll(RegExp(r'[^0-9a-z가-힣ㄱ-ㅎ]'), '');
 
 final Map<String, AppKind> _kindByName = {
   for (final n in _messengerApps) normalizeAppName(n): AppKind.messenger,
   for (final n in _financialApps) normalizeAppName(n): AppKind.financial,
+  for (final n in _privateApps) normalizeAppName(n): AppKind.privateApp,
 };
 
 AppKind? appKindOf(String? appName) =>

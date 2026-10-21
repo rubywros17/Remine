@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:remine/app.dart';
 import 'package:remine/data/device/gallery_reader.dart';
 import 'package:remine/data/device/privacy/local_verdict_store.dart';
 import 'package:remine/data/device/privacy/privacy_filter.dart';
 import 'package:remine/data/device/settings_store.dart';
 import 'package:remine/screens/consent_screen.dart';
 import 'package:remine/screens/debug_ocr_screen.dart';
+import 'package:remine/screens/detail_screen.dart' show deviceClassifiedNotice;
 import 'package:remine/screens/excluded_screen.dart';
 import 'package:remine/screens/settings_screen.dart';
 
@@ -67,6 +70,40 @@ void main() {
         expect(sentence, endsWith('요.'));
       }
     });
+  });
+
+  testWidgets('기기에서 분류한 캡처: 수정 버튼이 막히고 안내가 보이며 눌러도 터지지 않는다', (tester) async {
+    tester.view.physicalSize = const Size(412, 915);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final services = fakeServices(FakeGalleryReader());
+    await services.capture.verdicts.save(
+      StoredVerdict.of(
+        judgeByApp('Screenshot_20261019_120000_KakaoTalk.jpg')!,
+        assetId: 'chat1',
+        takenAt: DateTime(2099), // 가짜 데이터보다 항상 최신 → 첫 타일
+        modifiedAt: 1,
+        now: DateTime(2026, 10, 21),
+      ),
+    );
+    await tester.pumpWidget(
+      RemineApp(
+        now: () => DateTime(2026, 10, 19, 12),
+        device: services,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('대화'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(Hero).first);
+    await tester.pumpAndSettle();
+
+    expect(find.text(deviceClassifiedNotice), findsOneWidget);
+    expect(find.byIcon(LucideIcons.pencil), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('category-chip--1')));
+    await tester.pumpAndSettle();
+    expect(find.text('이거 어디 서랍이야?'), findsNothing); // 수정 시트가 열리지 않는다
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('설정에서 동의를 켜고 끌 수 있다', (tester) async {

@@ -14,6 +14,7 @@ String reasonLabel(String code) => switch (code) {
   'OTP' => '인증번호',
   'PASSWORD' => '비밀번호',
   'APP_FINANCIAL' => '금융 앱',
+  'APP_PRIVATE' => '통화·연락처 앱',
   _ => code,
 };
 

@@ -19,6 +19,7 @@ enum LocalRoute {
 abstract final class ReasonCode {
   static const appMessenger = 'APP_MESSENGER';
   static const appFinancial = 'APP_FINANCIAL';
+  static const appPrivate = 'APP_PRIVATE';
   static const phone = 'PHONE';
 }
 
@@ -61,6 +62,12 @@ LocalVerdict? judgeByApp(String fileName) {
       category: Category.etc,
       hidden: true,
       reasons: [ReasonCode.appFinancial],
+    ),
+    AppKind.privateApp => const LocalVerdict(
+      route: LocalRoute.deviceOnly,
+      category: Category.etc,
+      hidden: true,
+      reasons: [ReasonCode.appPrivate],
     ),
     null => null,
   };

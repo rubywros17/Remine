@@ -6,11 +6,12 @@ import '../data/device/settings_store.dart';
 import '../widgets/app_button.dart';
 
 /// 이미지 분석 동의 문구. 개인정보 문구는 해요체로 쓴다(docs/design.md).
-const consentTitle = '짧은 캡처는 사진도 같이 볼게요';
-const consentBody = '글자가 거의 없는 캡처는 글자만으로는 분류하기 어려워요. 동의하면 이런 캡처만 작게 줄인 사진을 분석에 보내요.';
+const consentTitle = '글자가 적은 캡처는\n사진으로 분석할게요';
+const consentBody =
+    '글자가 거의 없는 캡처는 글자만으로는 분류하기 어려워요.\n동의하면 이런 캡처만 작게 줄인 사진을 분석에 보내요.';
 const consentPoints = [
   '분석에 쓴 사진은 서버에 저장하지 않아요.',
-  '민감한 정보나 전화번호가 보이는 캡처는 사진을 보내지 않아요.',
+  '민감한 정보나 전화번호가 보이는 캡처는\n사진을 보내지 않아요.',
   '설정에서 언제든 끌 수 있어요. 끄면 글자만 보내요.',
 ];
 

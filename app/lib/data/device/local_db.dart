@@ -9,17 +9,38 @@ import 'privacy/local_verdict_store.dart';
 ///
 /// 버전: 1 = `ocr_result`만, 2 = `local_verdict`·`setting` 추가 + 기존 OCR 행을 필터에 다시 통과.
 class LocalDb {
-  LocalDb({this.fileName = 'remine_ocr.db', DateTime Function()? now})
-    : _now = now ?? DateTime.now;
+  /// [path]·[factory]는 테스트용(실제 SQLite 파일로 업그레이드를 검증). 기본은 앱 DB 폴더의 [fileName].
+  LocalDb({
+    this.fileName = 'remine_ocr.db',
+    this.path,
+    this.factory,
+    DateTime Function()? now,
+  }) : _now = now ?? DateTime.now;
 
   static const version = 2;
 
   final String fileName;
+  final String? path;
+  final DatabaseFactory? factory;
   final DateTime Function() _now;
   Database? _db;
 
-  Future<Database> get db async => _db ??= await openDatabase(
-    p.join(await getDatabasesPath(), fileName),
+  Future<Database> get db async => _db ??= await _open();
+
+  Future<void> close() async {
+    await _db?.close();
+    _db = null;
+  }
+
+  Future<Database> _open() async {
+    final f = factory ?? databaseFactory;
+    return f.openDatabase(
+      path ?? p.join(await f.getDatabasesPath(), fileName),
+      options: _options,
+    );
+  }
+
+  OpenDatabaseOptions get _options => OpenDatabaseOptions(
     version: version,
     // 지운 내용이 빈 페이지에 남지 않게 한다(마이그레이션에서 본문을 비울 때 중요).
     onConfigure: (db) => db.rawQuery('PRAGMA secure_delete = ON'),

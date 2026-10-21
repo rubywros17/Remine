@@ -67,6 +67,14 @@ void main() {
       expect(codes('은행 문의 010-1234-5678'), isEmpty);
       expect(codes('국민은행 고객센터 1588-9999'), isEmpty);
     });
+    test('은행명 문맥은 전체 이름만: "우리 집"·"하나" 같은 흔한 말은 문맥이 아니다', () {
+      expect(codes('우리 집 1234567890123'), isEmpty);
+      expect(codes('하나 둘 셋 12345678901'), isEmpty);
+      expect(codes('기업 소개 110-123-456789'), isEmpty);
+      expect(codes('우리은행 1002123456789'), {'ACCOUNT'});
+      expect(codes('하나은행 계좌 110-123-456789'), {'ACCOUNT'});
+      expect(codes('기업은행 110-123-456789'), {'ACCOUNT'});
+    });
     test('날짜·금액은 잡지 않는다', () {
       expect(codes('입금 완료 2024-10-21'), isEmpty);
       expect(codes('입금 1,234,567원'), isEmpty);
@@ -166,6 +174,28 @@ void main() {
       expect(appKindOf('kakaotalk'), AppKind.messenger);
       expect(appKindOf('Shinhan SOL'), AppKind.financial);
       expect(appKindOf('m.Stock'), appKindOf('mStock'));
+    });
+    test('실기기 이름: 끝의 (숫자)·()는 떼고 비교한다', () {
+      expect(appKindOf('Messages(1)'), AppKind.messenger);
+      expect(appKindOf('Messages(12)'), AppKind.messenger);
+      expect(appKindOf('One UI Home(1)'), isNull); // 목록에 없는 앱은 그대로 없음
+      expect(appKindOf('NOL()'), isNull);
+      expect(
+        appNameFromFileName('Screenshot_20241021_141546_Messages(1).jpg'),
+        'Messages(1)',
+      );
+    });
+    test('추가한 앱: KB·Alipay는 금융, WeChat은 메신저, 통화 앱은 숨김', () {
+      expect(appKindOf('KB'), AppKind.financial);
+      expect(appKindOf('Alipay'), AppKind.financial);
+      expect(appKindOf('WeChat'), AppKind.messenger);
+      for (final n in ['Phone', 'Call', 'Call settings', 'Call settings(1)']) {
+        final v = judgeByApp('Screenshot_20241021_141546_$n.jpg')!;
+        expect(v.category, Category.etc, reason: n);
+        expect(v.hidden, isTrue, reason: n);
+        expect(v.reasons, [ReasonCode.appPrivate], reason: n);
+      }
+      expect(appKindOf('Phone Book'), isNull); // 부분 일치 아님
     });
     test('부분 일치는 하지 않는다', () {
       expect(appKindOf('KakaoMap'), isNull);

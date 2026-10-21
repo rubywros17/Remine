@@ -344,6 +344,7 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
 String _kindLabel(AppCount c) => switch (c.kind) {
   AppKind.messenger => '메신저 → 대화',
   AppKind.financial => '금융 → 기타·숨김',
+  AppKind.privateApp => '통화·연락처 → 기타·숨김',
   null => c.name == null ? '앱 이름 없음' : '목록에 없음',
 };
 
