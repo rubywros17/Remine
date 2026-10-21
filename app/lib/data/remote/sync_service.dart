@@ -29,6 +29,7 @@ class SyncService {
     required this.images,
     required this.status,
     this.photoLimit = 0,
+    this.batchSize = defaultBatchSize,
     this.onBatchDone,
     // 푸시(FCM) 연동 전 임시값. 서버가 비어 있지 않은 토큰을 요구한다. 푸시 브랜치에서 실제 토큰으로 바꾼다.
     this.fcmToken = 'pending-fcm-token',
@@ -45,6 +46,11 @@ class SyncService {
 
   /// 디버그용 장수 제한(`--dart-define=SYNC_LIMIT=15`). 0이면 제한 없음. 실기기 첫 확인을 소량으로 하려는 용도다.
   final int photoLimit;
+
+  /// 앱이 한 번에 보내는 장수. 서버 상한(`maxBatchSize`, 20)보다 작게 잡아 묶음마다 숫자가 자주 오르게 한다.
+  /// 서버 상한이 이보다 작으면 서버 상한을 따른다.
+  final int batchSize;
+  static const defaultBatchSize = 5;
 
   /// 배치 하나가 끝날 때마다(홈이 새로 불러오게).
   void Function()? onBatchDone;
@@ -76,11 +82,11 @@ class SyncService {
       }
       status.begin(pending.length, intervalMs: config.classifyIntervalMs);
       var deviceIdNow = deviceId;
-      for (var i = 0; i < pending.length; i += config.maxBatchSize) {
-        final chunk = pending.sublist(
-          i,
-          (i + config.maxBatchSize).clamp(0, pending.length),
-        );
+      final size = batchSize < config.maxBatchSize
+          ? batchSize
+          : config.maxBatchSize;
+      for (var i = 0; i < pending.length; i += size) {
+        final chunk = pending.sublist(i, (i + size).clamp(0, pending.length));
         final r = await _batch(chunk, config, deviceIdNow);
         deviceIdNow = r.deviceId;
         failed += r.failed;
@@ -158,7 +164,12 @@ class SyncService {
       final record = await capture.store.find(photo.id);
       if (verdict?.route == LocalRoute.deviceOnly &&
           verdict!.category != null) {
-        status.count(verdict.category!);
+        status.count(
+          verdict.category!,
+          assetId: verdict.hidden
+              ? null
+              : photo.id, // 숨김(민감·금융) 캡처는 화면에 올리지 않는다
+        );
       }
       if (record == null && verdict?.route != LocalRoute.deviceOnly) {
         failed++; // OCR 실패 등 → 다음 실행에서 다시 시도
@@ -229,7 +240,7 @@ class SyncService {
         final photo = photoById[a.assetId];
         if (photo == null || !send.containsKey(a.assetId)) continue;
         await state.putEntry(_entry(photo, SyncStatusCode.synced));
-        status.count(a.category);
+        status.count(a.category, assetId: a.assetId);
         send.remove(a.assetId);
       }
       for (final id in result.skipped) {
@@ -305,7 +316,7 @@ class SyncService {
         now: _now(),
       ),
     );
-    status.count(category);
+    status.count(category, assetId: photo.id);
   }
 
   SyncEntry _entry(GalleryPhoto photo, SyncStatusCode code) =>

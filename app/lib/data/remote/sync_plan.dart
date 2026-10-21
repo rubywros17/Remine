@@ -1,3 +1,4 @@
+import '../device/privacy/app_rules.dart';
 import '../device/privacy/local_verdict_store.dart';
 import '../device/privacy/privacy_filter.dart';
 
@@ -77,6 +78,7 @@ PlanEntry planFor(
     action: PlanAction.skip,
   );
 
+  if (isOwnAppCapture(input.fileName)) return skip();
   final stored = input.verdict;
   if (stored == null || stored.route == LocalRoute.deviceOnly) return skip();
 

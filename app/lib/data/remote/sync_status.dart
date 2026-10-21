@@ -17,6 +17,14 @@ enum SyncIssue {
   partial,
 }
 
+/// 방금 분류된 캡처 한 장(첫 분석 화면 가운데 카드에 실제 썸네일 + 카테고리로 보여 준다).
+class RecentShot {
+  const RecentShot(this.assetId, this.category);
+
+  final String assetId;
+  final Category category;
+}
+
 /// 동기화 진행과 안내 상태. 화면(첫 분석 화면, 홈 배너)이 구독한다.
 ///
 /// [Flutter 메모] ChangeNotifier는 값이 바뀌면 구독한 위젯에 알리는 내장 옵저버다([RemineStore]와 같은 방식).
@@ -26,6 +34,8 @@ class SyncStatus extends ChangeNotifier {
   final DateTime Function() _now;
 
   bool _running = false;
+  bool _finished = false;
+  final List<RecentShot> _recent = [];
   int _done = 0;
   int _total = 0;
   DateTime? _startedAt;
@@ -36,6 +46,14 @@ class SyncStatus extends ChangeNotifier {
   final Map<Category, int> _counts = {};
 
   bool get running => _running;
+
+  /// 이번 실행이 (성공이든 실패든) 끝났는지. 첫 분석 화면이 완료 상태를 보여 주는 데 쓴다.
+  bool get finished => _finished;
+
+  /// 방금 분류된 캡처(최신이 앞, 최대 [maxRecent]장).
+  List<RecentShot> get recent => List.unmodifiable(_recent);
+
+  static const maxRecent = 4;
   int get done => _done;
   int get total => _total;
   SyncIssue get issue => _issue;
@@ -72,6 +90,8 @@ class SyncStatus extends ChangeNotifier {
 
   void begin(int total, {int intervalMs = 0}) {
     _running = true;
+    _finished = false;
+    _recent.clear();
     _intervalMs = intervalMs;
     _waiting = 0;
     _done = 0;
@@ -95,12 +115,18 @@ class SyncStatus extends ChangeNotifier {
     notifyListeners();
   }
 
-  void count(Category category) {
+  /// [category]로 분류된 한 장을 센다. [assetId]를 주면 "방금 분류된 캡처"에도 올린다(숨김 캡처에는 주지 않는다).
+  void count(Category category, {String? assetId}) {
     _counts[category] = (_counts[category] ?? 0) + 1;
+    if (assetId != null) {
+      _recent.insert(0, RecentShot(assetId, category));
+      if (_recent.length > maxRecent) _recent.removeLast();
+    }
   }
 
   void finish({SyncIssue issue = SyncIssue.none, int failedCount = 0}) {
     _running = false;
+    _finished = true;
     _waiting = 0;
     _issue = issue;
     _failedCount = failedCount;

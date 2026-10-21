@@ -6,8 +6,8 @@ import 'analysis_screen.dart';
 /// 서버 연동 모드에서 동기화를 시작하고, **첫 분석**(처음 설치해 아직 한 번도 끝내지 못한 동안)에는 진행 화면을 보여 준다.
 ///
 /// - 분석 화면의 "홈에서 먼저 볼래요"를 누르면 바로 [child](홈)로 나간다. 동기화는 앱이 열려 있는 동안 계속 돌고,
-///   배치(20장)가 끝날 때마다 홈이 새로 불러온다.
-/// - 첫 분석이 끝났거나 서버에 닿지 못해 멈추면 자동으로 [child]로 넘어간다(안내는 홈 배너가 맡는다).
+///   배치가 끝날 때마다 홈이 새로 불러온다.
+/// - 첫 분석이 끝나도(또는 서버에 닿지 못해 멈춰도) 자동으로 넘어가지 않는다. 완료 상태에서 [홈으로]를 눌러야 [child]가 열린다.
 /// - 이후 실행은 곧바로 [child]를 보여 주고 뒤에서 새로 생기거나 바뀐 캡처만 증분으로 보낸다.
 /// - 앱이 다시 앞으로 돌아올 때(resumed)도 한 번 더 시작한다. 이미 돌고 있으면 겹쳐 돌지 않는다.
 class SyncGate extends StatefulWidget {
@@ -38,8 +38,8 @@ class _SyncGateState extends State<SyncGate> with WidgetsBindingObserver {
       _loaded = true;
       _showAnalysis = first;
     });
+    // 끝나도 자동으로 홈으로 넘어가지 않는다: 분석 화면이 완료 상태("N장 꺼냈어요")와 [홈으로] 버튼을 보여 준다.
     await widget.remote.sync.run();
-    if (mounted && _showAnalysis) setState(() => _showAnalysis = false);
   }
 
   @override
