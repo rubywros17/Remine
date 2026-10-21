@@ -51,6 +51,8 @@ class ExperimentRunner implements CommandLineRunner {
     private final String candidatesFilter;
     private final String promptOption;
     private final String compareOption;
+    private final String ocrOption;
+    private final String mlkitJson;
     private final ProviderFactory providerFactory;
     private final JsonMapper mapper = JsonMapper.builder().build();
     private final Map<String, byte[]> imageCache = new HashMap<>();
@@ -70,6 +72,8 @@ class ExperimentRunner implements CommandLineRunner {
      * candidatesFilter: --experiment.candidates=모델ID[,모델ID]. 비어 있으면 candidates.json의 전체 후보.
      * promptOption: --experiment.prompt=v1|v2. 비어 있으면 v1(운영 프롬프트). v2는 채택 안 됨(SHOPPING 회귀)이라 실험 옵션이다.
      * compareOption: --experiment.compare=v1,v2. 지정하면 API를 호출하지 않고 저장된 실행(runs/)끼리 비교만 한다.
+     * ocrOption: --experiment.ocr=tesseract|mlkit. 기본 tesseract(ocr/*.txt). mlkit이면 mlkitJson(--experiment.mlkit-json=경로)의
+     *   앱 내보내기 JSON을 파일명으로 매칭해 쓰고, 실행 기록은 runs-mlkit/, 결과는 results.mlkit.*.md에 따로 쓴다.
      */
     @Autowired
     ExperimentRunner(@Value("${experiment.dir:../experiment}") String dir,
@@ -77,20 +81,29 @@ class ExperimentRunner implements CommandLineRunner {
                      @Value("${experiment.candidates:}") String candidatesFilter,
                      @Value("${experiment.prompt:}") String promptOption,
                      @Value("${experiment.compare:}") String compareOption,
+                     @Value("${experiment.ocr:}") String ocrOption,
+                     @Value("${experiment.mlkit-json:}") String mlkitJson,
                      Environment environment) {
         // 키는 System.getenv가 아니라 스프링 Environment에서 읽는다: 환경변수(우선) 또는 ~/.remine.env
         // (application-experiment.yaml의 spring.config.import). 값은 출력하지 않는다.
-        this(dir, limit, candidatesFilter, promptOption, compareOption,
+        this(dir, limit, candidatesFilter, promptOption, compareOption, ocrOption, mlkitJson,
                 (candidate, mapper) -> LlmProviders.create(candidate, mapper, environment::getProperty));
     }
 
     ExperimentRunner(String dir, int limit, String candidatesFilter, String promptOption, String compareOption,
                      ProviderFactory providerFactory) {
+        this(dir, limit, candidatesFilter, promptOption, compareOption, "", "", providerFactory);
+    }
+
+    ExperimentRunner(String dir, int limit, String candidatesFilter, String promptOption, String compareOption,
+                     String ocrOption, String mlkitJson, ProviderFactory providerFactory) {
         this.dir = Path.of(dir);
         this.limit = limit;
         this.candidatesFilter = candidatesFilter;
         this.promptOption = promptOption;
         this.compareOption = compareOption;
+        this.ocrOption = ocrOption;
+        this.mlkitJson = mlkitJson;
         this.providerFactory = providerFactory;
     }
 
@@ -107,6 +120,21 @@ class ExperimentRunner implements CommandLineRunner {
             log.error(e.getMessage());
             return;
         }
+        boolean mlkit = "mlkit".equalsIgnoreCase(ocrOption.trim());
+        if (!ocrOption.isBlank() && !mlkit && !"tesseract".equalsIgnoreCase(ocrOption.trim())) {
+            log.error("--experiment.ocr 은 tesseract 또는 mlkit 이어야 합니다: '{}'", ocrOption);
+            return;
+        }
+        Map<String, String> mlkitText = null;
+        if (mlkit) {
+            if (mlkitJson.isBlank() || !Files.isRegularFile(Path.of(mlkitJson))) {
+                log.error("--experiment.ocr=mlkit 에는 내보낸 JSON 경로가 필요합니다: --experiment.mlkit-json=경로 (현재 '{}')", mlkitJson);
+                return;
+            }
+            mlkitText = MlKitOcr.load(Path.of(mlkitJson), mapper);
+            log.info("OCR 소스: ML Kit ({}장, {})", mlkitText.size(), Path.of(mlkitJson).getFileName());
+        }
+        Path runsDir = dir.resolve(mlkit ? "runs-mlkit" : "runs");
         List<Candidate> available = loadCandidates();
         List<Candidate> candidates;
         try {
@@ -133,7 +161,7 @@ class ExperimentRunner implements CommandLineRunner {
         log.info("API 키 확인: 후보 {}개 중 {}개에 키가 있습니다.", candidates.size(), providers.size());
 
         List<Labeled> all = new ArrayList<>();
-        int unlabeled = loadLabels(all);
+        int unlabeled = loadLabels(all, mlkitText);
         List<Labeled> labeled = applyLimit(all, limit);
         if (labeled.isEmpty()) {
             log.warn("평가할 표본이 없습니다. ocr.sh를 실행하고 labels.csv의 category를 채우세요. (dir={})",
@@ -199,7 +227,7 @@ class ExperimentRunner implements CommandLineRunner {
             reports.add(report);
             if (!limited) {
                 // 표본별 결과를 남겨 두면 나중에 다른 프롬프트 버전과 표본 단위로 비교할 수 있다(gitignore).
-                RunCsv.write(dir.resolve("runs").resolve(
+                RunCsv.write(runsDir.resolve(
                         RunCsv.fileName(LocalDateTime.now(), promptVersion, candidate.name())), samples);
             }
         }
@@ -217,7 +245,8 @@ class ExperimentRunner implements CommandLineRunner {
         }
 
         // 프롬프트 버전이 파일명에 들어가므로 다른 버전의 결과를 덮어쓰지 않는다.
-        Path resultsFile = dir.resolve(resultsFileName(promptVersion, limited, filtered, reports));
+        String resultsName = resultsFileName(promptVersion, limited, filtered, reports);
+        Path resultsFile = dir.resolve(mlkit && !limited ? resultsName.replaceFirst("^results[.]", "results.mlkit.") : resultsName);
         Files.writeString(resultsFile,
                 ResultsMarkdown.render(promptVersion, LocalDate.now(), labeled.size(), unlabeled, reports, skipped),
                 StandardCharsets.UTF_8);
@@ -225,6 +254,44 @@ class ExperimentRunner implements CommandLineRunner {
         Files.writeString(errorsFile, errors.toString(), StandardCharsets.UTF_8);
         log.info("완료: {} (후보 {}개 평가, {}개 건너뜀), 오답 상세: {}", resultsFile.toAbsolutePath(),
                 reports.size(), skipped.size(), errorsFile.getFileName());
+        if (mlkit && !limited) {
+            compareWithTesseract(promptVersion, reports.stream().map(ExperimentStats.Report::candidate).toList());
+        }
+    }
+
+    /** ML Kit 실행을 같은 프롬프트의 최신 Tesseract 실행(runs/)과 비교해 요약을 쓴다. 텍스트·이미지 후보 쌍이 있어야 한다. */
+    private void compareWithTesseract(PromptVersion version, List<Candidate> evaluated) throws IOException {
+        for (Candidate text : evaluated) {
+            Candidate image = evaluated.stream()
+                    .filter(c -> text.input() == InputMode.TEXT && c.usesImage() && c.model().equals(text.model()))
+                    .findFirst().orElse(null);
+            if (image == null) {
+                continue;
+            }
+            var ml = new RunPair(RunCsv.latest(dir.resolve("runs-mlkit"), version, text.name()),
+                    RunCsv.latest(dir.resolve("runs-mlkit"), version, image.name()));
+            var tess = new RunPair(RunCsv.latest(dir.resolve("runs"), version, text.name()),
+                    RunCsv.latest(dir.resolve("runs"), version, image.name()));
+            if (!ml.complete() || !tess.complete()) {
+                log.warn("{}: Tesseract 기준 실행(runs/)이 없어 비교를 건너뜁니다.", text.model());
+                continue;
+            }
+            int threshold = RunComparison.HYBRID_THRESHOLD_CHARS;
+            var t = new MlKitRemeasure.Engine(tess.text().get(), tess.image().get());
+            var m = new MlKitRemeasure.Engine(ml.text().get(), ml.image().get());
+            var flips = MlKitRemeasure.flips(t, m, threshold);
+            Files.writeString(dir.resolve("results.mlkit-vs-tesseract." + text.model() + ".md"),
+                    MlKitRemeasure.renderSummary(t, m, threshold, flips), StandardCharsets.UTF_8);
+            Files.writeString(dir.resolve("compare.local.mlkit-remeasure.md"),
+                    MlKitRemeasure.renderLocal(flips, threshold), StandardCharsets.UTF_8);
+            log.info("ML Kit vs Tesseract 비교 완료: results.mlkit-vs-tesseract.{}.md", text.model());
+        }
+    }
+
+    private record RunPair(Optional<RunCsv.Run> text, Optional<RunCsv.Run> image) {
+        boolean complete() {
+            return text.isPresent() && image.isPresent();
+        }
     }
 
     /**
@@ -465,7 +532,7 @@ class ExperimentRunner implements CommandLineRunner {
     }
 
     /** 정답이 채워지고 OCR 파일이 있는 행만 담는다. 정답이 비어 건너뛴 수를 반환한다. */
-    private int loadLabels(List<Labeled> out) throws IOException {
+    private int loadLabels(List<Labeled> out, Map<String, String> mlkitText) throws IOException {
         Path labels = dir.resolve("labels.csv");
         if (!Files.exists(labels)) {
             return 0;
@@ -481,9 +548,9 @@ class ExperimentRunner implements CommandLineRunner {
                 unlabeled++;
                 continue;
             }
-            Path ocr = dir.resolve("ocr").resolve(row.filename().replaceFirst("\\.[^.]+$", "") + ".txt");
-            if (!Files.exists(ocr)) {
-                log.warn("OCR 파일 없음, 건너뜀: {}", row.filename());
+            Path ocr = dir.resolve("ocr").resolve(MlKitOcr.stem(row.filename()) + ".txt");
+            if (mlkitText != null ? !mlkitText.containsKey(MlKitOcr.stem(row.filename())) : !Files.exists(ocr)) {
+                log.warn("OCR 결과 없음, 건너뜀: {}", row.filename());
                 continue;
             }
             Category expected;
@@ -494,7 +561,8 @@ class ExperimentRunner implements CommandLineRunner {
                 continue;
             }
             out.add(new Labeled(row.filename(), expected, parseAlt(row, expected),
-                    Files.readString(ocr, StandardCharsets.UTF_8).trim()));
+                    mlkitText != null ? mlkitText.get(MlKitOcr.stem(row.filename()))
+                            : Files.readString(ocr, StandardCharsets.UTF_8).trim()));
         }
         return unlabeled;
     }
