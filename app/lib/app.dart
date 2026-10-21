@@ -12,6 +12,7 @@ import 'screens/analysis_screen.dart';
 import 'screens/consent_screen.dart';
 import 'screens/permission_gate.dart';
 import 'screens/shell_screen.dart';
+import 'screens/sync_gate.dart';
 
 /// 앱 루트. 3주차에 서버 연동 때는 [repository]만 API 구현으로 바꿔 넣으면 된다.
 class RemineApp extends StatefulWidget {
@@ -42,10 +43,22 @@ class RemineApp extends StatefulWidget {
 
 class _RemineAppState extends State<RemineApp> {
   // 기기 모드면 서버(지금은 가짜) 데이터에 기기 안 분류 결과를 합쳐 보여 준다.
+  // 서버 연동(API_BASE)이 있으면 서버 저장소를, 없으면 가짜 저장소를 쓴다.
   late final RemineStore _store = RemineStore(
-    _withLocal(widget.repository ?? FakeScreenshotRepository(now: widget.now)),
+    _withLocal(
+      widget.repository ??
+          widget.device?.remote?.repository ??
+          FakeScreenshotRepository(now: widget.now),
+    ),
     now: widget.now,
   );
+
+  @override
+  void initState() {
+    super.initState();
+    // 배치(20장)가 끝날 때마다 홈·카테고리가 새로 불러온다.
+    widget.device?.remote?.sync.onBatchDone = _store.refresh;
+  }
 
   ScreenshotRepository _withLocal(ScreenshotRepository base) {
     final device = widget.device;
@@ -85,7 +98,12 @@ class _RemineAppState extends State<RemineApp> {
                 reader: device.reader,
                 child: ConsentGate(
                   settings: device.settings,
-                  child: const ShellScreen(),
+                  child: device.remote == null
+                      ? const ShellScreen()
+                      : SyncGate(
+                          remote: device.remote!,
+                          child: const ShellScreen(),
+                        ),
                 ),
               ),
         builder: device == null

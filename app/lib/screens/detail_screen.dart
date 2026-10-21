@@ -9,6 +9,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import '../core/helpers.dart';
 import '../core/tokens.dart';
 import '../data/remine_store.dart';
+import '../data/remote/api_client.dart' show ApiException;
+import '../models/category_update.dart';
 import '../models/screenshot_item.dart';
 import '../widgets/category_sheet.dart';
 import '../widgets/home_widgets.dart';
@@ -428,7 +430,17 @@ class _DetailPageState extends State<_DetailPage> {
       autoCategory: _item.autoCategory ?? _item.category,
     );
     if (chosen == null) return;
-    final result = await store.changeCategory(_item.id, chosen);
+    final CategoryUpdate result;
+    try {
+      result = await store.changeCategory(_item.id, chosen);
+    } on ApiException {
+      // 서버에 닿지 못했다. 화면은 그대로 두고 안내만 한다(바뀐 척하지 않는다).
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('카테고리를 바꾸지 못했어요. 연결을 확인하고 다시 해 주세요.')),
+      );
+      return;
+    }
     if (!mounted) return;
     widget.onChanged(
       _item.copyWith(

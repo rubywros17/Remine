@@ -7,7 +7,8 @@ import 'privacy/local_verdict_store.dart';
 
 /// 기기 안 SQLite 한 파일. OCR 결과·판정 결과·설정 표가 같이 들어 있다.
 ///
-/// 버전: 1 = `ocr_result`만, 2 = `local_verdict`·`setting` 추가 + 기존 OCR 행을 필터에 다시 통과.
+/// 버전: 1 = `ocr_result`만, 2 = `local_verdict`·`setting` 추가 + 기존 OCR 행을 필터에 다시 통과,
+/// 3 = `server_map`(asset id ↔ 서버 id·동기화 상태)·`server_cache`(마지막으로 받은 목록·요약) 추가.
 class LocalDb {
   /// [path]·[factory]는 테스트용(실제 SQLite 파일로 업그레이드를 검증). 기본은 앱 DB 폴더의 [fileName].
   LocalDb({
@@ -17,7 +18,7 @@ class LocalDb {
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now;
 
-  static const version = 2;
+  static const version = 3;
 
   final String fileName;
   final String? path;
@@ -56,12 +57,14 @@ class LocalDb {
         'engine TEXT NOT NULL)',
       );
       await _createV2Tables(db);
+      await _createV3Tables(db);
     },
     onUpgrade: (db, from, to) async {
       if (from < 2) {
         await _createV2Tables(db);
         await _refilterExistingRows(db);
       }
+      if (from < 3) await _createV3Tables(db);
     },
   );
 
@@ -80,6 +83,22 @@ class LocalDb {
     );
     await db.execute(
       'CREATE TABLE setting (key TEXT PRIMARY KEY, value TEXT NOT NULL)',
+    );
+  }
+
+  static Future<void> _createV3Tables(Database db) async {
+    await db.execute(
+      'CREATE TABLE server_map ('
+      'asset_id TEXT PRIMARY KEY, '
+      'server_id INTEGER, '
+      'modified_at INTEGER NOT NULL, '
+      'status TEXT NOT NULL)',
+    );
+    await db.execute(
+      'CREATE TABLE server_cache ('
+      'key TEXT PRIMARY KEY, '
+      'json TEXT NOT NULL, '
+      'saved_at INTEGER NOT NULL)',
     );
   }
 

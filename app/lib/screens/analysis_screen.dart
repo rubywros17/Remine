@@ -1,18 +1,30 @@
 import 'package:flutter/material.dart';
 
 import '../core/tokens.dart';
+import '../data/remote/sync_status.dart';
 import '../models/category.dart';
+import '../widgets/app_button.dart';
 import '../widgets/home_widgets.dart';
 import '../widgets/small_widgets.dart';
 
-/// 첫 분석 화면(정적). 지금은 가짜 진행값이고, 진행 모션은 이후에 더한다.
+/// 첫 분석 화면. [status]가 있으면 실제 동기화 진행(장수·카테고리별 개수·남은 예상 시간)을 보여 주고,
+/// 없으면(개발용 `START_SCREEN=analysis`, 테스트) 가짜 진행값을 보여 준다.
+/// [onHome]이 있으면 "홈에서 먼저 볼래요" 버튼이 나와 분석 중에도 홈으로 나갈 수 있다(분석은 계속 진행된다).
 ///
 /// 레이아웃: 높이가 넉넉하면 개인정보 안내 카드가 맨 아래에 붙고, 낮으면 내용 전체가 함께 스크롤된다.
 class AnalysisScreen extends StatelessWidget {
-  const AnalysisScreen({super.key, this.done = 128, this.total = 300});
+  const AnalysisScreen({
+    super.key,
+    this.done = 128,
+    this.total = 300,
+    this.status,
+    this.onHome,
+  });
 
   final int done;
   final int total;
+  final SyncStatus? status;
+  final VoidCallback? onHome;
 
   // 가짜 진행값: 지금까지 꺼낸 128장의 카테고리별 개수 (합계 128).
   static const _counts = {
@@ -27,6 +39,39 @@ class AnalysisScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final status = this.status;
+    if (status == null) {
+      return _scaffold(context, done, total, _counts, null, onHome);
+    }
+    // [Flutter 메모] ListenableBuilder는 ChangeNotifier가 알릴 때마다 builder만 다시 실행한다.
+    return ListenableBuilder(
+      listenable: status,
+      builder: (context, _) {
+        final eta = status.eta;
+        return _scaffold(
+          context,
+          status.done,
+          status.total,
+          status.counts,
+          eta != null
+              ? formatEta(eta)
+              : status.running
+              ? '남은 시간을 계산하고 있어요'
+              : null,
+          onHome,
+        );
+      },
+    );
+  }
+
+  Widget _scaffold(
+    BuildContext context,
+    int done,
+    int total,
+    Map<Category, int> counts,
+    String? etaText,
+    VoidCallback? onHome,
+  ) {
     return Scaffold(
       backgroundColor: AppColors.darkGray,
       body: SafeArea(
@@ -80,6 +125,15 @@ class AnalysisScreen extends StatelessWidget {
                                   color: AppColors.white,
                                 ),
                               ),
+                              if (etaText != null) ...[
+                                const SizedBox(height: AppSpacing.s8),
+                                Text(
+                                  etaText,
+                                  style: AppText.body.copyWith(
+                                    color: AppColors.celadonSoft,
+                                  ),
+                                ),
+                              ],
                             ],
                           ),
                         ),
@@ -90,7 +144,7 @@ class AnalysisScreen extends StatelessWidget {
                           spacing: AppSpacing.s8,
                           runSpacing: AppSpacing.s8,
                           children: [
-                            for (final e in _counts.entries)
+                            for (final e in counts.entries)
                               AppChip(
                                 label: e.key.label,
                                 background: AppColors.white,
@@ -102,7 +156,21 @@ class AnalysisScreen extends StatelessWidget {
                         const SizedBox(height: AppSpacing.s24),
                       ],
                     ),
-                    const PrivacyCard(),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        if (onHome != null) ...[
+                          Center(
+                            child: AppButton(
+                              label: '홈에서 먼저 볼래요',
+                              onTap: onHome,
+                            ),
+                          ),
+                          const SizedBox(height: AppSpacing.s16),
+                        ],
+                        const PrivacyCard(),
+                      ],
+                    ),
                   ],
                 ),
               ),
