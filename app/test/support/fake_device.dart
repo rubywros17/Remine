@@ -42,6 +42,7 @@ class FakeGalleryReader implements GalleryReader {
   int reselected = 0;
   int settingsOpened = 0;
   final List<int> limits = [];
+  final List<String> requestedAlbums = [];
 
   @override
   Future<GalleryAccess> access({bool request = false}) async {
@@ -59,11 +60,12 @@ class FakeGalleryReader implements GalleryReader {
   Future<void> openSettings() async => settingsOpened++;
 
   @override
-  Future<List<GalleryAlbum>> albums() async => _albums;
+  Future<List<GalleryAlbum>> albums() async => orderAlbums(_albums); // 실제 구현과 같은 정렬·기본 소스 규칙
 
   @override
   Future<List<GalleryPhoto>> recent(String albumId, {int limit = 300}) async {
     limits.add(limit);
+    requestedAlbums.add(albumId);
     return photos.take(limit).toList();
   }
 

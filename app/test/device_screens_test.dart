@@ -150,6 +150,79 @@ void main() {
       expect(items.first['charCount'], greaterThan(0));
     });
 
+    // 실기기 버그: 갤럭시에 이름이 Screenshots인 앨범이 둘(DCIM/Screenshots, Pictures/Screenshots) 있으면
+    // 칩 키를 이름으로 만들어 "Duplicate keys found" 오류가 났다. 키·선택은 앨범 id 기준이어야 한다.
+    group('이름이 같은 앨범이 둘 이상', () {
+      FakeGalleryReader twinReader() => FakeGalleryReader(
+        albums: const [
+          GalleryAlbum(
+            id: 'pic',
+            name: 'Screenshots',
+            count: 500,
+            relativePath: 'Pictures/Screenshots/',
+          ),
+          GalleryAlbum(
+            id: 'dcim',
+            name: 'Screenshots',
+            count: 40,
+            relativePath: 'DCIM/Screenshots/',
+          ),
+          GalleryAlbum(id: 'exp', name: 'RemineExperiment', count: 43),
+        ],
+        photos: fakePhotos(350),
+      );
+
+      Future<FakeGalleryReader> open(WidgetTester tester) async {
+        tester.view.physicalSize = const Size(390, 844);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+        final reader = twinReader();
+        await tester.pumpWidget(
+          MaterialApp(home: DebugOcrScreen(services: fakeServices(reader))),
+        );
+        await tester.pumpAndSettle();
+        return reader;
+      }
+
+      testWidgets('오류 없이 열리고, DCIM/Screenshots가 기본으로 열린다', (tester) async {
+        final reader = await open(tester);
+
+        expect(tester.takeException(), isNull);
+        expect(reader.requestedAlbums, ['dcim']);
+        expect(find.byKey(const ValueKey('album-dcim')), findsOneWidget);
+        expect(find.byKey(const ValueKey('album-pic')), findsOneWidget);
+      });
+
+      testWidgets('같은 이름 칩은 경로로 구분되고, 다른 이름 칩은 그대로다', (tester) async {
+        await open(tester);
+
+        expect(find.textContaining('DCIM/Screenshots/'), findsOneWidget);
+        expect(find.textContaining('Pictures/Screenshots/'), findsOneWidget);
+        expect(find.text('RemineExperiment 43'), findsOneWidget);
+      });
+
+      testWidgets('칩을 고르면 그 id의 앨범만 불러오고, 자동으로 합치지 않는다', (tester) async {
+        final reader = await open(tester);
+
+        await tester.ensureVisible(find.byKey(const ValueKey('album-pic')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('album-pic')));
+        await tester.pumpAndSettle();
+
+        expect(reader.requestedAlbums, ['dcim', 'pic']);
+      });
+
+      testWidgets('한 앨범에서 최대 300장만 읽는다', (tester) async {
+        final reader = await open(tester);
+
+        expect(reader.limits, [300]);
+        expect(find.byType(GestureDetector), findsWidgets);
+        await tester.tap(find.text('전체 선택'));
+        await tester.pump();
+        expect(find.text('300장 선택 · 최근 300장까지'), findsOneWidget);
+      });
+    });
+
     testWidgets('아무것도 안 고르면 실행할 수 없고, 결과가 없으면 내보낼 수 없다', (tester) async {
       await pumpScreen(tester);
 
