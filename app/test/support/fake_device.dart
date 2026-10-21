@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:remine/data/device/device_capture_service.dart';
 import 'package:remine/data/device/device_services.dart';
+import 'package:remine/data/device/settings_store.dart';
 import 'package:remine/data/device/gallery_reader.dart';
 import 'package:remine/data/device/ocr_store.dart';
 import 'package:remine/data/device/ocr_temp_files.dart';
@@ -118,6 +119,7 @@ DeviceServices fakeServices(
   OcrStore? store,
   Directory? tmp,
   Directory? exportTo,
+  SettingsStore? settings,
 }) => DeviceServices(
   reader: reader,
   capture: DeviceCaptureService(
@@ -129,5 +131,6 @@ DeviceServices fakeServices(
     ),
     now: () => DateTime(2026, 10, 19, 12),
   ),
+  settings: settings ?? InMemorySettingsStore(false),
   exportDir: () async => exportTo ?? Directory.systemTemp,
 );

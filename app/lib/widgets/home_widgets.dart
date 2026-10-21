@@ -9,6 +9,52 @@ import 'pressable_scale.dart';
 import 'small_widgets.dart';
 import 'thumb_placeholder.dart';
 
+/// 홈의 "분석 제외" 알약: 기기에서만 분류한 숨김 캡처 개수. 연한 테두리로 카테고리 알약과 구분한다.
+class ExcludedPill extends StatelessWidget {
+  const ExcludedPill({super.key, required this.count, required this.onTap});
+
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return PressableScale(
+      onTap: onTap,
+      label: '분석 제외 $count장',
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 48),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(AppRadii.pill),
+            border: Border.all(color: AppColors.border, width: 1.2),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(LucideIcons.lock, size: 18, color: AppColors.inkSub),
+                const SizedBox(width: AppSpacing.s8),
+                Flexible(
+                  child: Text(
+                    '분석 제외 $count',
+                    style: AppText.label.copyWith(
+                      fontSize: 15,
+                      color: AppColors.inkSub,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// 홈의 카테고리 알약: 아이콘 · 이름 · 개수 배지. 가장 많은 카테고리([filled])만 셀라돈으로 채운다.
 class CategoryPill extends StatelessWidget {
   const CategoryPill({

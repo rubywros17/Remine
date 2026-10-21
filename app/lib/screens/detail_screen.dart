@@ -420,6 +420,7 @@ class _DetailPageState extends State<_DetailPage> {
   }
 
   Future<void> _editCategory() async {
+    if (_item.id < 0) return; // 버튼이 막혀 있지만, 다른 경로로 불려도 터지지 않게 한다
     final store = RemineScope.of(context);
     final chosen = await showCategorySheet(
       context,
@@ -852,6 +853,9 @@ class _CardContent extends StatelessWidget {
 
 enum _CardAction { trash }
 
+/// 기기에서 분류한 캡처(음수 id)의 카테고리 수정 버튼이 막힌 이유.
+const deviceClassifiedNotice = '기기에서 분류한 캡처라 아직 바꿀 수 없어요';
+
 class _InfoCard extends StatelessWidget {
   const _InfoCard({
     required this.item,
@@ -905,8 +909,11 @@ class _InfoCard extends StatelessWidget {
                   Flexible(
                     child: PressableScale(
                       key: ValueKey('category-chip-${item.id}'),
-                      onTap: onEditCategory,
-                      label: '카테고리 ${item.category.label}, 눌러서 수정',
+                      // 기기에서 분류한 캡처(id < 0)는 아직 서버에 없어 수정할 수 없다 → 비활성화.
+                      onTap: item.id < 0 ? null : onEditCategory,
+                      label: item.id < 0
+                          ? '카테고리 ${item.category.label}, $deviceClassifiedNotice'
+                          : '카테고리 ${item.category.label}, 눌러서 수정',
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(minHeight: 48),
                         child: Center(
@@ -917,11 +924,13 @@ class _InfoCard extends StatelessWidget {
                               size: 16,
                               color: AppColors.ink,
                             ),
-                            trailing: const Icon(
-                              LucideIcons.pencil,
-                              size: 14,
-                              color: AppColors.ink,
-                            ),
+                            trailing: item.id < 0
+                                ? null
+                                : const Icon(
+                                    LucideIcons.pencil,
+                                    size: 14,
+                                    color: AppColors.ink,
+                                  ),
                           ),
                         ),
                       ),
@@ -968,6 +977,9 @@ class _InfoCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (item.id < 0) ...[
+                      Text(deviceClassifiedNotice, style: AppText.caption),
+                    ],
                     const SizedBox(height: AppSpacing.s8),
                     Text(
                       item.summary ?? item.category.label,

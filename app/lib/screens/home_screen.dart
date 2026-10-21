@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../core/helpers.dart';
 import '../core/tokens.dart';
@@ -10,6 +11,8 @@ import '../models/interest.dart';
 import '../widgets/home_widgets.dart';
 import '../widgets/small_widgets.dart';
 import 'category_screen.dart';
+import 'excluded_screen.dart';
+import 'settings_screen.dart';
 import 'debug_ocr_screen.dart';
 
 /// 홈(서랍 탭): 큰 제목 · 잊은 관심사 카드 · 카테고리 알약.
@@ -24,6 +27,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _seenRevision = -1;
   CategorySummary? _summary;
   Interest? _interest;
+  int _excludedCount = 0;
 
   // store가 알리면(예: 카테고리 수정) 이 메서드가 다시 불려 데이터를 새로 읽는다.
   @override
@@ -32,15 +36,19 @@ class _HomeScreenState extends State<HomeScreen> {
     final store = RemineScope.of(context);
     if (_seenRevision != store.revision) {
       _seenRevision = store.revision;
-      _load(store);
+      _load(store, DeviceScope.maybeOf(context));
     }
   }
 
-  Future<void> _load(RemineStore store) async {
+  Future<void> _load(RemineStore store, DeviceServices? device) async {
     final summary = await store.repository.summary();
     final interests = await store.repository.interests();
+    final excluded = device == null
+        ? 0
+        : (await device.capture.verdicts.deviceOnly(hidden: true)).length;
     if (!mounted) return;
     setState(() {
+      _excludedCount = excluded;
       _summary = summary;
       _interest = interests.isEmpty ? null : interests.first;
     });
@@ -53,7 +61,7 @@ class _HomeScreenState extends State<HomeScreen> {
         .push(appRoute(context, (_) => DebugOcrScreen(services: services)));
   }
 
-  void _open(BuildContext context, CategoryScreen screen) {
+  void _open(BuildContext context, Widget screen) {
     Navigator.of(context).push(appRoute(context, (_) => screen));
   }
 
@@ -64,6 +72,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final store = RemineScope.of(context);
     final largest = summary.largest;
     final interest = _interest;
+    final device = DeviceScope.maybeOf(context);
 
     return SafeArea(
       bottom: false,
@@ -76,9 +85,24 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         children: [
           // 디버그 빌드 + 기기 모드에서만: 워드마크를 길게 누르면 OCR 측정 화면. 릴리스에서는 이 분기가 통째로 빠진다.
-          GestureDetector(
-            onLongPress: kDebugMode ? () => _openDebugOcr(context) : null,
-            child: BrandHeader(pillText: formatWeekdayDate(store.now())),
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onLongPress: kDebugMode ? () => _openDebugOcr(context) : null,
+                  child: BrandHeader(pillText: formatWeekdayDate(store.now())),
+                ),
+              ),
+              if (device != null)
+                RoundIconButton(
+                  icon: LucideIcons.settings,
+                  label: '설정',
+                  onTap: () => _open(
+                    context,
+                    SettingsScreen(settings: device.settings),
+                  ),
+                ),
+            ],
           ),
           const SizedBox(height: AppSpacing.s24),
           const HighlighterText(before: '잊고 있던 거,\n다시 ', highlight: '캐냈어요'),
@@ -132,6 +156,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   filled: item.category == largest,
                   onTap: () =>
                       _open(context, CategoryScreen(category: item.category)),
+                ),
+              if (device != null)
+                ExcludedPill(
+                  count: _excludedCount,
+                  onTap: () => _open(
+                    context,
+                    ExcludedScreen(
+                      verdicts: device.capture.verdicts,
+                      reader: device.reader,
+                    ),
+                  ),
                 ),
             ],
           ),

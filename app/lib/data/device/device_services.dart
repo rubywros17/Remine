@@ -4,17 +4,20 @@ import 'package:flutter/widgets.dart';
 
 import 'device_capture_service.dart';
 import 'gallery_reader.dart';
+import 'settings_store.dart';
 
 /// 기기 모드(`--dart-define=DATA=device`)에서 화면이 쓰는 서비스 묶음.
 class DeviceServices {
   const DeviceServices({
     required this.reader,
     required this.capture,
+    required this.settings,
     required this.exportDir,
   });
 
   final GalleryReader reader;
   final DeviceCaptureService capture;
+  final SettingsStore settings;
 
   /// 디버그 내보내기 폴더(앱 전용 외부 저장소 — 권한 없이 쓰고 `adb pull`로 가져온다).
   final Future<Directory> Function() exportDir;

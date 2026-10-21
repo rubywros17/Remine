@@ -1,13 +1,19 @@
+import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart' hide Category;
 import 'package:flutter/gestures.dart' show kTouchSlop;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:remine/app.dart';
+import 'package:remine/data/device/device_capture_service.dart';
 import 'package:remine/data/device/device_services.dart';
 import 'package:remine/data/device/gallery_reader.dart';
+import 'package:remine/data/device/privacy/local_verdict_store.dart';
+import 'package:remine/data/device/privacy/privacy_filter.dart';
+import 'package:remine/data/device/settings_store.dart';
+import 'package:remine/models/category.dart';
 import 'package:remine/screens/debug_ocr_screen.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
@@ -274,11 +280,188 @@ void defineLayoutMatrix({
       _expectClean('디버그 OCR $label', errors);
     });
 
+    testWidgets('이미지 분석 동의 · $label', (tester) async {
+      final errors = await _errorsDuring(() async {
+        await _pump(
+          tester,
+          size,
+          scale,
+          device: fakeServices(
+            FakeGalleryReader(),
+            settings: InMemorySettingsStore(null),
+          ),
+        );
+        expect(find.text('동의할래요'), findsOneWidget);
+        expect(find.text('안 할래요'), findsOneWidget);
+      });
+      _expectClean('동의 $label', errors);
+    });
+
+    testWidgets('설정 · $label', (tester) async {
+      final errors = await _errorsDuring(() async {
+        await _pump(
+          tester,
+          size,
+          scale,
+          device: fakeServices(FakeGalleryReader()),
+        );
+        await _tap(tester, find.byIcon(LucideIcons.settings));
+        expect(find.byType(Switch), findsOneWidget, reason: '설정 화면이 아님');
+      });
+      _expectClean('설정 $label', errors);
+    });
+
+    testWidgets('분석 제외 · $label', (tester) async {
+      final errors = await _errorsDuring(() async {
+        final services = fakeServices(FakeGalleryReader());
+        final verdicts = services.capture.verdicts;
+        // 사유가 여러 개 겹친 가장 긴 라벨까지 그려 본다.
+        await verdicts.save(
+          StoredVerdict.of(
+            const LocalVerdict(
+              route: LocalRoute.deviceOnly,
+              category: Category.etc,
+              hidden: true,
+              reasons: ['SSN', 'CARD', 'ACCOUNT', 'OTP', 'PASSWORD'],
+            ),
+            assetId: 'a1',
+            takenAt: _now,
+            modifiedAt: 1,
+            now: _now,
+          ),
+        );
+        for (var i = 0; i < 12; i++) {
+          await verdicts.save(
+            StoredVerdict.of(
+              judgeByApp('Screenshot_20261019_120000_KakaoBank.jpg')!,
+              assetId: 'b$i',
+              takenAt: _now,
+              modifiedAt: 1,
+              now: _now,
+            ),
+          );
+        }
+        await _pump(tester, size, scale, device: services);
+        await _tap(tester, find.textContaining('분석 제외'));
+        expect(
+          find.textContaining('서버로 보내지 않고'),
+          findsOneWidget,
+          reason: '분석 제외 화면이 아님',
+        );
+      });
+      _expectClean('분석 제외 $label', errors);
+    });
+
+    testWidgets('디버그 OCR 처리 중(999 / 999 + 진행 막대) · $label', (tester) async {
+      final done = Completer<void>();
+      addTearDown(() {
+        if (!done.isCompleted) done.complete();
+      });
+      final errors = await _errorsDuring(() async {
+        final reader = _AllPhotosReader(fakePhotos(999));
+        final base = fakeServices(reader);
+        final services = DeviceServices(
+          reader: reader,
+          capture: _StallingCapture(base.capture, done.future),
+          settings: base.settings,
+          exportDir: base.exportDir,
+        );
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1.0;
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.view.reset);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await tester.pumpWidget(
+          MaterialApp(home: DebugOcrScreen(services: services)),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('전체 선택'), warnIfMissed: false);
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('OCR 실행')); // 아주 작은 화면에서는 패널 안을 스크롤해야 보인다
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('OCR 실행'), warnIfMissed: false);
+        await tester.pump();
+        await tester.pump();
+        expect(find.text('처리 중 999 / 999'), findsOneWidget);
+        expect(find.byKey(const ValueKey('ocr-progress')), findsOneWidget);
+        expect(find.text('멈추기'), findsOneWidget);
+        done.complete(); // 끝나면 원래 버튼들이 돌아온다
+        await tester.pumpAndSettle();
+        expect(find.text('멈추기'), findsNothing);
+      });
+      _expectClean('처리 중 $label', errors);
+    });
+
+    testWidgets('디버그 앱 이름별 개수 시트 · $label', (tester) async {
+      final errors = await _errorsDuring(() async {
+        final reader = FakeGalleryReader(
+          photos: [
+            for (var i = 0; i < 30; i++)
+              GalleryPhoto(
+                id: 'p$i',
+                fileName:
+                    'Screenshot_20261019_1200${i.toString().padLeft(2, '0')}_Very Long Application Name Number $i.jpg',
+                takenAt: _now,
+                modifiedAt: i,
+              ),
+          ],
+        );
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1.0;
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.view.reset);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await tester.pumpWidget(
+          MaterialApp(home: DebugOcrScreen(services: fakeServices(reader))),
+        );
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('앱 이름별 개수'));
+        await tester.tap(find.text('앱 이름별 개수'), warnIfMissed: false);
+        await tester.pumpAndSettle();
+        expect(find.textContaining('전체 30장'), findsOneWidget);
+      });
+      _expectClean('앱 이름별 개수 $label', errors);
+    });
+
     testWidgets('첫 분석 · $label', (tester) async {
       final errors = await _errorsDuring(
         () => _pump(tester, size, scale, start: 'analysis'),
       );
       _expectClean('첫 분석 $label', errors);
     });
+  }
+}
+
+/// 앨범의 사진을 장수 제한 없이 돌려주는 갤러리(999장 화면을 만들려는 테스트용).
+class _AllPhotosReader extends FakeGalleryReader {
+  _AllPhotosReader(List<GalleryPhoto> all) : super(photos: all);
+
+  @override
+  Future<List<GalleryPhoto>> recent(String albumId, {int limit = 300}) async =>
+      photos;
+}
+
+/// 전부 처리했다고 알린 직후 [release]될 때까지 끝나지 않는 서비스(처리 중 화면을 붙잡아 둔다).
+class _StallingCapture extends DeviceCaptureService {
+  _StallingCapture(DeviceCaptureService base, this.release)
+    : super(
+        reader: base.reader,
+        ocr: base.ocr,
+        store: base.store,
+        temp: base.temp,
+        verdicts: base.verdicts,
+      );
+
+  final Future<void> release;
+
+  @override
+  Future<OcrRun> run(
+    List<GalleryPhoto> photos, {
+    void Function(int done, int total)? onProgress,
+    bool Function()? isCancelled,
+  }) async {
+    onProgress?.call(photos.length, photos.length);
+    await release;
+    return const OcrRun(records: [], failed: 0, skipped: 0);
   }
 }

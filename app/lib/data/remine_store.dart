@@ -37,6 +37,12 @@ class RemineStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// repository 밖에서 데이터가 바뀌었을 때(기기 안 분류가 끝났을 때 등) 화면이 다시 불러오게 한다.
+  void refresh() {
+    _revision++;
+    notifyListeners();
+  }
+
   Future<CategoryUpdate> changeCategory(int id, Category category) async {
     final result = await repository.updateCategory(id, category);
     _revision++;
@@ -52,6 +58,9 @@ class RemineScope extends InheritedNotifier<RemineStore> {
     required RemineStore store,
     required super.child,
   }) : super(notifier: store);
+
+  static RemineStore? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<RemineScope>()?.notifier;
 
   static RemineStore of(BuildContext context) {
     final scope = context.dependOnInheritedWidgetOfExactType<RemineScope>();
