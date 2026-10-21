@@ -176,11 +176,11 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
                 children: [
                   for (final a in _albums) ...[
                     PressableScale(
-                      key: ValueKey('album-${a.name}'),
+                      key: ValueKey('album-${a.id}'),
                       onTap: _running ? null : () => _selectAlbum(a.id),
                       child: a.id == _albumId
-                          ? AppChip.selected(label: '${a.name} ${a.count}')
-                          : AppChip.outlined(label: '${a.name} ${a.count}'),
+                          ? AppChip.selected(label: _albumLabel(a))
+                          : AppChip.outlined(label: _albumLabel(a)),
                     ),
                     const SizedBox(width: AppSpacing.s8),
                   ],
@@ -193,6 +193,15 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
         ),
       ),
     );
+  }
+
+  /// 이름이 같은 앨범은 경로를 붙여 구분한다(자동으로 합치지 않고, 여기서 직접 고른다).
+  String _albumLabel(GalleryAlbum a) {
+    final dup = _albums.where((x) => x.name == a.name).length > 1;
+    final path = a.relativePath;
+    return dup && path != null
+        ? '${a.name} ${a.count} · $path'
+        : '${a.name} ${a.count}';
   }
 
   Widget _grid() {

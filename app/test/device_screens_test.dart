@@ -115,8 +115,8 @@ void main() {
     testWidgets('Screenshots 앨범이 먼저 열리고, 앨범을 바꿀 수 있다', (tester) async {
       await pumpScreen(tester);
 
-      expect(find.byKey(const ValueKey('album-Screenshots')), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey('album-RemineExperiment')));
+      expect(find.byKey(const ValueKey('album-shots')), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey('album-exp')));
       await tester.pumpAndSettle();
       expect(find.text('0장 선택 · 최근 300장까지'), findsOneWidget);
     });

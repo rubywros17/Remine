@@ -6,8 +6,6 @@ import 'gallery_reader.dart';
 
 /// [GalleryReader]의 실제 구현(photo_manager). 기기에서만 동작한다.
 class PhotoManagerGalleryReader implements GalleryReader {
-  static const _screenshotNames = {'screenshots', 'screenshot', '스크린샷'};
-
   static const _option = PermissionRequestOption(
     androidPermission: AndroidPermission(
       type: RequestType.image,
@@ -47,15 +45,11 @@ class PhotoManagerGalleryReader implements GalleryReader {
           id: p.id,
           name: p.name,
           count: await p.assetCountAsync,
-          isScreenshots: _screenshotNames.contains(p.name.toLowerCase()),
+          relativePath: await p.relativePathAsync,
         ),
       );
     }
-    albums.sort((a, b) {
-      if (a.isScreenshots != b.isScreenshots) return a.isScreenshots ? -1 : 1;
-      return a.name.compareTo(b.name);
-    });
-    return albums;
+    return orderAlbums(albums);
   }
 
   @override

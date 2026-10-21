@@ -266,7 +266,7 @@ void defineLayoutMatrix({
         await tester.tap(find.text('전체 선택'), warnIfMissed: false);
         await tester.pumpAndSettle();
         await tester.tap(
-          find.byKey(const ValueKey('album-RemineExperiment')),
+          find.byKey(const ValueKey('album-exp')),
           warnIfMissed: false,
         );
         await tester.pumpAndSettle();
