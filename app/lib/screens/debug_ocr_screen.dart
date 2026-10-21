@@ -287,50 +287,79 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    _running
-                        ? '처리 중 $_done / ${_selected.length}'
-                        : '${_selected.length}장 선택 · 최근 ${DeviceCaptureService.maxPhotos}장까지',
-                    style: AppText.label,
-                  ),
+                  if (_running) ...[
+                    // 진행 숫자는 제목급으로, 멈추기는 같은 줄 오른쪽 끝(글자가 길면 숫자가 줄어든다).
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '처리 중 $_done / ${_selected.length}',
+                            style: AppText.sectionTitle,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.s12),
+                        AppButton(label: '멈추기', onTap: () => _cancel = true),
+                      ],
+                    ),
+                    const SizedBox(height: AppSpacing.s12),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(AppRadii.pill),
+                      child: LinearProgressIndicator(
+                        key: const ValueKey('ocr-progress'),
+                        value: _selected.isEmpty ? 0 : _done / _selected.length,
+                        minHeight: 8,
+                        backgroundColor: AppColors.border,
+                        color: AppColors.celadonDeep,
+                      ),
+                    ),
+                  ] else
+                    Text(
+                      '${_selected.length}장 선택 · 최근 ${DeviceCaptureService.maxPhotos}장까지',
+                      style: AppText.label,
+                    ),
                   if (_status.isNotEmpty) ...[
                     const SizedBox(height: AppSpacing.s4),
                     Text(_status, style: AppText.caption),
                   ],
-                  const SizedBox(height: AppSpacing.s12),
-                  Wrap(
-                    spacing: AppSpacing.s8,
-                    runSpacing: AppSpacing.s8,
-                    children: [
-                      if (_running)
-                        AppButton(label: '멈추기', onTap: () => _cancel = true)
-                      else ...[
-                        AppButton(
-                          label: _selected.length == _photos.length
-                              ? '선택 해제'
-                              : '전체 선택',
-                          onTap: _photos.isEmpty ? null : _toggleAll,
-                          outlined: true,
-                        ),
-                        AppButton(label: 'OCR 실행', onTap: canRun ? _run : null),
-                        AppButton(
-                          label: 'JSON 내보내기',
-                          onTap: _records.isEmpty ? null : _export,
-                          outlined: true,
-                        ),
-                        AppButton(
-                          label: '앱 이름별 개수',
-                          onTap: _albumId == null ? null : _showAppCounts,
-                          outlined: true,
-                        ),
-                        AppButton(
-                          label: '저장된 결과 지우기',
-                          onTap: _clearLocal,
-                          outlined: true,
-                        ),
+                  if (!_running) ...[
+                    const SizedBox(height: AppSpacing.s12),
+                    Wrap(
+                      spacing: AppSpacing.s8,
+                      runSpacing: AppSpacing.s8,
+                      children: [
+                        ...[
+                          AppButton(
+                            label: _selected.length == _photos.length
+                                ? '선택 해제'
+                                : '전체 선택',
+                            onTap: _photos.isEmpty ? null : _toggleAll,
+                            outlined: true,
+                          ),
+                          AppButton(
+                            label: 'OCR 실행',
+                            onTap: canRun ? _run : null,
+                          ),
+                          AppButton(
+                            label: 'JSON 내보내기',
+                            onTap: _records.isEmpty ? null : _export,
+                            outlined: true,
+                          ),
+                          AppButton(
+                            label: '앱 이름별 개수',
+                            onTap: _albumId == null ? null : _showAppCounts,
+                            outlined: true,
+                          ),
+                          AppButton(
+                            label: '저장된 결과 지우기',
+                            onTap: _clearLocal,
+                            outlined: true,
+                          ),
+                        ],
                       ],
-                    ],
-                  ),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -373,10 +402,7 @@ class _AppCountSheet extends StatelessWidget {
                 AppSpacing.screenPadding,
                 AppSpacing.s8,
               ),
-              child: Text(
-                '앱 이름별 개수 · 전체 $total장',
-                style: AppText.sectionTitle,
-              ),
+              child: Text('앱 이름별 개수 · 전체 $total장', style: AppText.sectionTitle),
             ),
             Flexible(
               child: ListView.builder(
