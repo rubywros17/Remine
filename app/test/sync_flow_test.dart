@@ -32,17 +32,30 @@ List<int> idsIn(SentRequest r) =>
         .toList();
 
 void main() {
-  test('45장은 서버 설정(20장)대로 20·20·5장으로 나눠 보내고 배치마다 홈을 갱신한다', () async {
-    final rig = await rigOf(45);
+  test('앱은 5장씩 나눠 보내고(서버 상한 20보다 작게) 배치마다 숫자를 올리고 홈을 갱신한다', () async {
+    final rig = await rigOf(12);
     await rig.sync.run();
 
     final calls = rig.client.analyzeCalls.toList();
-    expect(calls.map((c) => idsIn(c).length), [20, 20, 5]);
-    // 배치가 끝날 때마다 진행이 20, 40, 45로 올라간 상태에서 홈에 알린다(+ 마지막 마무리 알림).
+    expect(calls.map((c) => idsIn(c).length), [5, 5, 2]);
+    // 배치가 끝날 때마다 진행이 5, 10, 12로 올라간 상태에서 홈에 알린다(+ 마지막 마무리 알림).
+    expect(rig.batches.take(3), [5, 10, 12]);
+    expect(rig.status.done, 12);
+    expect(rig.status.counts[Category.info], 12);
+    expect(rig.status.issue, SyncIssue.none);
+  });
+
+  test('45장도 같은 방식이고, 앱 묶음을 서버 상한(20)까지 키우면 20·20·5장이다', () async {
+    final rig = await SyncRig.create(
+      photos: fakePhotos(45),
+      texts: {for (var i = 0; i < 45; i++) 'p$i': _long},
+      batchSize: 20,
+    );
+    await rig.sync.run();
+
+    expect(rig.client.analyzeCalls.map((c) => idsIn(c).length), [20, 20, 5]);
     expect(rig.batches.take(3), [20, 40, 45]);
     expect(rig.status.done, 45);
-    expect(rig.status.counts[Category.info], 45);
-    expect(rig.status.issue, SyncIssue.none);
   });
 
   test('기준값·장수 상한은 /api/config에서 받는다', () async {
@@ -61,7 +74,13 @@ void main() {
         return RecordingClient().defaultFor(r);
       },
     );
-    final rig = await rigOf(12, client: client);
+    // 서버 상한(5)이 앱 묶음(10)보다 작으면 서버 상한을 따른다.
+    final rig = await SyncRig.create(
+      photos: fakePhotos(12),
+      texts: {for (var i = 0; i < 12; i++) 'p$i': _long},
+      client: client,
+      batchSize: 10,
+    );
     await rig.sync.run();
 
     expect(rig.client.analyzeCalls.map((c) => idsIn(c).length), [5, 5, 2]);
@@ -173,7 +192,8 @@ void main() {
     final rig = await rigOf(30, photoLimit: 12);
     await rig.sync.run();
 
-    expect(rig.client.analyzeCalls.map((c) => idsIn(c).length), [12]);
+    // 앱 묶음(5장)대로 나뉘어도 합쳐서 제한한 장수(12장)만 간다.
+    expect(rig.client.analyzeCalls.expand(idsIn), hasLength(12));
   });
 
   test('기기 등록은 한 번만 하고 기기 id를 저장해 둔다', () async {

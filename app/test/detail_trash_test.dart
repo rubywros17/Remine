@@ -8,6 +8,7 @@ import 'package:remine/app.dart';
 import 'package:remine/core/tokens.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
 import 'package:remine/screens/detail_screen.dart' show trashSemanticsAction;
+import 'package:remine/screens/photo_viewer_screen.dart';
 
 final _now = DateTime(2026, 10, 19, 12, 0);
 
@@ -298,6 +299,47 @@ void main() {
       expect(find.text('1 / 5'), findsOneWidget);
       expect(find.text('휴지통으로 옮겼어'), findsOneWidget);
       handle.dispose();
+    });
+  });
+
+  group('이미지 탭 · 정보 카드 배치', () {
+    testWidgets('이미지를 탭하면 전체 화면 보기가 열리고 X로 닫으면 상세로 돌아온다', (tester) async {
+      await _pumpApp(tester);
+      await _openShoppingDetail(tester);
+
+      await tester.tap(_card);
+      await tester.pumpAndSettle();
+      expect(find.byType(PhotoViewerScreen), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('photo-viewer-close')));
+      await tester.pumpAndSettle();
+      expect(find.byType(PhotoViewerScreen), findsNothing);
+      expect(find.text('1 / 6'), findsOneWidget);
+    });
+
+    testWidgets('위로 던지는 제스처는 탭으로 오인되지 않는다', (tester) async {
+      final repo = await _pumpApp(tester);
+      await _openShoppingDetail(tester);
+
+      final g = await _dragUp(tester, 330);
+      await g.up();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 900));
+
+      expect(find.byType(PhotoViewerScreen), findsNothing);
+      expect(repo.trashedIds, {5});
+    });
+
+    testWidgets('카테고리 칩은 정보 카드 오른쪽 끝에 붙는다', (tester) async {
+      await _pumpApp(tester);
+      await _openShoppingDetail(tester);
+
+      final card = tester.getRect(find.byKey(const ValueKey('info-card-5')));
+      final chip = tester.getRect(
+        find.byKey(const ValueKey('category-chip-5')),
+      );
+      // 카드 안쪽 여백(20)만 남기고 오른쪽 끝에 붙는다.
+      expect(card.right - chip.right, closeTo(20, 1));
     });
   });
 

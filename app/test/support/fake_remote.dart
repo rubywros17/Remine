@@ -235,6 +235,7 @@ class SyncRig {
     RecordingClient? client,
     FakeShrinker? shrinker,
     int photoLimit = 0,
+    int? batchSize,
     List<GalleryAlbum>? albums,
   }) async {
     final reader = FakeGalleryReader(photos: photos, albums: albums);
@@ -263,6 +264,7 @@ class SyncRig {
       images: ImagePreparer(reader, shrink),
       status: status,
       photoLimit: photoLimit,
+      batchSize: batchSize ?? SyncService.defaultBatchSize,
       onBatchDone: () => batches.add(status.done),
       now: () => DateTime(2026, 10, 21, 12),
     );

@@ -22,6 +22,7 @@ import 'package:remine/widgets/wordmark.dart';
 
 import 'package:remine/data/remote/sync_status.dart';
 import 'package:remine/screens/analysis_screen.dart';
+import 'package:remine/screens/photo_viewer_screen.dart';
 
 import 'fake_device.dart';
 import 'fake_remote.dart';
@@ -350,6 +351,108 @@ void defineLayoutMatrix({
         expect(find.byType(LinearProgressIndicator), findsOneWidget);
       });
       _expectClean('첫 분석 실제 진행 $label', errors);
+    });
+
+    testWidgets('첫 분석 · 완료 상태(실제 썸네일 카드 4장·홈으로 버튼) · $label', (tester) async {
+      final errors = await _errorsDuring(() async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1.0;
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.view.reset);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        final status = SyncStatus()..begin(999);
+        status.advance(999);
+        // 가장 긴 카테고리 이름(문화생활)과 여러 자릿수 개수까지 그려 본다.
+        for (final c in Category.values) {
+          for (var i = 0; i < 99; i++) {
+            status.count(c);
+          }
+        }
+        for (final c in [
+          Category.entertainment,
+          Category.shopping,
+          Category.place,
+          Category.entertainment,
+        ]) {
+          status.count(c, assetId: 'a${status.recent.length}');
+        }
+        status.finish();
+        Future<void> show(SyncStatus st, {FakeGalleryReader? reader}) async {
+          await tester.pumpWidget(
+            MaterialApp(
+              home: DeviceScope(
+                services: fakeServices(reader ?? FakeGalleryReader()),
+                child: AnalysisScreen(status: st, onHome: () {}),
+              ),
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+        }
+
+        await show(status);
+        expect(find.text('홈으로'), findsOneWidget);
+        expect(find.byType(Image), findsNWidgets(4));
+        // 아직 한 장도 분류되지 않은 완료(새 캡처 없음)와 연결 실패 안내.
+        await show(SyncStatus()..finish());
+        expect(find.text('새로 꺼낼 캡처가 없어요'), findsWidgets);
+        await show(SyncStatus()..finish(issue: SyncIssue.offline));
+        expect(find.textContaining('서버에 연결하지 못했어요'), findsOneWidget);
+        // 진행 중 + 카드 일부만 채워진 상태.
+        final partial = SyncStatus()..begin(300, intervalMs: 4500);
+        partial.count(Category.entertainment, assetId: 'x1');
+        await tester.pumpWidget(
+          MaterialApp(
+            home: DeviceScope(
+              services: fakeServices(FakeGalleryReader()),
+              child: AnalysisScreen(status: partial, onHome: () {}),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(find.text('홈에서 먼저 볼래요'), findsOneWidget);
+      });
+      _expectClean('첫 분석 완료 상태 $label', errors);
+    });
+
+    testWidgets('전체 화면 보기(확대 전·확대 후·사진 없음) · $label', (tester) async {
+      final errors = await _errorsDuring(() async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1.0;
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.view.reset);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        Future<void> show(String assetId) async {
+          await tester.pumpWidget(
+            MaterialApp(
+              home: DeviceScope(
+                services: fakeServices(FakeGalleryReader()),
+                child: PhotoViewerScreen(assetId: assetId, seed: 1),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+        }
+
+        await show('a1');
+        expect(
+          find.byKey(const ValueKey('photo-viewer-close')),
+          findsOneWidget,
+        );
+        final viewer = find.byKey(const ValueKey('photo-viewer'));
+        final c = tester.getCenter(viewer);
+        final g1 = await tester.startGesture(c - const Offset(10, 0));
+        final g2 = await tester.startGesture(c + const Offset(10, 0));
+        await g1.moveBy(const Offset(-40, 0));
+        await g2.moveBy(const Offset(40, 0));
+        await g1.up();
+        await g2.up();
+        await tester.pumpAndSettle();
+        await show('missing');
+        expect(find.text('사진이 없어요'), findsOneWidget);
+      });
+      _expectClean('전체 화면 보기 $label', errors);
     });
 
     testWidgets('홈 · 서버 연결 안내 띠(오프라인·일부 실패) · $label', (tester) async {
