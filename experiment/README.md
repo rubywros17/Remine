@@ -210,6 +210,13 @@ v2는 **채택되지 않았다**(SHOPPING 회귀, [위 절](#프롬프트-v2-경
    ```
    앱 안에 저장된 OCR 결과는 측정 화면의 [저장된 결과 지우기], 또는 `adb shell pm clear com.remine.remine`(앱 데이터 전체 삭제)로 지운다. PC의 `experiment/mlkit/`도 비교가 끝나면 지운다.
 
+7. **분류 재측정** — OCR만 ML Kit으로 바꿔 같은 분류 실험(프롬프트 v1, 같은 `labels.csv`)을 돌린다. 실행 기록은 `runs-mlkit/`(gitignore)에 따로 남아 Tesseract 기록·`--experiment.compare`와 섞이지 않는다.
+   ```
+   cd server
+   ./gradlew bootRun --args="--spring.profiles.active=experiment --experiment.ocr=mlkit --experiment.mlkit-json=../experiment/mlkit/files/ocr-export-20261021-152141.json --experiment.candidates=gemini-3.5-flash-lite,gemini-3.5-flash-lite+image"
+   ```
+   결과: `results.mlkit.prompt-v1.*.md`, Tesseract 대비 `results.mlkit-vs-tesseract.<모델>.md`(집계, 커밋 가능), 150자 기준이 바뀐 장 목록 `compare.local.mlkit-remeasure.md`(gitignore).
+
 > `experiment/mlkit/`, `ocr-export-*.json`, `compare.local.mlkit-vs-tesseract.md`에는 **OCR 원문이 들어 있어** `.gitignore`로 커밋하지 않는다(위 개인 데이터 규칙과 같다).
 
 ## 한계

@@ -89,6 +89,7 @@ experiment/labels.csv
 experiment/errors.local*.md
 experiment/results.limit.md
 experiment/runs/
+experiment/runs-mlkit/
 experiment/compare.local*.md
 # ML Kit 재측정: 앱이 내보낸 JSON(OCR 원문 포함)과 비교 스크립트 출력
 experiment/mlkit/
