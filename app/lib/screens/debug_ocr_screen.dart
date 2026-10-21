@@ -337,65 +337,90 @@ class _ThumbState extends State<_Thumb> {
     widget.photoId,
   );
 
+  static const _radius = 12.0;
+  static const _circle = 22.0;
+  static const _corner = 6.0;
+
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          ColoredBox(
-            color: AppColors.chip,
-            child: FutureBuilder<Uint8List?>(
-              future: _bytes,
-              builder: (context, snap) => snap.data == null
-                  ? const SizedBox.shrink()
-                  : Image.memory(snap.data!, fit: BoxFit.cover),
-            ),
-          ),
-          if (widget.selected) ...[
-            const ColoredBox(color: AppColors.selectionDim),
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                border: Border.fromBorderSide(
-                  BorderSide(color: AppColors.celadonDeep, width: 3),
+    final selected = widget.selected;
+    // 애니메이션 줄이기면 duration이 0이라 축소가 즉시 적용된다.
+    final duration = AppMotion.duration(context, MotionDuration.fast);
+    return LayoutBuilder(
+      builder: (context, box) {
+        // 축소된 사진의 모서리에 체크 원을 맞추기 위한 한쪽 여백.
+        final inset = selected
+            ? box.maxWidth * (1 - AppGesture.selectedPhotoScale) / 2
+            : 0.0;
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: AnimatedScale(
+                scale: selected ? AppGesture.selectedPhotoScale : 1.0,
+                duration: duration,
+                curve: AppMotion.standard,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(_radius),
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      ColoredBox(
+                        color: AppColors.chip,
+                        child: FutureBuilder<Uint8List?>(
+                          future: _bytes,
+                          builder: (context, snap) => snap.data == null
+                              ? const SizedBox.shrink()
+                              : Image.memory(snap.data!, fit: BoxFit.cover),
+                        ),
+                      ),
+                      if (selected)
+                        const ColoredBox(color: AppColors.selectionDim),
+                    ],
+                  ),
                 ),
-                borderRadius: BorderRadius.all(Radius.circular(12)),
               ),
             ),
+            // 우상단 원: 선택 = 검은 원 + 레몬 체크(축소된 사진 모서리에 맞춤), 미선택 = 흰 테두리 빈 원 + 얇은 그림자
+            AnimatedPositioned(
+              duration: duration,
+              curve: AppMotion.standard,
+              top: _corner + inset,
+              right: _corner + inset,
+              child: selected
+                  ? const DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: AppColors.ink,
+                        shape: BoxShape.circle,
+                      ),
+                      child: SizedBox(
+                        width: _circle,
+                        height: _circle,
+                        child: Icon(
+                          LucideIcons.check,
+                          size: 14,
+                          color: AppColors.lemon,
+                        ),
+                      ),
+                    )
+                  : const DecoratedBox(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.fromBorderSide(
+                          BorderSide(color: AppColors.white, width: 2),
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.selectionRingShadow,
+                            blurRadius: 3,
+                          ),
+                        ],
+                      ),
+                      child: SizedBox(width: _circle, height: _circle),
+                    ),
+            ),
           ],
-          // 우상단 원: 선택 = 검은 원 + 레몬 체크, 미선택 = 흰 테두리 빈 원(누를 수 있다는 표시)
-          Positioned(
-            top: 6,
-            right: 6,
-            child: widget.selected
-                ? const DecoratedBox(
-                    decoration: BoxDecoration(
-                      color: AppColors.ink,
-                      shape: BoxShape.circle,
-                    ),
-                    child: SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: Icon(
-                        LucideIcons.check,
-                        size: 14,
-                        color: AppColors.lemon,
-                      ),
-                    ),
-                  )
-                : const DecoratedBox(
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.fromBorderSide(
-                        BorderSide(color: AppColors.white, width: 2),
-                      ),
-                    ),
-                    child: SizedBox(width: 22, height: 22),
-                  ),
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }

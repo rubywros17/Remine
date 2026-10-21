@@ -23,8 +23,11 @@ abstract final class AppColors {
   static const trashActiveBackground = Color(0xFF111111);
   static const trashActiveIcon = lemon;
 
-  /// 선택된 사진을 덮는 어둡게(ink 40%). 밝은 사진에서도 선택이 보이게 한다.
-  static const selectionDim = Color(0x66111111);
+  /// 선택된 사진을 덮는 어둡게(ink 15%). 사진은 칸 안에서 [AppGesture.selectedPhotoScale]배로 줄어든다.
+  static const selectionDim = Color(0x26111111);
+
+  /// 선택 전 빈 원의 얇은 그림자(밝은 사진 위에서도 보이게).
+  static const selectionRingShadow = Color(0x59111111);
 }
 
 /// 가짜 썸네일(색 블록)용 색 쌍: (바탕, 안쪽 블록). 실제 스크린샷 대신 쓴다.
@@ -163,6 +166,9 @@ abstract final class AppMotion {
 /// 상세 화면 제스처 값(좌우 넘기기 · 아래로 닫기 · 위로 던져 휴지통). 값의 근거와 동작은 docs/design.md.
 /// 손가락 감각은 실기기에서 조정하므로 숫자는 전부 여기 한 곳에 둔다.
 abstract final class AppGesture {
+  /// 측정 화면에서 선택한 사진이 칸 안에서 줄어드는 배율.
+  static const double selectedPhotoScale = 0.86;
+
   /// 위로 끌어 이 높이(화면 높이 비율)를 넘으면 휴지통 기준선 통과.
   static const double trashLineFraction = 1 / 3;
 
