@@ -32,7 +32,8 @@ class ConfigControllerTest {
                 .andExpect(jsonPath("$.imageMaxBytes").value(1048576))
                 .andExpect(jsonPath("$.imageMaxLongSide").value(1024))
                 .andExpect(jsonPath("$.imageContentType").value("image/jpeg"))
-                .andExpect(jsonPath("$.maxRequestBytes").value(12582912));
+                .andExpect(jsonPath("$.maxRequestBytes").value(12582912))
+                .andExpect(jsonPath("$.classifyIntervalMs").value(0)); // 기본은 가짜 분류기라 대기가 없다
     }
 }
 
@@ -56,5 +57,18 @@ class ConfigControllerOverrideTest {
                 .andExpect(jsonPath("$.imageMaxBytes").value(2048))
                 .andExpect(jsonPath("$.imageMaxLongSide").value(800))
                 .andExpect(jsonPath("$.maxRequestBytes").value(3000000));
+    }
+}
+
+@SpringBootTest(properties = {"remine.classifier=gemini", "GEMINI_API_KEY=test-key",
+        "remine.llm.gemini.min-interval-ms=3000"})
+class ConfigControllerGeminiIntervalTest {
+
+    @Autowired WebApplicationContext context;
+
+    @Test
+    void 실제_분류기면_호출_간격을_알려준다() throws Exception {
+        MockMvcBuilders.webAppContextSetup(context).build().perform(get("/api/config"))
+                .andExpect(jsonPath("$.classifyIntervalMs").value(3000));
     }
 }
