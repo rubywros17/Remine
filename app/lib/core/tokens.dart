@@ -22,6 +22,9 @@ abstract final class AppColors {
   /// 휴지통 기준선을 넘었을 때 아이콘 배경(원)과 아이콘.
   static const trashActiveBackground = Color(0xFF111111);
   static const trashActiveIcon = lemon;
+
+  /// 선택된 사진을 덮는 어둡게(ink 40%). 밝은 사진에서도 선택이 보이게 한다.
+  static const selectionDim = Color(0x66111111);
 }
 
 /// 가짜 썸네일(색 블록)용 색 쌍: (바탕, 안쪽 블록). 실제 스크린샷 대신 쓴다.

@@ -3,7 +3,9 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:remine/app.dart';
+import 'package:remine/core/tokens.dart';
 import 'package:remine/data/device/gallery_reader.dart';
 import 'package:remine/screens/debug_ocr_screen.dart';
 import 'package:remine/widgets/wordmark.dart';
@@ -221,6 +223,90 @@ void main() {
         await tester.pump();
         expect(find.text('300장 선택 · 최근 300장까지'), findsOneWidget);
       });
+    });
+
+    testWidgets('하단 패널 배경은 화면 전체 폭이고 아래 시스템 영역(제스처 바)까지 채운다', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.padding = const FakeViewPadding(top: 24, bottom: 34);
+      tester.view.viewPadding = const FakeViewPadding(top: 24, bottom: 34);
+      addTearDown(tester.view.reset);
+      final reader = FakeGalleryReader(photos: fakePhotos(3));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DebugOcrScreen(services: fakeServices(reader, exportTo: out)),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final panel = tester.getRect(find.byKey(const ValueKey('bottom-panel')));
+      expect(panel.left, 0);
+      expect(panel.right, 390);
+      expect(panel.bottom, 844); // 하단 시스템 영역까지
+      // 버튼은 시스템 영역 위에 있다(내용만 안쪽 여백)
+      expect(
+        tester.getRect(find.text('OCR 실행')).bottom,
+        lessThanOrEqualTo(844 - 34),
+      );
+    });
+
+    testWidgets('선택 표시: 선택은 어둡게+딥 셀라돈 테두리+검은 체크 원, 미선택은 흰 빈 원', (tester) async {
+      await pumpScreen(tester);
+      final tile = find.byKey(const ValueKey('photo-p0'));
+
+      // 미선택: 흰 테두리 빈 원, 어둡게/테두리 없음
+      expect(
+        find.descendant(
+          of: tile,
+          matching: find.byWidgetPredicate(
+            (w) =>
+                w is DecoratedBox &&
+                w.decoration is BoxDecoration &&
+                (w.decoration as BoxDecoration).border?.top.color ==
+                    AppColors.white,
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: tile,
+          matching: find.byWidgetPredicate(
+            (w) => w is ColoredBox && w.color == AppColors.selectionDim,
+          ),
+        ),
+        findsNothing,
+      );
+
+      await tester.tap(tile);
+      await tester.pump();
+
+      expect(
+        find.descendant(
+          of: tile,
+          matching: find.byWidgetPredicate(
+            (w) => w is ColoredBox && w.color == AppColors.selectionDim,
+          ),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: tile,
+          matching: find.byWidgetPredicate((w) {
+            if (w is! DecoratedBox) return false;
+            final b = (w.decoration as BoxDecoration).border;
+            return b != null &&
+                b.top.color == AppColors.celadonDeep &&
+                b.top.width == 3;
+          }),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: tile, matching: find.byIcon(LucideIcons.check)),
+        findsOneWidget,
+      );
     });
 
     testWidgets('아무것도 안 고르면 실행할 수 없고, 결과가 없으면 내보낼 수 없다', (tester) async {
