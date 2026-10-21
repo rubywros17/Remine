@@ -9,6 +9,7 @@ import 'package:remine/data/device/gallery_reader.dart';
 import 'package:remine/data/device/ocr_store.dart';
 import 'package:remine/data/device/ocr_temp_files.dart';
 import 'package:remine/data/device/ocr_engine.dart';
+import 'package:remine/data/remote/remote_services.dart';
 
 /// 1x1 투명 PNG(썸네일 디코딩 확인용).
 final _png1x1 = base64Decode(
@@ -120,6 +121,7 @@ DeviceServices fakeServices(
   Directory? tmp,
   Directory? exportTo,
   SettingsStore? settings,
+  RemoteServices? remote,
 }) => DeviceServices(
   reader: reader,
   capture: DeviceCaptureService(
@@ -133,4 +135,5 @@ DeviceServices fakeServices(
   ),
   settings: settings ?? InMemorySettingsStore(false),
   exportDir: () async => exportTo ?? Directory.systemTemp,
+  remote: remote,
 );

@@ -240,18 +240,25 @@ void main() {
     });
   });
 
-  group('네트워크 없음', () {
-    test('pubspec에 HTTP 계열 의존성이 없다', () {
+  // 서버 연동(feat/server-connect) 이후: 네트워크 코드는 data/remote 한 곳에만 있다.
+  // 갤러리·OCR·민감 정보 판정(data/device)과 화면은 네트워크를 직접 부르지 않는다.
+  group('네트워크는 data/remote에만', () {
+    test('pubspec에는 http만 있고 다른 네트워크·Firebase 계열 의존성이 없다', () {
       final pubspec = File('pubspec.yaml').readAsStringSync();
-      for (final dep in ['http:', 'dio:', 'firebase_', 'web_socket']) {
+      for (final dep in ['dio:', 'firebase_', 'web_socket']) {
         expect(pubspec.contains(dep), isFalse, reason: dep);
       }
     });
 
-    test('lib 코드에 네트워크 호출이 없다', () {
+    test('data/remote와 main.dart 밖의 lib 코드에 네트워크 호출이 없다', () {
       final hits = <String>[];
       for (final f in Directory('lib').listSync(recursive: true)) {
         if (f is! File || !f.path.endsWith('.dart')) continue;
+        final path = f.path.replaceAll(r'\', '/');
+        if (path.contains('lib/data/remote/') ||
+            path.endsWith('lib/main.dart')) {
+          continue;
+        }
         final s = f.readAsStringSync();
         if (RegExp(
           r'HttpClient|package:http/|package:dio/|Socket\.connect|WebSocket',
