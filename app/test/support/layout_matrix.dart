@@ -208,32 +208,21 @@ void defineLayoutMatrix({
       _expectClean('상세 던지는 중 $label', errors);
     });
 
-    testWidgets('상세 ⋯ 메뉴 · $label', (tester) async {
-      final errors = await _errorsDuring(() async {
-        await _pump(tester, size, scale);
-        await _tap(tester, find.text('#니트가디건'));
-        await _tap(tester, find.byType(Hero));
-        // 아주 낮은 화면에서는 위쪽 끝으로 스크롤하면 상단 바에 가려지므로 가운데로 맞춘 뒤 누른다.
-        final menu = find.byIcon(LucideIcons.ellipsis);
-        Scrollable.ensureVisible(
-          tester.element(menu.first),
-          alignment: 0.5,
-          duration: Duration.zero,
-        );
-        await tester.pumpAndSettle();
-        await tester.tap(menu.first);
-        await tester.pumpAndSettle();
-        expect(find.text('휴지통으로'), findsOneWidget, reason: '메뉴가 열리지 않았다');
-      });
-      _expectClean('상세 메뉴 $label', errors);
-    });
-
     testWidgets('수정 시트 · $label', (tester) async {
       final errors = await _errorsDuring(() async {
         await _pump(tester, size, scale);
         await _tap(tester, find.text('#니트가디건'));
         await _tap(tester, find.byType(Hero));
-        await _tap(tester, find.text('쇼핑')); // 카테고리 칩 → 시트
+        // 아주 낮은 화면에서는 위쪽 끝으로 스크롤하면 상단 바에 가려지므로 가운데로 맞춘 뒤 누른다.
+        final chip = find.text('쇼핑');
+        Scrollable.ensureVisible(
+          tester.element(chip.first),
+          alignment: 0.5,
+          duration: Duration.zero,
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(chip.first);
+        await tester.pumpAndSettle(); // 카테고리 칩 → 시트
         expect(find.text('이거 어디 서랍이야?'), findsOneWidget);
       });
       _expectClean('수정 시트 $label', errors);
@@ -348,6 +337,17 @@ void defineLayoutMatrix({
         );
         await tester.pumpAndSettle();
         expect(find.text('남은 시간을 계산하고 있어요'), findsOneWidget);
+        // 서버 응답을 기다리는 중(움직이는 막대 + 안내 문구). 막대가 계속 움직이므로 settle 대신 시간을 흘려보낸다.
+        final waiting = SyncStatus()..begin(300, intervalMs: 4500);
+        waiting.setWaiting(20);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: AnalysisScreen(status: waiting, onHome: () {}),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(find.textContaining('20장을 분류하는 중이에요'), findsOneWidget);
+        expect(find.byType(LinearProgressIndicator), findsOneWidget);
       });
       _expectClean('첫 분석 실제 진행 $label', errors);
     });

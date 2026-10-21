@@ -235,8 +235,9 @@ class SyncRig {
     RecordingClient? client,
     FakeShrinker? shrinker,
     int photoLimit = 0,
+    List<GalleryAlbum>? albums,
   }) async {
-    final reader = FakeGalleryReader(photos: photos);
+    final reader = FakeGalleryReader(photos: photos, albums: albums);
     final ocr = MapOcrEngine(texts);
     final tmp = await Directory.systemTemp.createTemp('remine_sync_');
     final capture = DeviceCaptureService(
