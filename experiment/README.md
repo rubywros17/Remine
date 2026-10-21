@@ -181,6 +181,37 @@ v2는 **채택되지 않았다**(SHOPPING 회귀, [위 절](#프롬프트-v2-경
   반대로 글자가 충분한데 ETC로 예측했다면 프롬프트 정의나 모델 판단을 의심한다.
 - 글자가 없어 모델을 부르지 않고 ETC로 처리한 표본은 0자로 "ETC로 예측한 오답"(정답이 ETC가 아닌 경우)에 들어간다.
 
+## ML Kit 기준 OCR 재측정 (폰)
+
+위 순서의 OCR은 Tesseract라 실제 앱(ML Kit)과 다르다. 같은 43장을 폰의 ML Kit(한국어, 기기 안·오프라인)으로 다시 돌려 글자 수·텍스트를 비교한다. 이미지·OCR 원문은 PC와 폰 사이에서만 오가고 어떤 서버로도 나가지 않는다.
+
+1. **폰에 올리기** — Screenshots 폴더가 아니라 **별도 폴더**에 넣어 실제 스크린샷과 섞이지 않게 한다. (USB 디버깅 연결)
+   ```
+   adb push experiment/images /sdcard/Pictures/RemineExperiment
+   adb shell content call --uri content://media/external/file --method scan_volume --arg external_primary
+   ```
+   두 번째 줄은 갤러리가 새 사진을 인식하게 하는 미디어 스캔이다(기기에 따라 갤러리 앱을 한 번 열어야 잡히기도 한다).
+2. **앱 실행(디버그 빌드, 기기 모드)** — `cd app && flutter run -d <id> --dart-define=DATA=device`
+   사진 권한을 허용하고, 홈 화면 맨 위 `re:mine` 워드마크를 **길게 누르면** "OCR 측정 (디버그)" 화면이 열린다. (릴리스 빌드에는 이 화면이 없다)
+3. **측정** — 위쪽 앨범 칩에서 `RemineExperiment` 선택 → [전체 선택] → [OCR 실행] → 끝나면 [JSON 내보내기].
+   앨범 칩에는 `Screenshots`(실제 스크린샷)도 있다. 확장 표본은 같은 방법으로 폴더를 하나 더 만들어 넣는다.
+4. **PC로 가져오기**
+   ```
+   mkdir -p experiment/mlkit
+   adb pull /sdcard/Android/data/com.remine.remine/files/ experiment/mlkit/
+   ```
+5. **비교** — `python experiment/compare_mlkit.py` → `compare.local.mlkit-vs-tesseract.md`
+   (파일별 글자 수, 150자 기준을 가로지르는 장 수. `--show-text`를 주면 앞 60자도 적는다)
+6. **측정 후 지우기** — OCR 원문이 폰과 PC에 남지 않게 정리한다.
+   ```
+   adb shell rm -r /sdcard/Pictures/RemineExperiment
+   adb shell content call --uri content://media/external/file --method scan_volume --arg external_primary
+   adb shell rm /sdcard/Android/data/com.remine.remine/files/ocr-export-*.json
+   ```
+   앱 안에 저장된 OCR 결과는 측정 화면의 [저장된 결과 지우기], 또는 `adb shell pm clear com.remine.remine`(앱 데이터 전체 삭제)로 지운다. PC의 `experiment/mlkit/`도 비교가 끝나면 지운다.
+
+> `experiment/mlkit/`, `ocr-export-*.json`, `compare.local.mlkit-vs-tesseract.md`에는 **OCR 원문이 들어 있어** `.gitignore`로 커밋하지 않는다(위 개인 데이터 규칙과 같다).
+
 ## 한계
 - OCR은 앱의 ML Kit이 아니라 Tesseract라서 **근사치**다. 실제 앱의 텍스트 품질과 다르다.
 - 표본이 30~50장이라 카테고리별 수치는 편차가 크다. 순위보다 큰 격차·실패 양상을 본다.

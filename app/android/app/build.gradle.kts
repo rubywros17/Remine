@@ -34,6 +34,8 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            // R8(코드 축소) 규칙: ML Kit 다른 문자 체계 클래스 경고 무시
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 }
@@ -42,6 +44,11 @@ kotlin {
     compilerOptions {
         jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
     }
+}
+
+dependencies {
+    // 한국어 OCR 모델을 앱에 포함(번들)한다. play-services 방식(첫 실행 다운로드)이 아니라 오프라인으로 동작한다.
+    implementation("com.google.mlkit:text-recognition-korean:16.0.1")
 }
 
 flutter {

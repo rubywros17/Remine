@@ -1,0 +1,7 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- feat/gallery-ocr: 이미지·OCR 원문은 기기 밖으로 나가지 않는다. ML Kit 라이브러리가 끼워 넣는 네트워크 권한을 릴리스에서 뺀다.
+         서버 전송을 붙이는 3주차에 이 두 줄을 지운다. (디버그 빌드는 hot reload 때문에 INTERNET이 필요해 그대로 둔다) -->
+    <uses-permission android:name="android.permission.INTERNET" tools:node="remove"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove"/>
+</manifest>

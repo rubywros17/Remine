@@ -3,10 +3,12 @@ import 'dart:ui' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 
 import 'core/tokens.dart';
+import 'data/device/device_services.dart';
 import 'data/fake_screenshot_repository.dart';
 import 'data/remine_store.dart';
 import 'data/screenshot_repository.dart';
 import 'screens/analysis_screen.dart';
+import 'screens/permission_gate.dart';
 import 'screens/shell_screen.dart';
 
 /// 앱 루트. 3주차에 서버 연동 때는 [repository]만 API 구현으로 바꿔 넣으면 된다.
@@ -16,6 +18,7 @@ class RemineApp extends StatefulWidget {
     this.repository,
     this.now,
     this.startScreen = '',
+    this.device,
   });
 
   /// 지정하지 않으면 가짜 저장소.
@@ -26,6 +29,10 @@ class RemineApp extends StatefulWidget {
 
   /// 개발용: 'analysis'면 첫 분석 화면에서 시작한다 (`--dart-define=START_SCREEN=analysis`).
   final String startScreen;
+
+  /// 기기 모드(`--dart-define=DATA=device`)의 갤러리·OCR 서비스. null이면 가짜 데이터 모드(크롬·테스트).
+  /// 기기 모드에서는 사진 권한을 먼저 확인한다. 화면의 목록 데이터는 서버 분류가 붙는 3주차 전까지 가짜 저장소다.
+  final DeviceServices? device;
 
   @override
   State<RemineApp> createState() => _RemineAppState();
@@ -45,6 +52,7 @@ class _RemineAppState extends State<RemineApp> {
 
   @override
   Widget build(BuildContext context) {
+    final device = widget.device;
     return RemineScope(
       store: _store,
       child: MaterialApp(
@@ -61,7 +69,12 @@ class _RemineAppState extends State<RemineApp> {
         ),
         home: widget.startScreen == 'analysis'
             ? const AnalysisScreen()
-            : const ShellScreen(),
+            : device == null
+            ? const ShellScreen()
+            : PermissionGate(reader: device.reader, child: const ShellScreen()),
+        builder: device == null
+            ? null
+            : (context, child) => DeviceScope(services: device, child: child!),
       ),
     );
   }

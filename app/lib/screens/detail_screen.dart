@@ -119,7 +119,7 @@ class _DetailScreenState extends State<DetailScreen> {
     messenger.showSnackBar(
       SnackBar(
         content: Text(
-          '휴지통으로 옮겼습니다',
+          '휴지통으로 옮겼어',
           style: AppText.label.copyWith(color: AppColors.white),
         ),
         duration: AppGesture.undoDuration,
