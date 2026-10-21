@@ -250,66 +250,93 @@ void main() {
       );
     });
 
-    testWidgets('선택 표시: 사진이 0.86배로 줄고 15%만 어두워지며, 테두리는 없고 체크 원이 줄어든 모서리에 붙는다', (
-      tester,
-    ) async {
-      await pumpScreen(tester);
-      final tile = find.byKey(const ValueKey('photo-p0'));
-      final photo = find.descendant(of: tile, matching: find.byType(ClipRRect));
-      final before = tester.getRect(photo);
-      Finder dim() => find.descendant(
-        of: tile,
-        matching: find.byWidgetPredicate(
-          (w) => w is ColoredBox && w.color == AppColors.selectionDim,
-        ),
-      );
-      Finder whiteRing() => find.descendant(
-        of: tile,
-        matching: find.byWidgetPredicate(
-          (w) =>
-              w is DecoratedBox &&
-              w.decoration is BoxDecoration &&
-              (w.decoration as BoxDecoration).border?.top.color ==
-                  AppColors.white,
-        ),
-      );
-
-      // 미선택: 흰 테두리 빈 원 + 얇은 그림자, 어둡게 없음
-      expect(whiteRing(), findsOneWidget);
-      final ring =
-          tester.widget<DecoratedBox>(whiteRing()).decoration as BoxDecoration;
-      expect(ring.boxShadow, isNotEmpty);
-      expect(dim(), findsNothing);
-
-      await tester.tap(tile);
-      await tester.pumpAndSettle();
-
-      final after = tester.getRect(photo);
-      expect(after.width, closeTo(before.width * 0.86, 0.5));
-      expect(after.center, before.center);
-      expect(AppColors.selectionDim.a, closeTo(0.15, 0.01));
-      expect(dim(), findsOneWidget);
-      // 테두리 없음
-      expect(
-        find.descendant(
+    testWidgets(
+      '선택 표시: 사진이 0.86배로 줄고 15%만 어두워지며, 바깥에 3px 딥 셀라돈 테두리가 생기고 체크 원이 테두리 모서리에 붙는다',
+      (tester) async {
+        await pumpScreen(tester);
+        final tile = find.byKey(const ValueKey('photo-p0'));
+        final photo = find.descendant(
+          of: tile,
+          matching: find.byType(ClipRRect),
+        );
+        final before = tester.getRect(photo);
+        Finder dim() => find.descendant(
+          of: tile,
+          matching: find.byWidgetPredicate(
+            (w) => w is ColoredBox && w.color == AppColors.selectionDim,
+          ),
+        );
+        Finder whiteRing() => find.descendant(
           of: tile,
           matching: find.byWidgetPredicate(
             (w) =>
                 w is DecoratedBox &&
                 w.decoration is BoxDecoration &&
                 (w.decoration as BoxDecoration).border?.top.color ==
-                    AppColors.celadonDeep,
+                    AppColors.white,
           ),
-        ),
-        findsNothing,
-      );
-      // 체크 원은 축소된 사진의 우상단 모서리 안쪽 6px에 있다
-      final check = tester.getRect(
-        find.descendant(of: tile, matching: find.byIcon(LucideIcons.check)),
-      );
-      expect(check.center.dx, closeTo(after.right - 6 - 11, 1));
-      expect(check.center.dy, closeTo(after.top + 6 + 11, 1));
-    });
+        );
+
+        // 미선택: 흰 테두리 빈 원 + 얇은 그림자, 어둡게 없음
+        expect(whiteRing(), findsOneWidget);
+        final ring =
+            tester.widget<DecoratedBox>(whiteRing()).decoration
+                as BoxDecoration;
+        expect(ring.boxShadow, isNotEmpty);
+        expect(dim(), findsNothing);
+        expect(
+          tester
+              .widget<AnimatedOpacity>(
+                find.descendant(
+                  of: tile,
+                  matching: find.byType(AnimatedOpacity),
+                ),
+              )
+              .opacity,
+          0,
+        ); // 테두리는 선택했을 때만 보인다
+
+        await tester.tap(tile);
+        await tester.pumpAndSettle();
+
+        final after = tester.getRect(photo);
+        expect(after.width, closeTo(before.width * 0.86, 0.5));
+        expect(after.center, before.center);
+        expect(AppColors.selectionDim.a, closeTo(0.15, 0.01));
+        expect(dim(), findsOneWidget);
+        // 바깥쪽 3px 딥 셀라돈 테두리: 줄어든 사진을 감싸고, 반경은 줄어든 반경 + 3
+        final borderBox = find.descendant(
+          of: tile,
+          matching: find.byKey(const ValueKey('thumb-border')),
+        );
+        final border = tester.getRect(borderBox);
+        expect(border.left, closeTo(after.left - 3, 0.5));
+        expect(border.right, closeTo(after.right + 3, 0.5));
+        expect(border.top, closeTo(after.top - 3, 0.5));
+        final deco =
+            tester.widget<DecoratedBox>(borderBox).decoration as BoxDecoration;
+        expect(deco.border!.top.color, AppColors.celadonDeep);
+        expect(deco.border!.top.width, 3);
+        expect(deco.borderRadius, BorderRadius.circular(12 * 0.86 + 3));
+        expect(
+          tester
+              .widget<AnimatedOpacity>(
+                find.ancestor(
+                  of: borderBox,
+                  matching: find.byType(AnimatedOpacity),
+                ),
+              )
+              .opacity,
+          1,
+        );
+        // 체크 원은 테두리까지 포함한 우상단 모서리 안쪽 6px에 있다
+        final check = tester.getRect(
+          find.descendant(of: tile, matching: find.byIcon(LucideIcons.check)),
+        );
+        expect(check.center.dx, closeTo(border.right - 6 - 11, 1));
+        expect(check.center.dy, closeTo(border.top + 6 + 11, 1));
+      },
+    );
 
     testWidgets('애니메이션 줄이기: 축소가 바로 적용된다', (tester) async {
       tester.platformDispatcher.accessibilityFeaturesTestValue =
@@ -327,6 +354,16 @@ void main() {
       await tester.pump();
 
       expect(tester.getRect(photo).width, closeTo(before.width * 0.86, 0.5));
+      // 테두리도 즉시 나타난다
+      expect(
+        tester
+            .widget<AnimatedOpacity>(
+              find.descendant(of: tile, matching: find.byType(AnimatedOpacity)),
+            )
+            .opacity,
+        1,
+      );
+      expect(tester.binding.transientCallbackCount, 0);
     });
 
     testWidgets('아무것도 안 고르면 실행할 수 없고, 결과가 없으면 내보낼 수 없다', (tester) async {

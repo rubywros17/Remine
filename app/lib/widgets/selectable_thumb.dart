@@ -5,8 +5,9 @@ import '../core/tokens.dart';
 
 /// 격자에서 고를 수 있는 사진 칸. [child](사진)를 칸 가득 채우고 선택 상태를 표시한다.
 ///
-/// - 선택: 사진이 칸 안에서 [AppGesture.selectedPhotoScale]배로 줄고(모서리 반경 유지) 15%만 어두워지며,
-///   우상단에 검은 원 + 레몬 체크가 줄어든 사진 모서리에 붙는다. 테두리는 없다.
+/// - 선택: 사진이 칸 안에서 [AppGesture.selectedPhotoScale]배로 줄고(모서리 반경 유지) 15%만 어두워진다.
+///   줄어든 사진 **바깥쪽**에 3px 딥 셀라돈 테두리가 같은 모션으로 나타나고, 우상단의 검은 원 + 레몬 체크는
+///   테두리까지 포함한 모서리에 붙는다.
 /// - 미선택: 우상단에 흰 테두리 빈 원(얇은 그림자로 밝은 사진 위에서도 보임) = 고를 수 있다는 표시.
 /// - 애니메이션 줄이기면 모션 없이 바로 바뀐다([AppMotion.duration]).
 ///
@@ -24,16 +25,21 @@ class SelectableThumb extends StatelessWidget {
   static const _radius = 12.0;
   static const _circle = 22.0;
   static const _corner = 6.0;
+  static const _borderWidth = 3.0;
 
   @override
   Widget build(BuildContext context) {
     final duration = AppMotion.duration(context, MotionDuration.fast);
     return LayoutBuilder(
       builder: (context, box) {
-        // 축소된 사진의 모서리에 체크 원을 맞추기 위한 한쪽 여백.
-        final inset = selected
+        // 줄어든 사진이 칸 가장자리에서 떨어진 거리. 테두리는 그 바깥 3px, 체크 원은 테두리 바깥 모서리 기준.
+        final photoInset = selected
             ? box.maxWidth * (1 - AppGesture.selectedPhotoScale) / 2
             : 0.0;
+        final borderInset = photoInset - (selected ? _borderWidth : 0.0);
+        // 사진 모서리는 배율만큼 같이 줄어든다 → 테두리 반경은 줄어든 반경 + 두께.
+        final borderRadius =
+            _radius * AppGesture.selectedPhotoScale + _borderWidth;
         return Stack(
           children: [
             Positioned.fill(
@@ -57,8 +63,33 @@ class SelectableThumb extends StatelessWidget {
             AnimatedPositioned(
               duration: duration,
               curve: AppMotion.standard,
-              top: _corner + inset,
-              right: _corner + inset,
+              left: borderInset,
+              top: borderInset,
+              right: borderInset,
+              bottom: borderInset,
+              child: IgnorePointer(
+                child: AnimatedOpacity(
+                  opacity: selected ? 1 : 0,
+                  duration: duration,
+                  curve: AppMotion.standard,
+                  child: DecoratedBox(
+                    key: const ValueKey('thumb-border'),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: AppColors.celadonDeep,
+                        width: _borderWidth,
+                      ),
+                      borderRadius: BorderRadius.circular(borderRadius),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            AnimatedPositioned(
+              duration: duration,
+              curve: AppMotion.standard,
+              top: _corner + borderInset,
+              right: _corner + borderInset,
               child: selected
                   ? const DecoratedBox(
                       decoration: BoxDecoration(
