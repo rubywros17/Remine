@@ -158,6 +158,14 @@ class SyncStatus extends ChangeNotifier {
     return '$_waiting장을 분류하는 중이에요.$batch';
   }
 
+  /// 홈 배너용 짧은 문구(한 줄). 원인 상세나 개인정보는 담지 않는다.
+  String? get bannerMessage => switch (_issue) {
+    SyncIssue.none => null,
+    SyncIssue.offline => '서버에 연결하지 못했어요',
+    SyncIssue.server => '서버가 불안정해요',
+    SyncIssue.partial => '$_failedCount장은 다음에 다시 분류해요',
+  };
+
   /// [SyncIssue]를 사용자에게 보여 줄 문장. 개인정보나 원인 상세는 담지 않는다.
   String? get issueMessage => switch (_issue) {
     SyncIssue.none => null,

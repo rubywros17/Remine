@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 // 디자인 토큰(색·폰트·모서리·간격·모션)은 이 파일 한 곳에만 둔다. 값의 근거는 docs/design.md.
@@ -26,8 +28,20 @@ abstract final class AppColors {
   /// 선택된 사진을 덮는 어둡게(ink 15%). 사진은 칸 안에서 [AppGesture.selectedPhotoScale]배로 줄어든다.
   static const selectionDim = Color(0x26111111);
 
+  /// 상세 이미지 카드의 부드러운 그림자.
+  static const cardShadow = Color(0x40000000);
+
   /// 선택 전 빈 원의 얇은 그림자(밝은 사진 위에서도 보이게).
   static const selectionRingShadow = Color(0x59111111);
+}
+
+/// 상세 화면의 이미지 카드·배경 값. 값의 근거는 docs/design.md.
+abstract final class AppDetail {
+  /// 이미지 카드 최대 폭(영역 폭 비율), 흰 테두리 두께(px), 상단 바 아래 최소 여백(px), 기울기(-2°, 라디안).
+  static const double cardMaxWidthFraction = 0.78;
+  static const double cardBorder = 6;
+  static const double cardTopGap = 16;
+  static const double cardTilt = -2 * math.pi / 180;
 }
 
 /// 가짜 썸네일(색 블록)용 색 쌍: (바탕, 안쪽 블록). 실제 스크린샷 대신 쓴다.

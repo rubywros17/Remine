@@ -12,11 +12,11 @@ import '../core/tokens.dart';
 import '../data/device/device_services.dart';
 import '../data/remine_store.dart';
 import '../data/remote/api_client.dart' show ApiException;
+import '../models/category.dart';
 import '../models/category_update.dart';
 import '../models/screenshot_item.dart';
 import '../widgets/capture_thumb.dart';
 import '../widgets/category_sheet.dart';
-import '../widgets/home_widgets.dart';
 import '../widgets/pressable_scale.dart';
 import '../widgets/small_widgets.dart';
 import '../widgets/thumb_placeholder.dart';
@@ -60,29 +60,29 @@ const trashSemanticsAction = CustomSemanticsAction(label: '휴지통으로 옮�
 /// 사진 비율을 모를 때 쓰는 이미지 카드 기본 비율(폭/높이).
 const double detailCardDefaultAspect = 0.62;
 
-/// 이미지 카드 안쪽(사진) 폭이 바깥 폭에서 차지하는 비율. 나머지 0.14는 좌우 흰 테두리(0.07씩)다.
-const double _cardInnerFraction = 0.86;
-
 /// 영역([areaWidth] × [areaHeight]) 안에 들어가는 **가장 큰** 이미지 카드의 바깥 폭.
 ///
-/// 폭은 영역 폭의 86%까지, 높이는 영역 높이까지이고 사진 비율([aspect], 폭/높이)을 지킨다.
-/// 테두리를 포함한 카드 높이는 `폭 × (0.86 / 비율 + 0.14)`이므로, 세로로 긴 사진은 높이 기준으로 폭이 정해진다.
-/// 사진 안쪽 영역의 비율이 사진과 같아 `cover`로 그려도 잘리지 않는다.
+/// 폭은 영역 폭의 78%([AppDetail.cardMaxWidthFraction])까지, 높이는 영역 높이까지이고 사진 비율([aspect], 폭/높이)을 지킨다.
+/// 흰 테두리는 두께가 고정(6px)이라 테두리를 포함한 카드 높이는 `(폭 − 12) / 비율 + 12`다.
+/// 세로로 긴 사진은 높이 기준으로 폭이 정해지고, 안쪽 사진 영역의 비율이 사진과 같아 `cover`로 그려도 잘리지 않는다.
 double detailCardWidth({
   required double areaWidth,
   required double areaHeight,
   double? aspect,
 }) {
   final a = (aspect ?? detailCardDefaultAspect).clamp(0.2, 5.0);
-  final byWidth = areaWidth * 0.86;
-  final byHeight = areaHeight / (_cardInnerFraction / a + 0.14);
-  return byWidth < byHeight ? byWidth : byHeight;
+  final border2 = AppDetail.cardBorder * 2;
+  final byWidth = areaWidth * AppDetail.cardMaxWidthFraction;
+  final byHeight = (areaHeight - border2) * a + border2;
+  final width = byWidth < byHeight ? byWidth : byHeight;
+  return width < border2 + 1 ? border2 + 1 : width;
 }
 
 /// [detailCardWidth]로 정한 폭의 카드 바깥 높이(테두리 포함).
 double detailCardHeight(double width, {double? aspect}) {
   final a = (aspect ?? detailCardDefaultAspect).clamp(0.2, 5.0);
-  return width * (_cardInnerFraction / a + 0.14);
+  final border2 = AppDetail.cardBorder * 2;
+  return (width - border2) / a + border2;
 }
 
 class _DetailScreenState extends State<DetailScreen> {
@@ -490,12 +490,13 @@ class _DetailPageState extends State<_DetailPage> {
                       child: CustomSingleChildLayout(
                         delegate: const _FillAreaDelegate(),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            vertical: AppSpacing.s8,
+                          // 상단 바 아래 최소 16px 여백, 아래는 정보 카드와 붙지 않게 8px.
+                          padding: const EdgeInsets.only(
+                            top: AppDetail.cardTopGap,
+                            bottom: AppSpacing.s8,
                           ),
                           child: _ThrowCard(
                             item: _item,
-                            tag: tag,
                             isCurrent: widget.isCurrent,
                             view: widget.view,
                             arriveToken: widget.arriveToken,
@@ -558,7 +559,6 @@ class _FillAreaDelegate extends SingleChildLayoutDelegate {
 class _ThrowCard extends StatefulWidget {
   const _ThrowCard({
     required this.item,
-    required this.tag,
     required this.isCurrent,
     required this.view,
     required this.onTrash,
@@ -566,7 +566,6 @@ class _ThrowCard extends StatefulWidget {
   });
 
   final ScreenshotItem item;
-  final String? tag;
   final bool isCurrent;
   final ValueNotifier<_ThrowView> view;
 
@@ -828,14 +827,22 @@ class _ThrowCardState extends State<_ThrowCard> with TickerProviderStateMixin {
             aspect: _aspect,
           );
           final visual = Transform.rotate(
-            angle: decorAngle(item.id, max: 0.07),
+            angle: AppDetail
+                .cardTilt, // 가만히 있을 때 -2°. 드래그 중에는 바깥 Transform이 더 기울인다.
             child: DecoratedBox(
               decoration: BoxDecoration(
                 color: AppColors.white,
                 borderRadius: BorderRadius.circular(AppRadii.card),
+                boxShadow: const [
+                  BoxShadow(
+                    color: AppColors.cardShadow,
+                    blurRadius: 24,
+                    offset: Offset(0, 8),
+                  ),
+                ],
               ),
               child: Padding(
-                padding: EdgeInsets.all(width * 0.07),
+                padding: const EdgeInsets.all(AppDetail.cardBorder),
                 child: _CardContent(item: item, block: block, aspect: _aspect),
               ),
             ),
@@ -852,12 +859,12 @@ class _ThrowCardState extends State<_ThrowCard> with TickerProviderStateMixin {
                         ? Hero(tag: 'screenshot-${item.id}', child: visual)
                         : visual,
                   ),
-                  if (widget.tag != null)
-                    Positioned(
-                      top: -10,
-                      right: -14,
-                      child: Sticker(label: '#${widget.tag}', angle: 0.1),
-                    ),
+                  // 카드 위 스티커는 태그가 아니라 카테고리(아이콘 + 이름, 레몬). 태그는 아래 정보 카드의 칩으로 그대로 있다.
+                  Positioned(
+                    top: -10,
+                    right: -14,
+                    child: _CategorySticker(category: item.category),
+                  ),
                 ],
               ),
             ),
@@ -1032,7 +1039,8 @@ class _InfoCard extends StatelessWidget {
                         // widthFactor: 1 — 칸을 칩 폭에만 맞춘다(없으면 가용 폭 전체로 늘어나 칩이 가운데에 뜬다).
                         child: Center(
                           widthFactor: 1,
-                          child: AppChip.outlined(
+                          child: AppChip(
+                            background: AppColors.lemon, // 레몬 알약(테두리 없음) + 연필
                             label: item.category.label,
                             leading: Icon(
                               categoryIcon(item.category),
@@ -1111,6 +1119,37 @@ class _InfoCard extends StatelessWidget {
                   ],
                 ],
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 이미지 카드 위의 카테고리 스티커(아이콘 + 이름, 레몬 배경). 카드 오른쪽 위에 살짝 기울여 붙는다.
+class _CategorySticker extends StatelessWidget {
+  const _CategorySticker({required this.category});
+
+  final Category category;
+
+  @override
+  Widget build(BuildContext context) {
+    return Transform.rotate(
+      angle: 0.1,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: AppColors.lemon,
+          borderRadius: BorderRadius.circular(AppRadii.pill),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(categoryIcon(category), size: 14, color: AppColors.ink),
+              const SizedBox(width: 6),
+              Text(category.label, style: AppText.label.copyWith(fontSize: 13)),
             ],
           ),
         ),
