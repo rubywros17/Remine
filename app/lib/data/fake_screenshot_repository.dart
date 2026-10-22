@@ -27,7 +27,8 @@ class FakeScreenshotRepository implements ScreenshotRepository {
 
   static const _topTagCount = 3;
   static const _recentCount = 4;
-  static const _interestSpanDays = 14;
+  static const _interestSpanDays = 14; // 서버 기본값(remine.interest.*)과 같게
+  static const _interestMinCount = 3;
 
   List<ScreenshotItem> get _sorted {
     final list = _items.where((s) => !_trashed.contains(s.id)).toList();
@@ -146,12 +147,13 @@ class FakeScreenshotRepository implements ScreenshotRepository {
         byTag.putIfAbsent(t, () => []).add(s);
       }
     }
-    final repeated = byTag.entries.where((e) => e.value.length >= 2).toList()
-      ..sort(
-        (a, b) => b.value.length != a.value.length
-            ? b.value.length.compareTo(a.value.length)
-            : a.key.compareTo(b.key),
-      );
+    final repeated =
+        byTag.entries.where((e) => e.value.length >= _interestMinCount).toList()
+          ..sort(
+            (a, b) => b.value.length != a.value.length
+                ? b.value.length.compareTo(a.value.length)
+                : a.key.compareTo(b.key),
+          );
 
     return [
       for (final e in repeated)
@@ -169,7 +171,10 @@ class FakeScreenshotRepository implements ScreenshotRepository {
                 ),
               )
               .inDays,
-          screenshotIds: e.value.map((s) => s.id).toList(),
+          recent: [
+            for (final s in e.value.take(3))
+              InterestCapture(id: s.id, localAssetId: s.localAssetId),
+          ],
         ),
     ];
   }

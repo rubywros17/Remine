@@ -6,8 +6,8 @@ import '../core/tokens.dart';
 import '../models/category_summary.dart';
 import '../models/interest.dart';
 import 'pressable_scale.dart';
+import 'capture_thumb.dart';
 import 'small_widgets.dart';
-import 'thumb_placeholder.dart';
 
 /// 홈의 "분석 제외" 알약: 기기에서만 분류한 숨김 캡처 개수. 연한 테두리로 카테고리 알약과 구분한다.
 class ExcludedPill extends StatelessWidget {
@@ -157,7 +157,7 @@ class InterestCard extends StatelessWidget {
                       top: 12,
                       bottom: 12,
                       width: collageWidth,
-                      child: _Collage(ids: interest.screenshotIds),
+                      child: _Collage(captures: interest.recent),
                     ),
                   // 글자 영역: 콜라주와 겹치지 않게 오른쪽을 비우고, 높이는 내용에 맞춘다.
                   ConstrainedBox(
@@ -229,16 +229,17 @@ class InterestCard extends StatelessWidget {
 }
 
 /// 기울어진 썸네일 3장(장식). 회전은 장식에만 쓴다. 크기는 주어진 영역에 비례한다.
+/// 기기 모드에서는 실제 사진, 가짜 데이터 모드에서는 색 블록([CaptureThumb]).
 class _Collage extends StatelessWidget {
-  const _Collage({required this.ids});
+  const _Collage({required this.captures});
 
-  final List<int> ids;
+  final List<InterestCapture> captures;
 
   static const _angles = [-0.2, -0.04, 0.12]; // 라디안 (뒤 → 앞)
 
   @override
   Widget build(BuildContext context) {
-    final shown = ids.take(3).toList().reversed.toList(); // 가장 새 것이 맨 앞
+    final shown = captures.take(3).toList().reversed.toList(); // 가장 새 것이 맨 앞
     return ExcludeSemantics(
       child: LayoutBuilder(
         builder: (context, box) {
@@ -256,10 +257,15 @@ class _Collage extends StatelessWidget {
                   width: thumbWidth,
                   height: thumbHeight,
                   child: Hero(
-                    tag: 'screenshot-${shown[i]}',
+                    tag: 'screenshot-${shown[i].id}',
                     child: Transform.rotate(
                       angle: _angles[(i + (3 - shown.length)) % 3],
-                      child: ThumbPlaceholder(seed: shown[i], radius: 18),
+                      child: CaptureThumb(
+                        assetId: shown[i].localAssetId,
+                        seed: shown[i].id,
+                        radius: 18,
+                        size: 240,
+                      ),
                     ),
                   ),
                 ),

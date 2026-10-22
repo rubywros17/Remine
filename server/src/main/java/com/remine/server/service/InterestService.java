@@ -46,9 +46,9 @@ public class InterestService {
             throw new DeviceNotFoundException(deviceId);
         }
         LocalDateTime now = LocalDateTime.now(clock);
-        int spanDays = properties.interest().windowDays();
-        return new InterestResponse(detect(deviceId, now).stream()
-                .map(d -> new InterestResponse.Item(d.tag(), d.category(), d.captureCount(), spanDays,
+        RemineProperties.Interest rule = properties.interest();
+        return new InterestResponse(rule.windowDays(), rule.minCount(), detect(deviceId, now).stream()
+                .map(d -> new InterestResponse.Item(d.tag(), d.category(), d.captureCount(),
                         Math.max(0, ChronoUnit.DAYS.between(d.lastCapturedAt().toLocalDate(), now.toLocalDate())),
                         d.recent().stream().map(r -> new InterestResponse.Capture(r.screenshotId(), r.localAssetId()))
                                 .toList()))

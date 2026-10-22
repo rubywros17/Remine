@@ -116,11 +116,13 @@ class InterestServiceTest {
         givenRows(row(1, "가디건", Category.SHOPPING, 12), third, newest, second);
         when(deviceRepository.existsById(1L)).thenReturn(true);
 
-        InterestResponse.Item item = service.list(1L).items().get(0);
+        InterestResponse response = service.list(1L);
+        InterestResponse.Item item = response.items().get(0);
 
+        assertThat(response.windowDays()).isEqualTo(14);
+        assertThat(response.minCount()).isEqualTo(3);
         assertThat(item.tag()).isEqualTo("가디건");
         assertThat(item.captureCount()).isEqualTo(4);
-        assertThat(item.spanDays()).isEqualTo(14);
         assertThat(item.dormantDays()).isEqualTo(9);
         assertThat(item.recent()).extracting(InterestResponse.Capture::id)
                 .containsExactly(newest.screenshotId(), second.screenshotId(), third.screenshotId());

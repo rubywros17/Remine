@@ -143,9 +143,23 @@ void main() {
     test('관심사 횟수에서도 빠진다', () async {
       final repo = _repo();
       final interest = (await repo.interests()).first; // 니트가디건 ×4
-      await repo.trash(interest.screenshotIds.first);
+      await repo.trash(interest.recent.first.id);
 
       expect((await repo.interests()).first.captureCount, 3);
+    });
+
+    test('관심사 횟수가 기준(3) 아래로 내려가면 관심사에서 빠진다', () async {
+      final repo = _repo();
+      final interest = (await repo.interests()).first; // 니트가디건 ×4
+      await repo.trash(interest.recent[0].id);
+      await repo.trash(interest.recent[1].id);
+
+      expect(
+        (await repo.interests()).map((i) => i.tag),
+        isNot(contains('니트가디건')),
+      );
+      await repo.restore(interest.recent[1].id);
+      expect((await repo.interests()).first.tag, '니트가디건');
     });
 
     test('휴지통 항목은 카테고리를 수정할 수 없다', () async {
@@ -170,7 +184,7 @@ void main() {
       expect(interests.first.dormantDays, 9);
       expect(interests.first.spanDays, 14);
       expect(interests.first.category, Category.shopping);
-      expect(interests.first.screenshotIds.length, 4);
+      expect(interests.first.recent.length, 3); // 카드 콜라주용 최근 3장
     });
   });
 }

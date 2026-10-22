@@ -122,12 +122,13 @@ void main() {
       expect(notFilled, findsNothing);
     });
 
-    testWidgets('관심사·검색 탭은 빈 화면 자리다', (tester) async {
+    testWidgets('관심사 탭은 관심사 카드 목록이고, 검색 탭은 빈 화면 자리다', (tester) async {
       await _pumpApp(tester);
 
       await tester.tap(find.text('관심사'));
       await tester.pumpAndSettle();
-      expect(find.text('관심사는 곧 채워질 거야'), findsOneWidget);
+      expect(find.text('잊은 관심사'), findsWidgets);
+      expect(find.byType(InterestCard, skipOffstage: true), findsWidgets);
 
       await tester.tap(find.text('검색'));
       await tester.pumpAndSettle();
@@ -136,6 +137,21 @@ void main() {
       await tester.tap(find.text('서랍'));
       await tester.pumpAndSettle();
       expect(find.text('내 캡처 서랍'), findsOneWidget);
+    });
+
+    testWidgets('관심사 탭 카드를 누르면 그 태그로 거른 카테고리가 열린다(홈과 Hero가 겹치지 않는다)', (
+      tester,
+    ) async {
+      await _pumpApp(tester);
+      await tester.tap(find.text('관심사'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(InterestCard, skipOffstage: true).first);
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(BackButtonCircle), findsOneWidget);
+      expect(find.text('#니트가디건'), findsWidgets);
     });
   });
 
