@@ -1,10 +1,15 @@
 import 'package:flutter/gestures.dart' show kTouchSlop;
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:remine/app.dart';
 import 'package:remine/core/tokens.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
+import 'package:remine/screens/detail_screen.dart' show trashSemanticsAction;
+import 'package:remine/widgets/small_widgets.dart' show AppChip;
+import 'package:remine/screens/photo_viewer_screen.dart';
 
 final _now = DateTime(2026, 10, 19, 12, 0);
 
@@ -70,7 +75,9 @@ Color _trashTargetColor(WidgetTester tester) {
 }
 
 Color _trashIconColor(WidgetTester tester) => tester
-    .widget<Icon>(find.descendant(of: _trashTarget, matching: find.byType(Icon)))
+    .widget<Icon>(
+      find.descendant(of: _trashTarget, matching: find.byType(Icon)),
+    )
     .color!;
 
 void main() {
@@ -167,10 +174,12 @@ void main() {
       expect(find.text('무선 이어폰 최저가 비교'), findsNothing);
       expect(_trashTarget, findsNothing);
       // 안내 + 되돌리기
-      expect(find.text('휴지통으로 옮겼어'), findsOneWidget);
+      expect(find.text('휴지통으로 옮겼어요'), findsOneWidget);
       expect(find.text('되돌리기'), findsOneWidget);
 
-      await tester.pump(const Duration(milliseconds: 500)); // 스낵바가 올라오는 모션이 끝나야 눌린다
+      await tester.pump(
+        const Duration(milliseconds: 500),
+      ); // 스낵바가 올라오는 모션이 끝나야 눌린다
       await tester.tap(find.text('되돌리기'));
       await tester.pumpAndSettle();
 
@@ -247,20 +256,95 @@ void main() {
     });
   });
 
-  group('⋯ 메뉴', () {
-    testWidgets('"휴지통으로"는 던지기와 같은 결과다', (tester) async {
+  group('화면 읽기 전용 동작(보이는 메뉴 없음)', () {
+    /// 이미지 카드의 "휴지통으로 옮기기" 동작을 접근성 트리로 실행한다(스크린 리더가 하는 것과 같다).
+    void performTrashAction(WidgetTester tester) {
+      final node = tester.getSemantics(find.bySemanticsLabel('캡처 이미지'));
+      final id = CustomSemanticsAction.getIdentifier(trashSemanticsAction);
+      expect(
+        node.getSemanticsData().customSemanticsActionIds,
+        contains(id),
+        reason: '이미지 카드에 동작이 없다',
+      );
+      // ignore: deprecated_member_use
+      tester.binding.pipelineOwner.semanticsOwner!.performAction(
+        node.id,
+        SemanticsAction.customAction,
+        id,
+      );
+    }
+
+    testWidgets('정보 카드에 ⋯ 메뉴·휴지통 버튼이 없다', (tester) async {
+      final handle = tester.ensureSemantics();
+      await _pumpApp(tester);
+      await _openShoppingDetail(tester);
+
+      expect(find.byIcon(LucideIcons.ellipsis), findsNothing);
+      expect(find.byKey(const ValueKey('more-menu-5')), findsNothing);
+      expect(find.byTooltip('더 보기 메뉴'), findsNothing);
+      expect(find.bySemanticsLabel('더 보기 메뉴'), findsNothing);
+      expect(find.text('휴지통으로'), findsNothing);
+      handle.dispose();
+    });
+
+    testWidgets('동작 "휴지통으로 옮기기"는 던지기와 같은 결과다', (tester) async {
+      final handle = tester.ensureSemantics();
       final repo = await _pumpApp(tester);
       await _openShoppingDetail(tester);
 
-      await tester.tap(find.byKey(const ValueKey('more-menu-5')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('휴지통으로'));
+      performTrashAction(tester);
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 900));
 
       expect(repo.trashedIds, {5});
       expect(find.text('1 / 5'), findsOneWidget);
-      expect(find.text('휴지통으로 옮겼어'), findsOneWidget);
+      expect(find.text('휴지통으로 옮겼어요'), findsOneWidget);
+      handle.dispose();
+    });
+  });
+
+  group('이미지 탭 · 정보 카드 배치', () {
+    testWidgets('이미지를 탭하면 전체 화면 보기가 열리고 X로 닫으면 상세로 돌아온다', (tester) async {
+      await _pumpApp(tester);
+      await _openShoppingDetail(tester);
+
+      await tester.tap(_card);
+      await tester.pumpAndSettle();
+      expect(find.byType(PhotoViewerScreen), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('photo-viewer-close')));
+      await tester.pumpAndSettle();
+      expect(find.byType(PhotoViewerScreen), findsNothing);
+      expect(find.text('1 / 6'), findsOneWidget);
+    });
+
+    testWidgets('위로 던지는 제스처는 탭으로 오인되지 않는다', (tester) async {
+      final repo = await _pumpApp(tester);
+      await _openShoppingDetail(tester);
+
+      final g = await _dragUp(tester, 330);
+      await g.up();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 900));
+
+      expect(find.byType(PhotoViewerScreen), findsNothing);
+      expect(repo.trashedIds, {5});
+    });
+
+    testWidgets('카테고리 칩은 정보 카드 오른쪽 끝에 붙는다', (tester) async {
+      await _pumpApp(tester);
+      await _openShoppingDetail(tester);
+
+      final card = tester.getRect(find.byKey(const ValueKey('info-card-5')));
+      // 누르는 칸(PressableScale)이 아니라 눈에 보이는 칩 자체의 오른쪽 끝을 잰다.
+      final chip = tester.getRect(
+        find.descendant(
+          of: find.byKey(const ValueKey('category-chip-5')),
+          matching: find.byType(AppChip),
+        ),
+      );
+      // 카드 안쪽 여백(20)만 남기고 오른쪽 끝에 붙는다.
+      expect(card.right - chip.right, closeTo(20, 1));
     });
   });
 
@@ -292,21 +376,26 @@ void main() {
       expect(tester.binding.transientCallbackCount, 0); // 진행 중인 애니메이션이 없다
     });
 
-    testWidgets('메뉴에서도 바로 처리된다', (tester) async {
+    testWidgets('화면 읽기 동작도 바로 처리된다', (tester) async {
       reduceMotion(tester);
+      final handle = tester.ensureSemantics();
       final repo = await _pumpApp(tester);
       await _openShoppingDetail(tester);
 
-      await tester.tap(find.byKey(const ValueKey('more-menu-5')));
-      await tester.pump();
-      await tester.pump();
-      await tester.tap(find.text('휴지통으로'));
+      final node = tester.getSemantics(find.bySemanticsLabel('캡처 이미지'));
+      // ignore: deprecated_member_use
+      tester.binding.pipelineOwner.semanticsOwner!.performAction(
+        node.id,
+        SemanticsAction.customAction,
+        CustomSemanticsAction.getIdentifier(trashSemanticsAction),
+      );
       await tester.pump();
       await tester.pump();
 
       expect(repo.trashedIds, {5});
       expect(find.text('1 / 5'), findsOneWidget);
       expect(tester.binding.transientCallbackCount, 0);
+      handle.dispose();
     });
   });
 }

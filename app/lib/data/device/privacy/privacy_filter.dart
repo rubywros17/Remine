@@ -21,6 +21,9 @@ abstract final class ReasonCode {
   static const appFinancial = 'APP_FINANCIAL';
   static const appPrivate = 'APP_PRIVATE';
   static const phone = 'PHONE';
+
+  /// 글자가 없고 이미지도 보낼 수 없어 서버 없이 기기에서 ETC로 정했다(숨기지 않는다).
+  static const noText = 'NO_TEXT';
 }
 
 class LocalVerdict {

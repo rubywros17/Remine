@@ -9,6 +9,7 @@ import 'package:remine/data/device/gallery_reader.dart';
 import 'package:remine/data/device/ocr_store.dart';
 import 'package:remine/data/device/ocr_temp_files.dart';
 import 'package:remine/data/device/ocr_engine.dart';
+import 'package:remine/data/remote/remote_services.dart';
 
 /// 1x1 투명 PNG(썸네일 디코딩 확인용).
 final _png1x1 = base64Decode(
@@ -71,8 +72,26 @@ class FakeGalleryReader implements GalleryReader {
   }
 
   @override
-  Future<Uint8List?> thumbnail(String photoId, {int size = 220}) async =>
-      photoId == 'missing' ? null : _png1x1;
+  Future<Uint8List?> thumbnail(
+    String photoId, {
+    int size = 220,
+    int? height,
+  }) async {
+    thumbnailRequests.add((size, height));
+    return photoId == 'missing' || missingThumbnails ? null : _png1x1;
+  }
+
+  /// 요청된 썸네일 (size, height) 기록.
+  final List<(int, int?)> thumbnailRequests = [];
+
+  /// true면 모든 썸네일이 없는 것으로 돌려준다(기기에서 사진이 지워진 상황).
+  bool missingThumbnails = false;
+
+  /// 사진 id별 비율(테스트가 채운다). 없으면 알 수 없음(null).
+  final Map<String, double> aspects = {};
+
+  @override
+  Future<double?> aspectRatio(String photoId) async => aspects[photoId];
 
   @override
   Future<Uint8List?> bytes(String photoId) async =>
@@ -120,6 +139,7 @@ DeviceServices fakeServices(
   Directory? tmp,
   Directory? exportTo,
   SettingsStore? settings,
+  RemoteServices? remote,
 }) => DeviceServices(
   reader: reader,
   capture: DeviceCaptureService(
@@ -133,4 +153,5 @@ DeviceServices fakeServices(
   ),
   settings: settings ?? InMemorySettingsStore(false),
   exportDir: () async => exportTo ?? Directory.systemTemp,
+  remote: remote,
 );

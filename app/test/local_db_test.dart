@@ -8,6 +8,8 @@ import 'package:remine/data/device/ocr_store.dart';
 import 'package:remine/data/device/privacy/local_verdict_store.dart';
 import 'package:remine/data/device/privacy/privacy_filter.dart';
 import 'package:remine/data/device/settings_store.dart';
+import 'package:remine/data/remote/remote_state_store.dart';
+import 'package:remine/models/category.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 // 실제 SQLite(sqflite_common_ffi)로 DB v1 → v2 업그레이드를 검증한다.
@@ -26,11 +28,8 @@ void main() {
   });
   tearDown(() => dir.delete(recursive: true));
 
-  LocalDb open() => LocalDb(
-    path: path,
-    factory: factory,
-    now: () => DateTime(2026, 10, 21),
-  );
+  LocalDb open() =>
+      LocalDb(path: path, factory: factory, now: () => DateTime(2026, 10, 21));
 
   /// 필터가 생기기 전(v1)의 DB 파일을 만든다.
   Future<void> createV1() async {
@@ -47,18 +46,16 @@ void main() {
         ),
       ),
     );
-    Future<void> row(String id, String file, String text) => db.insert(
-      'ocr_result',
-      {
-        'asset_id': id,
-        'file_name': file,
-        'date_modified': 1000,
-        'text': text,
-        'char_count': OcrRecord.countChars(text),
-        'ocr_at': 0,
-        'engine': 'mlkit-korean',
-      },
-    );
+    Future<void> row(String id, String file, String text) =>
+        db.insert('ocr_result', {
+          'asset_id': id,
+          'file_name': file,
+          'date_modified': 1000,
+          'text': text,
+          'char_count': OcrRecord.countChars(text),
+          'ocr_at': 0,
+          'engine': 'mlkit-korean',
+        });
     await row('card', 'Screenshot_1.png', '카드번호 $_card 유효기간');
     await row('phone', 'Screenshot_2.png', '예약 문의 $_phone 입니다');
     await row('chat', 'Screenshot_20261019_120000_KakaoTalk.jpg', '내일 봐');
@@ -87,7 +84,102 @@ void main() {
     expect((await verdicts.find('plain'))!.route, LocalRoute.normal);
 
     final db = await local.db;
-    expect(await db.getVersion(), 2);
+    expect(await db.getVersion(), LocalDb.version);
+    await local.close();
+  });
+
+  /// 서버 연동 전(v2)의 DB 파일: 동의 설정과 기기 판정이 들어 있다.
+  Future<void> createV2() async {
+    final db = await factory.openDatabase(
+      path,
+      options: OpenDatabaseOptions(
+        version: 2,
+        onCreate: (db, _) async {
+          await db.execute(
+            'CREATE TABLE ocr_result (asset_id TEXT PRIMARY KEY, file_name TEXT NOT NULL, '
+            'date_modified INTEGER NOT NULL, text TEXT NOT NULL, char_count INTEGER NOT NULL, '
+            'ocr_at INTEGER NOT NULL, engine TEXT NOT NULL)',
+          );
+          await db.execute(
+            'CREATE TABLE local_verdict (local_id INTEGER PRIMARY KEY AUTOINCREMENT, '
+            'asset_id TEXT NOT NULL UNIQUE, taken_at INTEGER NOT NULL, modified_at INTEGER NOT NULL, '
+            'route TEXT NOT NULL, category TEXT, hidden INTEGER NOT NULL, reasons TEXT NOT NULL, '
+            'decided_at INTEGER NOT NULL)',
+          );
+          await db.execute(
+            'CREATE TABLE setting (key TEXT PRIMARY KEY, value TEXT NOT NULL)',
+          );
+          await db.insert('setting', {'key': 'image_consent', 'value': '1'});
+          await db.insert('local_verdict', {
+            'asset_id': 'chat1',
+            'taken_at': 1,
+            'modified_at': 1,
+            'route': 'deviceOnly',
+            'category': 'CHAT',
+            'hidden': 0,
+            'reasons': 'APP_MESSENGER',
+            'decided_at': 1,
+          });
+        },
+      ),
+    );
+    await db.close();
+  }
+
+  test('v2 DB를 열면 v3로 올라가고 기존 설정·판정은 그대로, 서버 표가 생긴다', () async {
+    await createV2();
+    final local = open();
+    final settings = SqfliteSettingsStore(local);
+    final verdicts = SqfliteLocalVerdictStore(local);
+    final remote = SqfliteRemoteStateStore(local);
+
+    expect(await (await local.db).getVersion(), 3);
+    expect(await settings.imageConsent(), isTrue); // 동의 설정 유지
+    expect((await verdicts.find('chat1'))!.category, Category.chat);
+
+    // 새 표가 바로 쓸 수 있다: 기기 id, 첫 분석 여부, 매핑, 마지막 목록 캐시
+    expect(await remote.deviceId(), isNull);
+    await remote.setDeviceId(7);
+    expect(await remote.firstSyncDone(), isFalse);
+    await remote.setFirstSyncDone();
+    await remote.putEntry(
+      const SyncEntry(
+        assetId: 'a1',
+        modifiedAt: 5,
+        status: SyncStatusCode.failed,
+      ),
+    );
+    await remote.linkServerIds({'a1': 42});
+    await remote.putCache('summary', '{"categories":[]}');
+    await local.close();
+
+    // 다시 열어도(업그레이드 이후 재실행) 값이 남아 있다.
+    final again = open();
+    final r2 = SqfliteRemoteStateStore(again);
+    expect(await r2.deviceId(), 7);
+    expect(await r2.firstSyncDone(), isTrue);
+    final e = (await r2.entry('a1'))!;
+    expect(
+      (e.serverId, e.modifiedAt, e.status),
+      (42, 5, SyncStatusCode.failed),
+    );
+    expect(await r2.failedCount(), 1);
+    expect(await r2.cached('summary'), '{"categories":[]}');
+    expect(await r2.cached('none'), isNull);
+    await r2.clear();
+    expect(await r2.deviceId(), isNull);
+    expect(await r2.cached('summary'), isNull);
+    await again.close();
+  });
+
+  test('v1 DB도 한 번에 v3까지 올라간다', () async {
+    await createV1();
+    final local = open();
+    await local.db;
+    expect(await (await local.db).getVersion(), 3);
+    final remote = SqfliteRemoteStateStore(local);
+    await remote.putCache('k', 'v');
+    expect(await remote.cached('k'), 'v');
     await local.close();
   });
 

@@ -20,7 +20,12 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:remine/widgets/small_widgets.dart';
 import 'package:remine/widgets/wordmark.dart';
 
+import 'package:remine/data/remote/sync_status.dart';
+import 'package:remine/screens/analysis_screen.dart';
+import 'package:remine/screens/photo_viewer_screen.dart';
+
 import 'fake_device.dart';
+import 'fake_remote.dart';
 
 /// 여러 화면 크기·글자 크기에서 모든 화면이 RenderFlex overflow 없이 그려지는지 확인한다.
 /// Flutter는 넘침을 예외로 보고하므로, 화면을 띄우고 조작하는 동안 보고된 오류를 전부 모아
@@ -204,32 +209,26 @@ void defineLayoutMatrix({
       _expectClean('상세 던지는 중 $label', errors);
     });
 
-    testWidgets('상세 ⋯ 메뉴 · $label', (tester) async {
-      final errors = await _errorsDuring(() async {
-        await _pump(tester, size, scale);
-        await _tap(tester, find.text('#니트가디건'));
-        await _tap(tester, find.byType(Hero));
-        // 아주 낮은 화면에서는 위쪽 끝으로 스크롤하면 상단 바에 가려지므로 가운데로 맞춘 뒤 누른다.
-        final menu = find.byIcon(LucideIcons.ellipsis);
-        Scrollable.ensureVisible(
-          tester.element(menu.first),
-          alignment: 0.5,
-          duration: Duration.zero,
-        );
-        await tester.pumpAndSettle();
-        await tester.tap(menu.first);
-        await tester.pumpAndSettle();
-        expect(find.text('휴지통으로'), findsOneWidget, reason: '메뉴가 열리지 않았다');
-      });
-      _expectClean('상세 메뉴 $label', errors);
-    });
-
     testWidgets('수정 시트 · $label', (tester) async {
       final errors = await _errorsDuring(() async {
         await _pump(tester, size, scale);
         await _tap(tester, find.text('#니트가디건'));
         await _tap(tester, find.byType(Hero));
-        await _tap(tester, find.text('쇼핑')); // 카테고리 칩 → 시트
+        // 아주 낮은 화면에서는 위쪽 끝으로 스크롤하면 상단 바에 가려지므로 가운데로 맞춘 뒤 누른다.
+        // 카드 위 스티커에도 같은 이름이 있으므로 누르는 칩은 키로 찾는다.
+        final chip = find.byWidgetPredicate(
+          (w) =>
+              w.key is ValueKey<String> &&
+              (w.key! as ValueKey<String>).value.startsWith('category-chip-'),
+        );
+        Scrollable.ensureVisible(
+          tester.element(chip.first),
+          alignment: 0.5,
+          duration: Duration.zero,
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(chip.first);
+        await tester.pumpAndSettle(); // 카테고리 칩 → 시트
         expect(find.text('이거 어디 서랍이야?'), findsOneWidget);
       });
       _expectClean('수정 시트 $label', errors);
@@ -311,6 +310,189 @@ void defineLayoutMatrix({
       _expectClean('설정 $label', errors);
     });
 
+    testWidgets('첫 분석 · 실제 진행(큰 숫자·예상 시간·홈 버튼) · $label', (tester) async {
+      final errors = await _errorsDuring(() async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1.0;
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.view.reset);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        var clock = DateTime(2026, 10, 21, 12);
+        final status = SyncStatus(now: () => clock);
+        status.begin(300);
+        clock = clock.add(const Duration(minutes: 30));
+        status.advance(299); // 999에 가까운 자릿수·몇 시간짜리 예상 시간 문구까지 그려 본다
+        for (final c in Category.values) {
+          for (var i = 0; i < 40; i++) {
+            status.count(c);
+          }
+        }
+        await tester.pumpWidget(
+          MaterialApp(
+            home: AnalysisScreen(status: status, onHome: () {}),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('홈에서 먼저 볼래요'), findsOneWidget);
+        // 시작 직후(예상 시간 계산 중)와 실행 전(0/0)도 그려 본다.
+        final fresh = SyncStatus()..begin(300);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: AnalysisScreen(status: fresh, onHome: () {}),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('남은 시간을 계산하고 있어요'), findsOneWidget);
+        // 서버 응답을 기다리는 중(움직이는 막대 + 안내 문구). 막대가 계속 움직이므로 settle 대신 시간을 흘려보낸다.
+        final waiting = SyncStatus()..begin(300, intervalMs: 4500);
+        waiting.setWaiting(20);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: AnalysisScreen(status: waiting, onHome: () {}),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(find.textContaining('20장을 분류하는 중이에요'), findsOneWidget);
+        expect(find.byType(LinearProgressIndicator), findsOneWidget);
+      });
+      _expectClean('첫 분석 실제 진행 $label', errors);
+    });
+
+    testWidgets('첫 분석 · 완료 상태(실제 썸네일 카드 4장·홈으로 버튼) · $label', (tester) async {
+      final errors = await _errorsDuring(() async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1.0;
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.view.reset);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        final status = SyncStatus()..begin(999);
+        status.advance(999);
+        // 가장 긴 카테고리 이름(문화생활)과 여러 자릿수 개수까지 그려 본다.
+        for (final c in Category.values) {
+          for (var i = 0; i < 99; i++) {
+            status.count(c);
+          }
+        }
+        for (final c in [
+          Category.entertainment,
+          Category.shopping,
+          Category.place,
+          Category.entertainment,
+        ]) {
+          status.count(c, assetId: 'a${status.recent.length}');
+        }
+        status.finish();
+        Future<void> show(SyncStatus st, {FakeGalleryReader? reader}) async {
+          await tester.pumpWidget(
+            MaterialApp(
+              home: DeviceScope(
+                services: fakeServices(reader ?? FakeGalleryReader()),
+                child: AnalysisScreen(status: st, onHome: () {}),
+              ),
+            ),
+          );
+          await tester.pump();
+          await tester.pump();
+        }
+
+        await show(status);
+        expect(find.text('홈으로'), findsOneWidget);
+        expect(find.byType(Image), findsNWidgets(4));
+        // 아직 한 장도 분류되지 않은 완료(새 캡처 없음)와 연결 실패 안내.
+        await show(SyncStatus()..finish());
+        expect(find.text('새로 꺼낼 캡처가 없어요'), findsWidgets);
+        await show(SyncStatus()..finish(issue: SyncIssue.offline));
+        expect(find.textContaining('서버에 연결하지 못했어요'), findsOneWidget);
+        // 진행 중 + 카드 일부만 채워진 상태.
+        final partial = SyncStatus()..begin(300, intervalMs: 4500);
+        partial.count(Category.entertainment, assetId: 'x1');
+        await tester.pumpWidget(
+          MaterialApp(
+            home: DeviceScope(
+              services: fakeServices(FakeGalleryReader()),
+              child: AnalysisScreen(status: partial, onHome: () {}),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(find.text('홈에서 먼저 볼래요'), findsOneWidget);
+      });
+      _expectClean('첫 분석 완료 상태 $label', errors);
+    });
+
+    testWidgets('전체 화면 보기(확대 전·확대 후·사진 없음) · $label', (tester) async {
+      final errors = await _errorsDuring(() async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1.0;
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.view.reset);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        Future<void> show(String assetId) async {
+          await tester.pumpWidget(
+            MaterialApp(
+              home: DeviceScope(
+                services: fakeServices(FakeGalleryReader()),
+                child: PhotoViewerScreen(assetId: assetId, seed: 1),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+        }
+
+        await show('a1');
+        expect(
+          find.byKey(const ValueKey('photo-viewer-close')),
+          findsOneWidget,
+        );
+        final viewer = find.byKey(const ValueKey('photo-viewer'));
+        final c = tester.getCenter(viewer);
+        final g1 = await tester.startGesture(c - const Offset(10, 0));
+        final g2 = await tester.startGesture(c + const Offset(10, 0));
+        await g1.moveBy(const Offset(-40, 0));
+        await g2.moveBy(const Offset(40, 0));
+        await g1.up();
+        await g2.up();
+        await tester.pumpAndSettle();
+        await show('missing');
+        expect(find.text('사진이 없어요'), findsOneWidget);
+      });
+      _expectClean('전체 화면 보기 $label', errors);
+    });
+
+    testWidgets('홈 · 서버 연결 안내 띠(오프라인·일부 실패) · $label', (tester) async {
+      final errors = await _errorsDuring(() async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1.0;
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.view.reset);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        // 임시 폴더를 만드는 실제 파일 I/O라 위젯 테스트의 가짜 시계 밖(runAsync)에서 준비한다.
+        final rig = (await tester.runAsync(
+          () => SyncRig.create(
+            photos: fakePhotos(1),
+            texts: {'p0': '글자'},
+            client: RecordingClient()..throwOnSend = const SocketException('x'),
+          ),
+        ))!;
+        await rig.state.setFirstSyncDone(); // 첫 분석 화면을 건너뛰고 바로 홈
+        await tester.pumpWidget(
+          RemineApp(
+            repository: FakeScreenshotRepository(now: () => _now),
+            now: () => _now,
+            device: fakeServices(rig.reader, remote: rig.remote),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.textContaining('서버에 연결하지 못했어요'), findsOneWidget);
+        // 일부 실패 안내(가장 긴 문구)도 그려 본다.
+        rig.status.finish(issue: SyncIssue.partial, failedCount: 288);
+        await tester.pumpAndSettle();
+        expect(find.textContaining('288장은 다음에'), findsOneWidget);
+      });
+      _expectClean('홈 연결 안내 띠 $label', errors);
+    });
+
     testWidgets('분석 제외 · $label', (tester) async {
       final errors = await _errorsDuring(() async {
         final services = fakeServices(FakeGalleryReader());
@@ -377,7 +559,9 @@ void defineLayoutMatrix({
         await tester.pumpAndSettle();
         await tester.tap(find.text('전체 선택'), warnIfMissed: false);
         await tester.pumpAndSettle();
-        await tester.ensureVisible(find.text('OCR 실행')); // 아주 작은 화면에서는 패널 안을 스크롤해야 보인다
+        await tester.ensureVisible(
+          find.text('OCR 실행'),
+        ); // 아주 작은 화면에서는 패널 안을 스크롤해야 보인다
         await tester.pumpAndSettle();
         await tester.tap(find.text('OCR 실행'), warnIfMissed: false);
         await tester.pump();

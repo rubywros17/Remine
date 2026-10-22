@@ -4,4 +4,6 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- localhost(adb reverse)로의 평문 HTTP만 허용한다. 디버그 빌드 전용. -->
+    <application android:networkSecurityConfig="@xml/network_security_config"/>
 </manifest>

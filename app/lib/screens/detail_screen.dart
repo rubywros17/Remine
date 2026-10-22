@@ -3,19 +3,25 @@ import 'dart:ui' show lerpDouble;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:flutter/physics.dart';
+import 'package:flutter/semantics.dart' show CustomSemanticsAction;
 import 'package:flutter/services.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../core/helpers.dart';
 import '../core/tokens.dart';
+import '../data/device/device_services.dart';
 import '../data/remine_store.dart';
+import '../data/remote/api_client.dart' show ApiException;
+import '../models/category.dart';
+import '../models/category_update.dart';
 import '../models/screenshot_item.dart';
+import '../widgets/capture_thumb.dart';
 import '../widgets/category_sheet.dart';
-import '../widgets/home_widgets.dart';
 import '../widgets/pressable_scale.dart';
 import '../widgets/small_widgets.dart';
 import '../widgets/thumb_placeholder.dart';
 import 'category_screen.dart';
+import 'photo_viewer_screen.dart';
 
 /// 스크린샷 상세. 들어온 목록(카테고리 전체 또는 선택된 태그로 거른 결과) 안에서 좌우로 넘긴다.
 ///
@@ -48,6 +54,37 @@ class DetailScreen extends StatefulWidget {
 /// 위로 끄는 진행도(0~1.15, 1이 기준선)와 기준선 통과 여부. 오버레이(배경·휴지통 아이콘)가 이 값을 따라간다.
 typedef _ThrowView = (double progress, bool pastLine);
 
+/// 이미지 카드의 화면 읽기용 동작(보이는 UI 없음). 라벨은 스크린 리더가 동작 목록에서 읽는다.
+const trashSemanticsAction = CustomSemanticsAction(label: '휴지통으로 옮기기');
+
+/// 사진 비율을 모를 때 쓰는 이미지 카드 기본 비율(폭/높이).
+const double detailCardDefaultAspect = 0.62;
+
+/// 영역([areaWidth] × [areaHeight]) 안에 들어가는 **가장 큰** 이미지 카드의 바깥 폭.
+///
+/// 폭은 영역 폭의 78%([AppDetail.cardMaxWidthFraction])까지, 높이는 영역 높이까지이고 사진 비율([aspect], 폭/높이)을 지킨다.
+/// 흰 테두리는 두께가 고정(6px)이라 테두리를 포함한 카드 높이는 `(폭 − 12) / 비율 + 12`다.
+/// 세로로 긴 사진은 높이 기준으로 폭이 정해지고, 안쪽 사진 영역의 비율이 사진과 같아 `cover`로 그려도 잘리지 않는다.
+double detailCardWidth({
+  required double areaWidth,
+  required double areaHeight,
+  double? aspect,
+}) {
+  final a = (aspect ?? detailCardDefaultAspect).clamp(0.2, 5.0);
+  final border2 = AppDetail.cardBorder * 2;
+  final byWidth = areaWidth * AppDetail.cardMaxWidthFraction;
+  final byHeight = (areaHeight - border2) * a + border2;
+  final width = byWidth < byHeight ? byWidth : byHeight;
+  return width < border2 + 1 ? border2 + 1 : width;
+}
+
+/// [detailCardWidth]로 정한 폭의 카드 바깥 높이(테두리 포함).
+double detailCardHeight(double width, {double? aspect}) {
+  final a = (aspect ?? detailCardDefaultAspect).clamp(0.2, 5.0);
+  final border2 = AppDetail.cardBorder * 2;
+  return (width - border2) / a + border2;
+}
+
 class _DetailScreenState extends State<DetailScreen> {
   late final List<ScreenshotItem> _items = [...widget.items];
   late int _index = widget.initialIndex.clamp(0, _items.length - 1);
@@ -55,9 +92,6 @@ class _DetailScreenState extends State<DetailScreen> {
 
   /// 끄는 동안의 진행도. 값이 바뀌어도 페이지 전체를 다시 만들지 않도록 ValueNotifier로 따로 둔다.
   final ValueNotifier<_ThrowView> _view = ValueNotifier((0.0, false));
-
-  /// 메뉴("⋯ → 휴지통으로")가 현재 카드를 위로 날려 보낼 수 있도록 카드 State에 닿는 키.
-  final Map<int, GlobalKey<_ThrowCardState>> _cardKeys = {};
 
   /// 휴지통 처리 뒤 새로 나타난 항목의 도착 애니메이션을 한 번 재생하기 위한 표시.
   int? _arrivalId;
@@ -99,7 +133,6 @@ class _DetailScreenState extends State<DetailScreen> {
     final wasLast = index == _items.length - 1;
     setState(() {
       _items.removeAt(index);
-      _cardKeys.remove(removed.id);
       if (_items.isNotEmpty) {
         _index = wasLast ? _items.length - 1 : index;
         if (!wasLast) {
@@ -119,7 +152,7 @@ class _DetailScreenState extends State<DetailScreen> {
     messenger.showSnackBar(
       SnackBar(
         content: Text(
-          '휴지통으로 옮겼어',
+          '휴지통으로 옮겼어요',
           style: AppText.label.copyWith(color: AppColors.white),
         ),
         duration: AppGesture.undoDuration,
@@ -165,16 +198,6 @@ class _DetailScreenState extends State<DetailScreen> {
     });
   }
 
-  /// "⋯ → 휴지통으로": 카드가 위로 빨려 들어가는 같은 동작(애니메이션 줄이기면 즉시 처리).
-  void _requestTrash(ScreenshotItem item) {
-    final card = _cardKeys[item.id]?.currentState;
-    if (card != null) {
-      card.flyToTrash();
-    } else {
-      _trash(item);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -214,12 +237,10 @@ class _DetailScreenState extends State<DetailScreen> {
                     key: ValueKey(item.id),
                     item: item,
                     isCurrent: i == _index,
-                    cardKey: _cardKeys.putIfAbsent(item.id, GlobalKey.new),
                     view: _view,
                     arriveToken: item.id == _arrivalId ? _arrivalToken : 0,
                     onChanged: _replaceItem,
                     onTrash: () => _trash(item),
-                    onRequestTrash: () => _requestTrash(item),
                   );
                 },
               ),
@@ -369,24 +390,20 @@ class _DetailPage extends StatefulWidget {
     super.key,
     required this.item,
     required this.isCurrent,
-    required this.cardKey,
     required this.view,
     required this.arriveToken,
     required this.onChanged,
     required this.onTrash,
-    required this.onRequestTrash,
   });
 
   final ScreenshotItem item;
 
   /// 지금 보고 있는 페이지인가. 현재 페이지의 이미지 카드에만 Hero를 건다(이웃 페이지와 태그 중복 방지).
   final bool isCurrent;
-  final GlobalKey<_ThrowCardState> cardKey;
   final ValueNotifier<_ThrowView> view;
   final int arriveToken;
   final ValueChanged<ScreenshotItem> onChanged;
   final Future<void> Function() onTrash;
-  final VoidCallback onRequestTrash;
 
   @override
   State<_DetailPage> createState() => _DetailPageState();
@@ -428,7 +445,17 @@ class _DetailPageState extends State<_DetailPage> {
       autoCategory: _item.autoCategory ?? _item.category,
     );
     if (chosen == null) return;
-    final result = await store.changeCategory(_item.id, chosen);
+    final CategoryUpdate result;
+    try {
+      result = await store.changeCategory(_item.id, chosen);
+    } on ApiException {
+      // 서버에 닿지 못했다. 화면은 그대로 두고 안내만 한다(바뀐 척하지 않는다).
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('카테고리를 바꾸지 못했어요. 연결을 확인하고 다시 해 주세요.')),
+      );
+      return;
+    }
     if (!mounted) return;
     widget.onChanged(
       _item.copyWith(
@@ -443,54 +470,60 @@ class _DetailPageState extends State<_DetailPage> {
     final tag = _mainTag;
     return LayoutBuilder(
       builder: (context, box) {
-        // 이미지 영역 높이는 화면 높이에 비례(240~460). 글자가 들어가지 않아 내용과 무관하게 정할 수 있다.
-        final imageAreaHeight = (box.maxHeight * 0.46).clamp(240.0, 460.0);
-        // 스크롤 안 Column은 높이가 무한이라 Expanded를 못 쓴다. 최소 높이 = 화면 높이로 두고 spaceBetween으로
-        // 세 묶음(상단 여백 / 이미지 / 정보 카드) 사이에 남는 높이를 나눈다 → 이미지 카드가 남는 공간의 가운데에 놓인다.
+        // 이미지 영역은 상단 바와 정보 카드 사이의 **남는 높이를 모두** 차지한다(최소 240, 모자라면 페이지가 스크롤).
+        // 스크롤 안 Column은 높이가 무한이라 Expanded를 못 쓴다 → 최소 높이 = 화면 높이로 두고 IntrinsicHeight로
+        // 정보 카드의 고유 높이를 먼저 정한 뒤, 남는 높이를 Expanded(이미지 영역)에 준다.
         return SingleChildScrollView(
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: box.maxHeight),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: _topBarHeight),
-                SizedBox(
-                  key: ValueKey('image-area-${_item.id}'),
-                  height: imageAreaHeight,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: AppSpacing.s16,
-                    ),
-                    child: _ThrowCard(
-                      key: widget.cardKey,
-                      item: _item,
-                      tag: tag,
-                      isCurrent: widget.isCurrent,
-                      view: widget.view,
-                      arriveToken: widget.arriveToken,
-                      onTrash: widget.onTrash,
-                    ),
-                  ),
-                ),
-                _InfoCard(
-                  item: _item,
-                  sameInterestCount: _sameInterestCount,
-                  onEditCategory: _editCategory,
-                  onTrash: widget.onRequestTrash,
-                  onMore: tag == null
-                      ? null
-                      : () => Navigator.of(context).push(
-                          appRoute(
-                            context,
-                            (_) => CategoryScreen(
-                              category: _item.category,
-                              initialTag: tag,
-                            ),
+            child: IntrinsicHeight(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: _topBarHeight),
+                  Expanded(
+                    key: ValueKey('image-area-${_item.id}'),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(minHeight: 240),
+                      // IntrinsicHeight는 자식의 고유 높이를 묻는데 LayoutBuilder(카드)는 대답하지 못한다.
+                      // 그래서 고유 높이를 묻지 않고 영역을 그대로 채우는 레이아웃으로 한 번 감싼다.
+                      child: CustomSingleChildLayout(
+                        delegate: const _FillAreaDelegate(),
+                        child: Padding(
+                          // 상단 바 아래 최소 16px 여백, 아래는 정보 카드와 붙지 않게 8px.
+                          padding: const EdgeInsets.only(
+                            top: AppDetail.cardTopGap,
+                            bottom: AppSpacing.s8,
+                          ),
+                          child: _ThrowCard(
+                            item: _item,
+                            isCurrent: widget.isCurrent,
+                            view: widget.view,
+                            arriveToken: widget.arriveToken,
+                            onTrash: widget.onTrash,
                           ),
                         ),
-                ),
-              ],
+                      ),
+                    ),
+                  ),
+                  _InfoCard(
+                    item: _item,
+                    sameInterestCount: _sameInterestCount,
+                    onEditCategory: _editCategory,
+                    onMore: tag == null
+                        ? null
+                        : () => Navigator.of(context).push(
+                            appRoute(
+                              context,
+                              (_) => CategoryScreen(
+                                category: _item.category,
+                                initialTag: tag,
+                              ),
+                            ),
+                          ),
+                  ),
+                ],
+              ),
             ),
           ),
         );
@@ -499,8 +532,25 @@ class _DetailPageState extends State<_DetailPage> {
   }
 }
 
+/// 주어진 제약을 그대로 채우고 자식에게도 그 제약을 준다. [SizedBox.expand]와 같지만 고유 높이를 묻지 않아
+/// [IntrinsicHeight] 안에서도 안전하다.
+class _FillAreaDelegate extends SingleChildLayoutDelegate {
+  const _FillAreaDelegate();
+
+  @override
+  Size getSize(BoxConstraints constraints) => constraints.biggest;
+
+  @override
+  BoxConstraints getConstraintsForChild(BoxConstraints constraints) =>
+      constraints;
+
+  @override
+  bool shouldRelayout(covariant _FillAreaDelegate old) => false;
+}
+
 /// 기울어진 흰 이미지 카드(플레이스홀더) + #태그 스티커. 현재 페이지에서는 Hero로 그리드 썸네일과 이어진다.
-/// 크기는 주어진 영역(세로·가로)을 넘지 않게 비율 0.62로 맞추고, 안쪽 막대는 카드 크기에 비례한다.
+/// 크기는 [detailCardWidth] 규칙: 영역 안에서 **사진의 실제 비율**을 지키는 가장 큰 카드(폭은 영역의 86%까지).
+/// 비율을 모르면 0.62. 가짜 데이터 모드의 안쪽 막대는 카드 크기에 비례한다.
 ///
 /// 세로 제스처는 이 카드에만 건다(정보 카드의 세로 스크롤·좌우 넘기기와 겹치지 않게):
 /// - 아래로 쓸어내리면 닫힌다.
@@ -508,9 +558,7 @@ class _DetailPageState extends State<_DetailPage> {
 ///   기준선(화면 높이 1/3) 또는 위쪽 속도 임계값을 넘겨 놓으면 휴지통으로 빨려 들어간다. 모자라면 스프링으로 복귀.
 class _ThrowCard extends StatefulWidget {
   const _ThrowCard({
-    super.key,
     required this.item,
-    required this.tag,
     required this.isCurrent,
     required this.view,
     required this.onTrash,
@@ -518,7 +566,6 @@ class _ThrowCard extends StatefulWidget {
   });
 
   final ScreenshotItem item;
-  final String? tag;
   final bool isCurrent;
   final ValueNotifier<_ThrowView> view;
 
@@ -552,6 +599,29 @@ class _ThrowCardState extends State<_ThrowCard> with TickerProviderStateMixin {
   Offset _flyTarget = Offset.zero;
   double _flyStartDy = 0;
   double _flyStartScale = 1;
+
+  /// 사진의 실제 폭/높이 비율. 읽어 오기 전·못 읽으면 null → 기본 비율로 그린다(가짜 데이터 모드는 항상 null).
+  double? _aspect;
+  String? _aspectFor;
+
+  // InheritedWidget(DeviceScope)은 initState가 아니라 didChangeDependencies부터 읽을 수 있다.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final reader = DeviceScope.maybeOf(context)?.reader;
+    final id = widget.item.localAssetId;
+    if (reader != null && _aspectFor != id) {
+      _aspectFor = id;
+      reader
+          .aspectRatio(id)
+          .then((a) {
+            if (mounted && a != null && a != _aspect) {
+              setState(() => _aspect = a);
+            }
+          })
+          .catchError((_) {}); // 비율을 못 읽어도 기본 비율로 그린다
+    }
+  }
 
   @override
   void didUpdateWidget(covariant _ThrowCard old) {
@@ -655,7 +725,21 @@ class _ThrowCardState extends State<_ThrowCard> with TickerProviderStateMixin {
     _startFly();
   }
 
-  /// 정보 카드의 "⋯ → 휴지통으로": 같은 동작을 제스처 없이 실행한다.
+  /// 이미지를 누르면 전체 화면 보기(확대·축소, 아래로 쓸거나 X로 닫기). 던지는 중에는 열지 않는다.
+  void _openViewer() {
+    if (_flying || _dy != 0) return;
+    Navigator.of(context).push(
+      appRoute(
+        context,
+        (_) => PhotoViewerScreen(
+          assetId: widget.item.localAssetId,
+          seed: widget.item.id,
+        ),
+      ),
+    );
+  }
+
+  /// 이미지 카드의 화면 읽기용 동작 "휴지통으로 옮기기": 위로 던지는 것과 같은 동작을 제스처 없이 실행한다.
   Future<void> flyToTrash() async {
     if (_flying) return;
     _dy = 0;
@@ -736,25 +820,37 @@ class _ThrowCardState extends State<_ThrowCard> with TickerProviderStateMixin {
     final card = ExcludeSemantics(
       child: LayoutBuilder(
         builder: (context, box) {
-          var width = box.maxHeight * 0.62;
-          if (width > box.maxWidth * 0.68) width = box.maxWidth * 0.68;
+          // 영역 안에서 사진 비율을 지키는 가장 큰 카드. 세로로 긴 사진이면 높이 기준으로 폭이 정해진다.
+          final width = detailCardWidth(
+            areaWidth: box.maxWidth,
+            areaHeight: box.maxHeight,
+            aspect: _aspect,
+          );
           final visual = Transform.rotate(
-            angle: decorAngle(item.id, max: 0.07),
+            angle: AppDetail
+                .cardTilt, // 가만히 있을 때 -2°. 드래그 중에는 바깥 Transform이 더 기울인다.
             child: DecoratedBox(
               decoration: BoxDecoration(
                 color: AppColors.white,
                 borderRadius: BorderRadius.circular(AppRadii.card),
+                boxShadow: const [
+                  BoxShadow(
+                    color: AppColors.cardShadow,
+                    blurRadius: 24,
+                    offset: Offset(0, 8),
+                  ),
+                ],
               ),
               child: Padding(
-                padding: EdgeInsets.all(width * 0.07),
-                child: _CardContent(block: block),
+                padding: const EdgeInsets.all(AppDetail.cardBorder),
+                child: _CardContent(item: item, block: block, aspect: _aspect),
               ),
             ),
           );
           return Center(
             child: SizedBox(
               width: width,
-              height: width / 0.62,
+              height: detailCardHeight(width, aspect: _aspect),
               child: Stack(
                 clipBehavior: Clip.none,
                 children: [
@@ -763,12 +859,12 @@ class _ThrowCardState extends State<_ThrowCard> with TickerProviderStateMixin {
                         ? Hero(tag: 'screenshot-${item.id}', child: visual)
                         : visual,
                   ),
-                  if (widget.tag != null)
-                    Positioned(
-                      top: -10,
-                      right: -14,
-                      child: Sticker(label: '#${widget.tag}', angle: 0.1),
-                    ),
+                  // 카드 위 스티커는 태그가 아니라 카테고리(아이콘 + 이름, 레몬). 태그는 아래 정보 카드의 칩으로 그대로 있다.
+                  Positioned(
+                    top: -10,
+                    right: -14,
+                    child: _CategorySticker(category: item.category),
+                  ),
                 ],
               ),
             ),
@@ -777,18 +873,29 @@ class _ThrowCardState extends State<_ThrowCard> with TickerProviderStateMixin {
       ),
     );
 
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onVerticalDragStart: widget.isCurrent ? _onDragStart : null,
-      onVerticalDragUpdate: widget.isCurrent ? _onDragUpdate : null,
-      onVerticalDragEnd: widget.isCurrent ? _onDragEnd : null,
-      child: Opacity(
-        opacity: opacity.clamp(0.0, 1.0),
-        child: Transform.translate(
-          offset: Offset(dx, dy),
-          child: Transform.rotate(
-            angle: angle,
-            child: Transform.scale(scale: scale, child: card),
+    // 화면 읽기(TalkBack 등) 전용 동작. 화면에 보이는 버튼은 없다 — 삭제는 위로 던지기뿐이고,
+    // 스크린 리더 사용자는 이미지 카드의 동작 목록에서 같은 동작을 고른다.
+    return Semantics(
+      container: true,
+      label: '캡처 이미지',
+      onTap: widget.isCurrent ? _openViewer : null, // 전체 화면 보기
+      customSemanticsActions: widget.isCurrent && !_flying
+          ? {trashSemanticsAction: () => flyToTrash()}
+          : const {},
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTap: widget.isCurrent ? _openViewer : null,
+        onVerticalDragStart: widget.isCurrent ? _onDragStart : null,
+        onVerticalDragUpdate: widget.isCurrent ? _onDragUpdate : null,
+        onVerticalDragEnd: widget.isCurrent ? _onDragEnd : null,
+        child: Opacity(
+          opacity: opacity.clamp(0.0, 1.0),
+          child: Transform.translate(
+            offset: Offset(dx, dy),
+            child: Transform.rotate(
+              angle: angle,
+              child: Transform.scale(scale: scale, child: card),
+            ),
           ),
         ),
       ),
@@ -796,14 +903,28 @@ class _ThrowCardState extends State<_ThrowCard> with TickerProviderStateMixin {
   }
 }
 
-/// 이미지 카드 안쪽(가짜 화면): 큰 블록 + 글자 막대들. 막대는 카드 폭 비율이고, 카드가 낮으면 블록만 남긴다.
+/// 이미지 카드 안쪽. 기기 모드에서는 **기기 사진**(없으면 "사진이 없어요" 자리 표시)이 카드를 채운다.
+/// 가짜 데이터 모드(크롬·테스트)에서는 큰 블록 + 글자 막대들이다. 막대는 카드 폭 비율이고, 카드가 낮으면 블록만 남긴다.
 class _CardContent extends StatelessWidget {
-  const _CardContent({required this.block});
+  const _CardContent({required this.item, required this.block, this.aspect});
 
+  final ScreenshotItem item;
   final Color block;
+
+  /// 사진의 폭/높이 비율(알 때만). 썸네일을 이 비율로 받아 카드에 사진 전체가 보이게 한다.
+  final double? aspect;
 
   @override
   Widget build(BuildContext context) {
+    if (DeviceScope.maybeOf(context) != null) {
+      return CaptureThumb(
+        assetId: item.localAssetId,
+        seed: item.id,
+        radius: AppRadii.tile,
+        size: 720,
+        aspect: aspect,
+      );
+    }
     return LayoutBuilder(
       builder: (context, box) {
         final showBars = box.maxHeight >= 150;
@@ -851,8 +972,6 @@ class _CardContent extends StatelessWidget {
       );
 }
 
-enum _CardAction { trash }
-
 /// 기기에서 분류한 캡처(음수 id)의 카테고리 수정 버튼이 막힌 이유.
 const deviceClassifiedNotice = '기기에서 분류한 캡처라 아직 바꿀 수 없어요';
 
@@ -861,7 +980,6 @@ class _InfoCard extends StatelessWidget {
     required this.item,
     required this.sameInterestCount,
     required this.onEditCategory,
-    required this.onTrash,
     required this.onMore,
   });
 
@@ -869,8 +987,6 @@ class _InfoCard extends StatelessWidget {
   final int sameInterestCount;
   final VoidCallback onEditCategory;
 
-  /// "⋯ → 휴지통으로" (위로 던지는 제스처와 같은 동작. 제스처가 어려운 사용자를 위한 대체 경로)
-  final VoidCallback onTrash;
   final VoidCallback? onMore;
 
   @override
@@ -890,7 +1006,7 @@ class _InfoCard extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 8, 16),
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -906,7 +1022,11 @@ class _InfoCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: AppSpacing.s8),
-                  Flexible(
+                  // 칩은 자기 크기대로 오른쪽 끝에 붙는다(폭이 모자라면 화면 폭의 절반까지만 커진다).
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.sizeOf(context).width * 0.5,
+                    ),
                     child: PressableScale(
                       key: ValueKey('category-chip-${item.id}'),
                       // 기기에서 분류한 캡처(id < 0)는 아직 서버에 없어 수정할 수 없다 → 비활성화.
@@ -916,8 +1036,11 @@ class _InfoCard extends StatelessWidget {
                           : '카테고리 ${item.category.label}, 눌러서 수정',
                       child: ConstrainedBox(
                         constraints: const BoxConstraints(minHeight: 48),
+                        // widthFactor: 1 — 칸을 칩 폭에만 맞춘다(없으면 가용 폭 전체로 늘어나 칩이 가운데에 뜬다).
                         child: Center(
-                          child: AppChip.outlined(
+                          widthFactor: 1,
+                          child: AppChip(
+                            background: AppColors.lemon, // 레몬 알약(테두리 없음) + 연필
                             label: item.category.label,
                             leading: Icon(
                               categoryIcon(item.category),
@@ -936,108 +1059,97 @@ class _InfoCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  PopupMenuButton<_CardAction>(
-                    key: ValueKey('more-menu-${item.id}'),
-                    tooltip: '더 보기 메뉴',
-                    icon: const Icon(
-                      LucideIcons.ellipsis,
-                      size: 22,
-                      color: AppColors.ink,
-                    ),
-                    color: AppColors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppRadii.tile),
-                    ),
-                    popUpAnimationStyle: AppMotion.reduced(context)
-                        ? AnimationStyle.noAnimation
-                        : null,
-                    onSelected: (_) => onTrash(),
-                    itemBuilder: (context) => [
-                      PopupMenuItem(
-                        value: _CardAction.trash,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const Icon(
-                              LucideIcons.trash2,
-                              size: 18,
-                              color: AppColors.ink,
-                            ),
-                            const SizedBox(width: AppSpacing.s12),
-                            Text('휴지통으로', style: AppText.label),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
                 ],
               ),
-              Padding(
-                padding: const EdgeInsets.only(right: 12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (item.id < 0) ...[
-                      Text(deviceClassifiedNotice, style: AppText.caption),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (item.id < 0) ...[
+                    Text(deviceClassifiedNotice, style: AppText.caption),
+                  ],
+                  const SizedBox(height: AppSpacing.s8),
+                  Text(
+                    item.summary ?? item.category.label,
+                    style: AppText.cardTitle,
+                  ),
+                  const SizedBox(height: AppSpacing.s16),
+                  Wrap(
+                    spacing: AppSpacing.s8,
+                    runSpacing: AppSpacing.s8,
+                    children: [
+                      for (final t in item.tags) AppChip.hashtag(label: '#$t'),
                     ],
-                    const SizedBox(height: AppSpacing.s8),
-                    Text(
-                      item.summary ?? item.category.label,
-                      style: AppText.cardTitle,
-                    ),
-                    const SizedBox(height: AppSpacing.s16),
-                    Wrap(
-                      spacing: AppSpacing.s8,
-                      runSpacing: AppSpacing.s8,
-                      children: [
-                        for (final t in item.tags)
-                          AppChip.hashtag(label: '#$t'),
-                      ],
-                    ),
-                    if (onMore != null && sameInterestCount > 0) ...[
-                      const SizedBox(height: AppSpacing.s20),
-                      PressableScale(
-                        onTap: onMore,
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(minHeight: 56),
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: AppColors.lemon,
-                              borderRadius: BorderRadius.circular(
-                                AppRadii.tile,
-                              ),
+                  ),
+                  if (onMore != null && sameInterestCount > 0) ...[
+                    const SizedBox(height: AppSpacing.s20),
+                    PressableScale(
+                      onTap: onMore,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 56),
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: AppColors.lemon,
+                            borderRadius: BorderRadius.circular(AppRadii.tile),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
                             ),
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 12,
-                              ),
-                              child: Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      '같은 관심사 캡처 $sameInterestCount장 더 보기',
-                                      style: AppText.label.copyWith(
-                                        fontSize: 15,
-                                      ),
-                                    ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    '같은 관심사 캡처 $sameInterestCount장 더 보기',
+                                    style: AppText.label.copyWith(fontSize: 15),
                                   ),
-                                  const SizedBox(width: AppSpacing.s8),
-                                  const Icon(
-                                    LucideIcons.arrowRight,
-                                    size: 20,
-                                    color: AppColors.ink,
-                                  ),
-                                ],
-                              ),
+                                ),
+                                const SizedBox(width: AppSpacing.s8),
+                                const Icon(
+                                  LucideIcons.arrowRight,
+                                  size: 20,
+                                  color: AppColors.ink,
+                                ),
+                              ],
                             ),
                           ),
                         ),
                       ),
-                    ],
+                    ),
                   ],
-                ),
+                ],
               ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 이미지 카드 위의 카테고리 스티커(아이콘 + 이름, 레몬 배경). 카드 오른쪽 위에 살짝 기울여 붙는다.
+class _CategorySticker extends StatelessWidget {
+  const _CategorySticker({required this.category});
+
+  final Category category;
+
+  @override
+  Widget build(BuildContext context) {
+    return Transform.rotate(
+      angle: 0.1,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: AppColors.lemon,
+          borderRadius: BorderRadius.circular(AppRadii.pill),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(categoryIcon(category), size: 14, color: AppColors.ink),
+              const SizedBox(width: 6),
+              Text(category.label, style: AppText.label.copyWith(fontSize: 13)),
             ],
           ),
         ),

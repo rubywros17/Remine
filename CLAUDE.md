@@ -39,6 +39,10 @@ flutter pub get
 flutter run -d chrome  # 크롬에서 실행
 flutter devices        # 폰 id 확인 (USB 디버깅)
 flutter run -d <id>    # 연결된 갤럭시에서 실행
+# 서버 연동(디버그 빌드만): 서버를 띄운 뒤 PC의 8080을 폰에 연결
+adb reverse tcp:8080 tcp:8080
+flutter run -d <id> --dart-define=DATA=device --dart-define=API_BASE=http://localhost:8080
+#   첫 확인은 소량으로: --dart-define=SYNC_LIMIT=15  (디버그 전용, 최신 N장만 서버로 전송)
 flutter analyze
 flutter test
 
@@ -52,6 +56,9 @@ cd server
 - 테스트는 `~/.remine.env`·키·`REMINE_CLASSIFIER`를 읽지 않고(build.gradle에서 중립화) 실제 API를 부르지 않는다.
 - analyze는 요청당 최대 20장(`remine.analyze.max-batch-size`). 설정은 `server/src/main/resources/application.yaml`의 `remine.*`.
 - 이미지 입력(`remine.image.*`): 장당 `max-bytes`(1MB), `max-long-side`(1024), `max-pixels`(25,000,000), 요청 `max-request-bytes`(12MB)·파트 `max-part-bytes`(5MB). multipart는 **메모리 전용**(`spring.servlet.multipart.file-size-threshold`를 낮추지 말 것 — 기본 0B는 이미지를 임시 파일로 씀). 앱은 `GET /api/config`로 값을 받는다. 형식은 `docs/spec.md` API 절.
+
+- 서버 주소는 `--dart-define=API_BASE`. 릴리스는 `https://`만 받고, 평문 HTTP(localhost)는 `app/android/app/src/debug`의 network security config로 디버그 빌드에서만 열려 있다.
+- 서버로 보낼 것은 `app/lib/data/remote/sync_plan.dart`의 `planFor` 한 곳에서만 정한다. 파일명·앱 이름은 보내지 않는다(asset id·촬영 시각·텍스트·동의한 축소 이미지뿐). 전송 금지 테스트(`test/sync_send_guard_test.dart`)가 요청 본문 바이트를 검사한다.
 
 ## 코드 규칙
 - 서버: `Screenshot`의 `category`·`autoCategory`는 엔티티 메서드(`applyAnalysis`, `changeCategoryByUser`)로만 바꾼다. `USER`가 정한 값은 재분석이 덮어쓰지 않는 규칙이 여기에 있으니 우회하지 말 것.

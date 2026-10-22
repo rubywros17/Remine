@@ -66,12 +66,18 @@ class PhotoManagerGalleryReader implements GalleryReader {
     final assets = await path.getAssetListRange(start: 0, end: limit);
     final photos = <GalleryPhoto>[];
     for (final a in assets) {
+      final fileName = await a.titleAsync;
+      final modified = a.modifiedDateSecond ?? 0;
       photos.add(
         GalleryPhoto(
           id: a.id,
-          fileName: await a.titleAsync,
-          takenAt: a.createDateTime,
-          modifiedAt: a.modifiedDateSecond ?? 0,
+          fileName: fileName,
+          takenAt: resolveTakenAt(
+            created: a.createDateTime,
+            fileName: fileName,
+            modifiedAtSeconds: modified,
+          ),
+          modifiedAt: modified,
         ),
       );
     }
@@ -79,9 +85,24 @@ class PhotoManagerGalleryReader implements GalleryReader {
   }
 
   @override
-  Future<Uint8List?> thumbnail(String photoId, {int size = 220}) async {
+  Future<Uint8List?> thumbnail(
+    String photoId, {
+    int size = 220,
+    int? height,
+  }) async {
     final a = await AssetEntity.fromId(photoId);
-    return a?.thumbnailDataWithSize(ThumbnailSize.square(size));
+    return a?.thumbnailDataWithSize(
+      height == null ? ThumbnailSize.square(size) : ThumbnailSize(size, height),
+    );
+  }
+
+  @override
+  Future<double?> aspectRatio(String photoId) async {
+    final a = await AssetEntity.fromId(photoId);
+    if (a == null || a.orientatedWidth <= 0 || a.orientatedHeight <= 0) {
+      return null;
+    }
+    return a.orientatedWidth / a.orientatedHeight;
   }
 
   @override

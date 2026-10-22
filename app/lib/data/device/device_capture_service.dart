@@ -2,6 +2,7 @@ import 'gallery_reader.dart';
 import 'ocr_engine.dart';
 import 'ocr_store.dart';
 import 'ocr_temp_files.dart';
+import 'privacy/app_rules.dart';
 import 'privacy/local_verdict_store.dart';
 import 'privacy/privacy_filter.dart';
 
@@ -30,8 +31,11 @@ class DeviceCaptureService {
   final LocalVerdictStore verdicts;
   final DateTime Function() _now;
 
-  Future<List<GalleryPhoto>> recent(String albumId) =>
-      reader.recent(albumId, limit: maxPhotos);
+  /// 최신순 최대 [maxPhotos]장. Remine 자신의 스크린샷은 뺀다(분류 대상이 아니다).
+  Future<List<GalleryPhoto>> recent(String albumId) async => [
+    for (final p in await reader.recent(albumId, limit: maxPhotos))
+      if (!isOwnAppCapture(p.fileName)) p,
+  ];
 
   /// 앨범의 모든 사진(파일명 집계용). OCR은 하지 않는다.
   Future<List<GalleryPhoto>> all(String albumId) =>
@@ -58,6 +62,12 @@ class DeviceCaptureService {
     for (var i = 0; i < photos.length; i++) {
       if (isCancelled?.call() ?? false) break;
       final photo = photos[i];
+      if (isOwnAppCapture(photo.fileName)) {
+        // 방어: 목록에서 이미 빠지지만, 어떤 경로로 와도 OCR·저장을 하지 않는다.
+        skipped++;
+        onProgress?.call(i + 1, photos.length);
+        continue;
+      }
       try {
         final saved = await verdicts.find(photo.id);
         final fresh = saved != null && saved.modifiedAt == photo.modifiedAt;

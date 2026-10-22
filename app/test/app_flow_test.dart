@@ -203,7 +203,8 @@ void main() {
       await tester.tap(_tiles.first);
       await tester.pumpAndSettle();
       expect(find.text('무선 이어폰 최저가 비교'), findsOneWidget);
-      await tester.tap(find.text('쇼핑')); // 상세의 카테고리 칩
+      // 카드 위 스티커에도 같은 이름이 있으므로, 누르는 칩은 키로 찾는다.
+      await tester.tap(find.byKey(const ValueKey('category-chip-5')));
       await tester.pumpAndSettle();
       expect(find.text('이거 어디 서랍이야?'), findsOneWidget);
       return repo;
@@ -233,9 +234,9 @@ void main() {
       await tester.tap(find.text('이 서랍으로 옮기기'));
       await tester.pumpAndSettle();
 
-      // 상세의 카테고리 칩이 바뀐다
+      // 상세의 카테고리 칩과 카드 위 카테고리 스티커가 함께 바뀐다
       expect(find.text('이거 어디 서랍이야?'), findsNothing);
-      expect(find.text('장소'), findsOneWidget);
+      expect(find.text('장소'), findsNWidgets(2));
 
       final summary = await repo.summary();
       expect(summary.of(Category.shopping).count, 5);
@@ -345,7 +346,7 @@ void main() {
       expect(find.text('128'), findsOneWidget);
       expect(find.text('/ 300장 꺼냈어요'), findsOneWidget);
       expect(find.text('DIGGING…'), findsOneWidget);
-      expect(find.textContaining('폰 밖으로 안 나가요'), findsOneWidget);
+      expect(find.text(PrivacyNote.text), findsOneWidget);
       for (final c in Category.values) {
         expect(find.text(c.label), findsOneWidget, reason: c.label);
       }

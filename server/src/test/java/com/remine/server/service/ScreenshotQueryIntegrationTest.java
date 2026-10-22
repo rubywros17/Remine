@@ -125,6 +125,11 @@ class ScreenshotQueryIntegrationTest {
 
         assertThat(byCategory.totalElements()).isEqualTo(countOfKind(0));
         assertThat(byCategory.items().get(0).tags()).containsExactlyInAnyOrder("구매", "할인", "원");
+        // 앱의 수정 시트("AI는 X라고 했어요")가 쓰는 값이 목록 응답에도 있다.
+        assertThat(byCategory.items()).allSatisfy(item -> {
+            assertThat(item.autoCategory()).isNotNull();
+            assertThat(item.categorySource()).isNotNull();
+        });
         assertThat(byTag.totalElements()).isEqualTo(countOfKind(5));
         assertThat(byTag.items()).allSatisfy(item -> assertThat(item.category()).isEqualTo(Category.INFO));
         assertThat(both.items()).isEmpty();

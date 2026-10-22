@@ -90,6 +90,11 @@ final _appNamePattern = RegExp(
 String? appNameFromFileName(String fileName) =>
     _appNamePattern.firstMatch(fileName)?.group(1)?.trim();
 
+/// Remine 앱 자신의 스크린샷인지(파일명 앱 이름이 `Remine`, 대소문자·공백 무관).
+/// 우리 앱 화면을 찍은 캡처는 분류할 대상이 아니다 → OCR도 전송도 하지 않고 목록에도 올리지 않는다.
+bool isOwnAppCapture(String fileName) =>
+    normalizeAppName(appNameFromFileName(fileName) ?? '') == 'remine';
+
 /// 디버그 화면용: 파일명 앱 이름별 장수. 앱 이름이 없는 파일은 [name]이 null.
 class AppCount {
   const AppCount(this.name, this.count, this.kind);
