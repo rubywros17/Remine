@@ -8,6 +8,8 @@ import com.remine.server.domain.device.DeviceRepository;
 import com.remine.server.domain.screenshot.Category;
 import com.remine.server.domain.screenshot.Screenshot;
 import com.remine.server.domain.screenshot.ScreenshotRepository;
+import com.remine.server.domain.tag.Tag;
+import com.remine.server.domain.tag.TagRepository;
 import com.remine.server.dto.AnalyzeRequest;
 import com.remine.server.dto.AnalyzeRequest.Item;
 import com.remine.server.dto.AnalyzeResponse;
@@ -75,6 +77,7 @@ class AnalyzeIntegrationTest {
     @Autowired ScreenshotRepository screenshotRepository;
     @Autowired DeviceRepository deviceRepository;
     @Autowired ScriptedClassifier classifier;
+    @Autowired TagRepository tagRepository;
 
     private Long deviceId;
 
@@ -97,6 +100,20 @@ class AnalyzeIntegrationTest {
 
     private Screenshot row(String assetId) {
         return screenshotRepository.findByDeviceAndLocalAssetIds(deviceId, List.of(assetId)).get(0);
+    }
+
+    @Test
+    void 표기만_다른_태그는_요청이_달라도_한_태그로_모인다() {
+        Item first = new Item("knit-1", NOW, "앱", "x");
+        Item second = new Item("knit-2", NOW, "앱", "y");
+        persister.saveAll(deviceId, List.of(new ScreenshotPersister.Outcome(first,
+                new ClassificationResult(Category.SHOPPING, List.of("통합 니트 가디건"), "요약"))));
+        persister.saveAll(deviceId, List.of(new ScreenshotPersister.Outcome(second,
+                new ClassificationResult(Category.SHOPPING, List.of("통합니트가디건"), "요약"))));
+
+        assertThat(tagRepository.findAllByNormalizedNameIn(List.of(Tag.keyOf("통합니트가디건"))))
+                .extracting(Tag::getName).containsExactly("통합 니트 가디건");
+        assertThat(queryService.list(deviceId, null, "통합 니트 가디건", 0, 30).totalElements()).isEqualTo(2);
     }
 
     @Test

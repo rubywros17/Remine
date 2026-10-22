@@ -36,7 +36,7 @@ class ScreenshotQueryIntegrationTest {
     private static final int TOTAL = 300;
     // 인덱스 i % 7 에 해당하는 텍스트 → 카테고리
     private static final String[] TEXTS = {
-            "니트 가디건 구매 할인 39,000원",  // 0 SHOPPING  (구매, 할인, 원)
+            "니트 가디건 구매 할인 39,000원",  // 0 SHOPPING  (할인, 원 — "구매"는 불용어라 저장되지 않는다)
             "영화 드라마 시즌2",               // 1 ENTERTAINMENT
             "맛집 카페 영업시간",              // 2 PLACE
             "예약 일정 체크인",                // 3 SCHEDULE
@@ -78,7 +78,7 @@ class ScreenshotQueryIntegrationTest {
         assertThat(response.categories()).hasSize(Category.values().length);
         CategorySummaryResponse.Item shopping = response.categories().get(Category.SHOPPING.ordinal());
         assertThat(shopping.count()).isEqualTo(countOfKind(0));
-        assertThat(shopping.topTags()).containsExactly("구매", "원", "할인"); // 빈도 동점 → 이름순
+        assertThat(shopping.topTags()).containsExactly("원", "할인"); // 빈도 동점 → 이름순
         // 가장 최근 SHOPPING은 i % 7 == 0 인 가장 큰 i들
         int last = lastIndexOfKind(0);
         assertThat(shopping.recentAssetIds())
@@ -120,11 +120,11 @@ class ScreenshotQueryIntegrationTest {
     @Test
     void 카테고리와_태그_필터가_동작하고_응답에_태그가_포함된다() {
         ScreenshotPageResponse byCategory = queryService.list(deviceA, Category.SHOPPING, null, 0, 100);
-        ScreenshotPageResponse byTag = queryService.list(deviceA, null, "꿀팁", 0, 100);
-        ScreenshotPageResponse both = queryService.list(deviceA, Category.PLACE, "구매", 0, 100);
+        ScreenshotPageResponse byTag = queryService.list(deviceA, null, "방법", 0, 100);
+        ScreenshotPageResponse both = queryService.list(deviceA, Category.PLACE, "할인", 0, 100);
 
         assertThat(byCategory.totalElements()).isEqualTo(countOfKind(0));
-        assertThat(byCategory.items().get(0).tags()).containsExactlyInAnyOrder("구매", "할인", "원");
+        assertThat(byCategory.items().get(0).tags()).containsExactlyInAnyOrder("할인", "원");
         // 앱의 수정 시트("AI는 X라고 했어요")가 쓰는 값이 목록 응답에도 있다.
         assertThat(byCategory.items()).allSatisfy(item -> {
             assertThat(item.autoCategory()).isNotNull();

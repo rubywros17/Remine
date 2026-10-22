@@ -7,5 +7,5 @@ import java.util.List;
 
 public interface TagRepository extends JpaRepository<Tag, Long> {
 
-    List<Tag> findAllByNameIn(Collection<String> names);
+    List<Tag> findAllByNormalizedNameIn(Collection<String> normalizedNames);
 }

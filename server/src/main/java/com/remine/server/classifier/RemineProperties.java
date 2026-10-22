@@ -8,6 +8,7 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
 import org.springframework.validation.annotation.Validated;
 
 import java.time.Duration;
+import java.util.List;
 
 /**
  * remine.* 설정. 기본값은 실험(experiment/SUMMARY.md)에서 정한 값이다.
@@ -20,9 +21,26 @@ public record RemineProperties(
         @DefaultValue("fake") ClassifierType classifier,
         @Valid @DefaultValue Llm llm,
         @Valid @DefaultValue Analyze analyze,
-        @Valid @DefaultValue Image image) {
+        @Valid @DefaultValue Image image,
+        @Valid @DefaultValue Tags tags,
+        @Valid @DefaultValue Interest interest) {
 
     public enum ClassifierType { FAKE, GEMINI }
+
+    public record Tags(
+            /* 저장하지 않는 태그(화면 문구·카테고리명). 비교는 '#'·공백·대소문자를 무시한다. */
+            @DefaultValue List<String> stopwords) {
+    }
+
+    /** 관심사 감지·주간 집계 기준. 앱에는 minCount를 GET /api/config로 알린다. */
+    public record Interest(
+            /* 최근 며칠 안의 캡처(taken_at)를 볼지. */
+            @Min(1) @DefaultValue("14") int windowDays,
+            /* 같은 태그가 이 횟수 이상이면 관심사. */
+            @Min(1) @DefaultValue("3") int minCount,
+            /* 같은 태그로 알림 후보를 다시 만들지 않는 기간(일). */
+            @Min(0) @DefaultValue("28") int alertCooldownDays) {
+    }
 
     public record Llm(
             /* OCR 글자 수(공백 제외)가 이 값 미만이고 이미지가 있으면 이미지도 함께 보낸다. */
