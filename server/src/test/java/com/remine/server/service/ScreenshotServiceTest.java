@@ -58,12 +58,20 @@ class ScreenshotServiceTest {
                 new RemineProperties.Llm(150, new RemineProperties.Gemini("m", 1.0, "http://localhost:1",
                         Duration.ofSeconds(1), Duration.ofSeconds(1), 0)),
                 new RemineProperties.Analyze(maxBatchSize),
-                new RemineProperties.Image(1048576, 1024, 25_000_000L, 12582912, 5242880));
+                new RemineProperties.Image(1048576, 1024, 25_000_000L, 12582912, 5242880),
+                new RemineProperties.Tags(List.of("장바구니", "쇼핑")),
+                new RemineProperties.Interest(14, 3, 28));
+    }
+
+    private static ScreenshotService service(RemineProperties properties, DeviceRepository devices,
+                                             ScreenshotRepository screenshots, Classifier classifier,
+                                             ScreenshotPersister persister) {
+        return new ScreenshotService(devices, screenshots, classifier, persister, properties, new TagCleaner(properties));
     }
 
     @BeforeEach
     void setUp() {
-        service = new ScreenshotService(deviceRepository, screenshotRepository, classifier, persister, properties(20));
+        service = service(properties(20), deviceRepository, screenshotRepository, classifier, persister);
     }
 
     private void givenDevice() {
@@ -90,6 +98,20 @@ class ScreenshotServiceTest {
         verify(persister).saveAll(eq(1L), outcomes.capture());
         assertThat(outcomes.getValue()).hasSize(1);
         assertThat(outcomes.getValue().get(0).failed()).isFalse();
+    }
+
+    @Test
+    void 모델_태그는_정리한_뒤_응답과_저장에_같이_쓴다() {
+        givenDevice();
+        when(screenshotRepository.findAnalyzedLocalAssetIds(any(), any())).thenReturn(Set.of());
+        when(classifier.classify("가디건", null)).thenReturn(new ClassificationResult(Category.SHOPPING,
+                List.of("#니트 가디건", "니트가디건", "장바구니", "쇼핑", " "), "요약"));
+
+        AnalyzeResponse response = service.analyze(1L, request(new Item("a1", NOW, null, "가디건")));
+
+        assertThat(response.analyzed().get(0).tags()).containsExactly("니트 가디건");
+        verify(persister).saveAll(eq(1L), outcomes.capture());
+        assertThat(outcomes.getValue().get(0).result().tags()).containsExactly("니트 가디건");
     }
 
     @Test
@@ -194,8 +216,7 @@ class ScreenshotServiceTest {
 
     @Test
     void 최대_항목_수는_설정값을_따른다() {
-        ScreenshotService small = new ScreenshotService(
-                deviceRepository, screenshotRepository, classifier, persister, properties(2));
+        ScreenshotService small = service(properties(2), deviceRepository, screenshotRepository, classifier, persister);
         List<Item> items = List.of(new Item("a", NOW, null, "x"), new Item("b", NOW, null, "x"),
                 new Item("c", NOW, null, "x"));
 

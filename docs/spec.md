@@ -95,8 +95,14 @@
 
 **F-04. 잊은 관심사 알림**
 - 서버가 태그 빈도를 집계해 관심사를 감지한다.
-  - 규칙 예시: 최근 14일 안에 같은 태그 3회 이상
-- 주 1회 푸시 알림 (FCM)
+  - 규칙: 기기별로 최근 14일(`taken_at`) 안에 같은 태그 3회 이상. 기준값은 설정(`remine.interest.window-days`·`min-count`).
+  - 태그는 저장 전에 정리한다: 화면 문구(장바구니·무료배송 등)와 카테고리명(쇼핑·정보 등)은 불용어로 빼고(목록은 `application.yaml`의 `remine.tags.stopwords` 한 곳), `#`·공백·대소문자를 무시한 키로 "니트 가디건"과 "니트가디건"을 같은 태그로 센다. 표시 이름은 처음 들어온 표기.
+  - 대표 카테고리는 그 캡처들의 현재 `category`(사용자 수정 반영) 최빈값, 동점이면 가장 최근 캡처의 값.
+  - 앱은 휴지통에 넣은 캡처를 횟수에서 빼고, 기준 아래로 내려가면 그 관심사를 숨긴다(응답의 `recent`에 있는 캡처만 알 수 있는 한계).
+- 주간 집계: 주 1회(월 10시, Asia/Seoul) 기기마다 관심사 1순위를 `interest_alert`에 `PENDING`으로 저장한다.
+  - 멱등: 기기당 한 주 1건(`device_id + week_start` unique). 같은 주에 다시 돌아도 결과가 같다.
+  - 쿨다운: 최근 28일 안에 후보였던 태그는 다시 고르지 않고 다음 순위를 본다. 횟수가 늘어도 예외 없음(주 1건이라 같은 태그 반복보다 다른 관심사에 자리를 준다). 필요해지면 저장해 둔 `capture_count`와 비교해 "2배 이상이면 무시"를 추가할 수 있다.
+- 주 1회 푸시 알림 (FCM) — `PENDING` 후보를 보내는 것은 다음 단계
   - 예: "요즘 '니트 가디건'을 4번 캡처했어요 👀"
   - 예: "한 달 전에 저장한 드라마, 아직 안 봤죠?"
 
@@ -197,14 +203,15 @@
 |---|---|
 | `device` | id, fcm_token, created_at |
 | `screenshot` | id, device_id, local_asset_id, taken_at, source_app, ocr_text, auto_category(모델 최초 값, 불변), category(현재 값), category_source(AUTO/USER), summary, analyzed_at |
-| `tag` | id, name |
+| `tag` | id, name(표시용, 처음 표기), normalized_name(unique, `#`·공백·대소문자 무시한 키) |
 | `screenshot_tag` | id, screenshot_id, tag_id (unique: screenshot_id + tag_id) |
-| `interest_alert` | id, device_id, tag_id, alert_type, message, sent_at |
+| `interest_alert` | id, device_id, tag_id, capture_count, week_start(그 주 월요일), status(PENDING/SENT), created_at, sent_at (unique: device_id + week_start). 문구는 발송 때 만든다 |
 
 ### 운영 DB 전환 메모 (카테고리 수정 컬럼)
 - 지금은 H2 인메모리 + 자동 스키마 생성이라 마이그레이션이 없다(기동마다 새 스키마).
 - 운영 DB로 옮길 때: `auto_category`, `category_source` 컬럼 추가 → 분석된 기존 행은 `auto_category = category`, `category_source = 'AUTO'`로 백필 → enum 컬럼에 CHECK 제약. 백필된 `auto_category`는 전환 이전 사용자 수정이 없었다는 가정의 값이다.
 - 수정 이력은 저장하지 않는다(현재 값과 최초 AI 값만). 여러 번 고친 중간 값은 남지 않는다.
+- 태그 정규화: `tag.normalized_name` 추가 → 기존 행 백필(`#`·공백 제거, 소문자) → 키가 겹치는 태그는 하나로 합치고 `screenshot_tag`를 옮긴 뒤(같은 캡처 중복은 삭제) unique 제약. `name`의 unique는 내린다. 불용어에 해당하는 기존 태그 연결은 지운다.
 
 ### 실사용 정확도 측정 (F-05)
 - 분석된 캡처 = `analyzed_at`이 있는 행. `corrected` = `USER` 이면서 `category ≠ auto_category`, `confirmed` = `USER` 이면서 `category = auto_category`, `unreviewed` = `AUTO`.
@@ -253,7 +260,7 @@
 | 분석되지 않은 캡처(`analyzed_at` null) | 409 |
 | GET | `/api/screenshots?category=&tag=&page=&size=` | 분류된 스크린샷 목록. taken_at 최신순, page 기본 0 / size 기본 30·최대 100, 각 항목에 태그 포함. 항목: `{id, localAssetId, takenAt, sourceApp, category, autoCategory, categorySource, summary, tags}` |
 | GET | `/api/categories/summary` | 홈 화면용. 7개 카테고리 전부 반환(0장은 count 0), 카테고리별 개수·대표 태그 상위 3개·최신 localAssetId 4개 |
-| GET | `/api/interests` | 감지된 관심사 목록 |
+| GET | `/api/interests` | 감지된 관심사 목록(횟수 많은 순 → 마지막 캡처 최근 순 → 이름순). `{windowDays:14, minCount:3, items:[{tag, category, captureCount, dormantDays, recent:[{id, localAssetId}]}]}`. `recent`는 최근 3장(최신순, 앱이 기기 사진으로 썸네일을 그림), `dormantDays`는 마지막 캡처 이후 일수. OCR 원문·요약은 없다. 없으면 `items: []` |
 
 - 기기 등록(`POST /api/devices`)을 제외한 모든 API는 `X-Device-Id` 헤더로 기기를 식별한다. 미등록 기기는 404, 헤더 누락은 400. (로그인 없는 MVP의 임시 방식)
 
@@ -302,8 +309,9 @@
 - [x] 사용자 카테고리 수정(F-05): `auto_category` + `category_source(AUTO/USER)`, 같은 값 수정 = USER
 - [ ] 실사용 정확도 조회 API(`GET /api/categories/accuracy`) — 5주차 Key Numbers 측정 시 구현
 - [ ] 3주차 서버 연동 시 `GET /api/screenshots` 항목에 `autoCategory`, `categorySource` 추가 (수정 시트의 "AI는 X라고 했어요"에 필요. 서버 변경은 연동 PR에서)
-- [ ] `GET /api/interests` 응답 형식 (앱의 임시 모델 `Interest`: tag, category, captureCount, spanDays, dormantDays, screenshotIds)
-- [ ] 관심사 감지 규칙의 기준값 (기간, 횟수)
+- [x] `GET /api/interests` 응답 형식 — 9장 API 표
+- [x] 관심사 감지 규칙의 기준값 — 14일·3회, 쿨다운 28일 (설정 `remine.interest.*`)
+- [ ] 관심사 알림 발송(FCM): `PENDING` 후보 → 문구 생성·전송·`SENT` — 다음 브랜치
 - [ ] 하이브리드 기준값 재검증 (ML Kit OCR, 더 큰 표본)
 - [ ] 분류 힌트 입력(앱 이름, 인스타 저장 컬렉션 이름 등 화면 상단 문구) — **ML Kit(텍스트 위치 정보) 도입 후 재검토.**
   Tesseract 텍스트로는 Instagram 37장 중 컬렉션 이름처럼 보이는 첫 줄이 3~4장(약 10%)뿐이라 효과를 검증할 수 없었고,

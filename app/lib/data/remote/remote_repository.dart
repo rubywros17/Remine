@@ -164,7 +164,30 @@ class RemoteRepository implements ScreenshotRepository {
   @override
   Future<void> restore(int id) async => _trashed.remove(id);
 
-  /// 서버에 관심사 API가 아직 없다(spec 9장 "초안"). 생기면 여기서 부른다.
+  /// 서버 기준값(응답의 `minCount`)이 없을 때(옛 응답·캐시) 쓰는 값. 서버 기본값과 같다.
+  static const fallbackMinCount = 3;
+
+  /// GET /api/interests. 휴지통에 넣은 캡처는 빼고 횟수를 줄이며, 그래서 기준 횟수 아래로 내려간 관심사는 숨긴다.
+  ///
+  /// 한계: 서버 휴지통 API가 없어서 응답의 `recent`(최근 3장)에 있는 캡처만 휴지통 여부를 알 수 있다.
+  /// 더 오래된 캡처를 휴지통에 넣으면 서버 횟수에 그대로 남는다(서버 삭제가 생기면 사라지는 한계).
   @override
-  Future<List<Interest>> interests() async => const [];
+  Future<List<Interest>> interests() async {
+    final json = await _fetch('interests', _api.interestsJson);
+    if (json == null) return const [];
+    try {
+      final minCount = (json['minCount'] as num?)?.toInt() ?? fallbackMinCount;
+      final spanDays = (json['windowDays'] as num).toInt();
+      final trashed = _trashed.keys.toSet();
+      return [
+        for (final item in json['items'] as List)
+          Interest.fromJson(
+            item as Map<String, dynamic>,
+            spanDays: spanDays,
+          ).without(trashed),
+      ].where((i) => i.captureCount >= minCount).toList();
+    } catch (_) {
+      return const []; // 깨진 응답·캐시. 내용은 남기지 않는다.
+    }
+  }
 }

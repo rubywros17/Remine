@@ -176,7 +176,7 @@ class CategoryEditIntegrationTest {
 
     @Test
     void 수정은_목록과_요약_집계에_즉시_반영되고_태그는_유지된다() throws Exception {
-        Screenshot s = analyze(deviceId, "a1", "니트 가디건 구매 39,000원"); // SHOPPING, 태그: 구매, 원
+        Screenshot s = analyze(deviceId, "a1", "니트 가디건 구매 39,000원"); // SHOPPING, 태그: 원 ("구매"는 불용어)
         List<String> tagsBefore = queryService.list(deviceId, null, null, 0, 30).items().get(0).tags();
 
         patchCategory(deviceId, s.getId(), "{\"category\":\"INFO\"}");

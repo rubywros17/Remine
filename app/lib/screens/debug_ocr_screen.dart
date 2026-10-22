@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import '../core/tokens.dart';
 import '../data/device/device_capture_service.dart';
@@ -43,10 +44,35 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
   DeviceCaptureService get _capture => widget.services.capture;
   DateTime _now() => (widget.now ?? DateTime.now)();
 
+  /// 서버 기기 id 줄. 실기기에서 `curl -H "X-Device-Id: N"`으로 서버 응답을 직접 볼 때 쓴다.
+  String _deviceIdLine = '';
+  int? _deviceId;
+
   @override
   void initState() {
     super.initState();
     _loadAlbums();
+    _loadDeviceId();
+  }
+
+  Future<void> _loadDeviceId() async {
+    final remote = widget.services.remote;
+    final id = await remote?.state.deviceId();
+    if (!mounted) return;
+    setState(() {
+      _deviceId = id;
+      _deviceIdLine = remote == null
+          ? '서버 연동 꺼짐 (가짜/기기 데이터만)'
+          : '서버 기기 id: ${id ?? '없음(아직 등록 전)'}';
+    });
+  }
+
+  Future<void> _copyDeviceId() async {
+    final id = _deviceId;
+    if (id == null) return;
+    await Clipboard.setData(ClipboardData(text: '$id'));
+    if (!mounted) return;
+    setState(() => _status = '기기 id $id 복사했어.');
   }
 
   Future<void> _loadAlbums() async {
@@ -187,6 +213,24 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
                 ],
               ),
             ),
+            if (_deviceIdLine.isNotEmpty)
+              GestureDetector(
+                onLongPress: _copyDeviceId, // 길게 누르면 복사
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.screenPadding,
+                    AppSpacing.s4,
+                    AppSpacing.screenPadding,
+                    0,
+                  ),
+                  child: Text(
+                    _deviceIdLine,
+                    style: AppText.caption.copyWith(color: AppColors.inkSub),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(

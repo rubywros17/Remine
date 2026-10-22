@@ -75,6 +75,7 @@ Future<void> _pump(
   double scale, {
   String start = '',
   DeviceServices? device,
+  FakeScreenshotRepository? repository,
 }) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
@@ -83,7 +84,7 @@ Future<void> _pump(
   addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
   await tester.pumpWidget(
     RemineApp(
-      repository: FakeScreenshotRepository(now: () => _now),
+      repository: repository ?? FakeScreenshotRepository(now: () => _now),
       now: () => _now,
       startScreen: start,
       device: device,
@@ -138,6 +139,31 @@ void defineLayoutMatrix({
     testWidgets('홈 · $label', (tester) async {
       final errors = await _errorsDuring(() => _pump(tester, size, scale));
       _expectClean('홈 $label', errors);
+    });
+
+    testWidgets('관심사 탭 · $label', (tester) async {
+      final errors = await _errorsDuring(() async {
+        await _pump(tester, size, scale);
+        await tester.tap(find.byIcon(LucideIcons.star));
+        await tester.pumpAndSettle();
+        expect(find.text('#니트가디건', skipOffstage: true), findsWidgets);
+      });
+      _expectClean('관심사 탭 $label', errors);
+    });
+
+    testWidgets('관심사 탭 빈 상태 · $label', (tester) async {
+      final errors = await _errorsDuring(() async {
+        await _pump(
+          tester,
+          size,
+          scale,
+          repository: FakeScreenshotRepository(now: () => _now, seed: const []),
+        );
+        await tester.tap(find.byIcon(LucideIcons.star));
+        await tester.pumpAndSettle();
+        expect(find.text('아직 반복해서 캡처한 게 없어요'), findsOneWidget);
+      });
+      _expectClean('관심사 탭 빈 상태 $label', errors);
     });
 
     testWidgets('카테고리 · $label', (tester) async {

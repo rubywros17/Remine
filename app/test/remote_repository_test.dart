@@ -32,15 +32,34 @@ Map<String, dynamic> _summary(int shopping) => {
   ],
 };
 
+Map<String, dynamic> _interest(String tag, int count, List<int> ids) => {
+  'tag': tag,
+  'category': 'SHOPPING',
+  'captureCount': count,
+  'dormantDays': 2,
+  'recent': [
+    for (final id in ids) {'id': id, 'localAssetId': 'a$id'},
+  ],
+};
+
 void main() {
   late RecordingClient client;
   late InMemoryRemoteStateStore state;
   late SyncStatus status;
   late RemoteRepository repo;
   var online = true;
+  late Map<String, dynamic> interestsBody;
 
   setUp(() async {
     online = true;
+    interestsBody = {
+      'windowDays': 14,
+      'minCount': 3,
+      'items': [
+        _interest('니트 가디건', 4, [5, 6, 7]),
+        _interest('드라마', 3, [8, 9, 10]),
+      ],
+    };
     late final RecordingClient c;
     c = RecordingClient(
       responder: (r) {
@@ -56,6 +75,9 @@ void main() {
         }
         if (r.path == '/api/categories/summary') {
           return jsonResponse(_summary(2));
+        }
+        if (r.path == '/api/interests') {
+          return jsonResponse(interestsBody);
         }
         if (r.path.endsWith('/category')) {
           return jsonResponse({
@@ -144,6 +166,62 @@ void main() {
       repo.updateCategory(5, Category.info),
       throwsA(isA<ApiException>()),
     );
+  });
+
+  group('관심사', () {
+    test('GET /api/interests를 받아 태그·횟수·기간·최근 캡처를 채운다', () async {
+      final interests = await repo.interests();
+
+      expect(client.sent.last.path, '/api/interests');
+      expect(interests.map((i) => i.tag), ['니트 가디건', '드라마']);
+      final first = interests.first;
+      expect(first.captureCount, 4);
+      expect(first.spanDays, 14);
+      expect(first.dormantDays, 2);
+      expect(first.category, Category.shopping);
+      expect(first.recent.map((c) => c.localAssetId), ['a5', 'a6', 'a7']);
+    });
+
+    test('휴지통 캡처는 횟수에서 빼고, 기준(minCount) 아래면 숨기고, 되돌리면 다시 보인다', () async {
+      await repo.list(); // 5, 6을 본 적이 있어야 휴지통에 넣을 수 있다
+      await repo.trash(5);
+      var knit = (await repo.interests()).first;
+      expect(knit.tag, '니트 가디건');
+      expect(knit.captureCount, 3, reason: '4 - 1 = 3, 기준과 같으면 남는다');
+      expect(knit.recent.map((c) => c.id), [6, 7]);
+
+      await repo.trash(6);
+      expect((await repo.interests()).map((i) => i.tag), ['드라마']);
+
+      await repo.restore(6);
+      knit = (await repo.interests()).first;
+      expect(knit.tag, '니트 가디건');
+      expect(knit.captureCount, 3);
+    });
+
+    test('기준은 서버 응답의 minCount를 따르고, 없으면 3', () async {
+      await repo.list();
+      await repo.trash(5);
+
+      interestsBody['minCount'] = 4;
+      expect(await repo.interests(), isEmpty, reason: '3장 남은 둘 다 기준 4 미만');
+
+      interestsBody.remove('minCount');
+      expect((await repo.interests()).map((i) => i.tag), ['니트 가디건', '드라마']);
+      await repo.trash(6);
+      expect((await repo.interests()).map((i) => i.tag), ['드라마']);
+    });
+
+    test('서버가 꺼지면 마지막으로 받은 관심사, 깨진 응답이면 빈 목록', () async {
+      await repo.interests();
+      online = false;
+      expect((await repo.interests()).map((i) => i.tag), ['니트 가디건', '드라마']);
+      expect(status.issue, SyncIssue.offline);
+
+      online = true;
+      interestsBody = {'items': 'broken'};
+      expect(await repo.interests(), isEmpty);
+    });
   });
 
   test('휴지통에 넣은 서버 캡처는 목록과 요약 개수에서 빠진다', () async {

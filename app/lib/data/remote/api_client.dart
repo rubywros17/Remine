@@ -269,6 +269,9 @@ class RemineApi {
   Future<Map<String, dynamic>> summaryJson(int deviceId) =>
       _getJson('/api/categories/summary', deviceId);
 
+  Future<Map<String, dynamic>> interestsJson(int deviceId) =>
+      _getJson('/api/interests', deviceId);
+
   Future<CategoryUpdate> updateCategory(
     int deviceId,
     int id,

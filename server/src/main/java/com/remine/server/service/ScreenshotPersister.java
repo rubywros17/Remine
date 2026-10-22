@@ -18,7 +18,6 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -79,27 +78,30 @@ public class ScreenshotPersister {
         linkTags(tagNamesByScreenshot);
     }
 
-    // 요청 전체의 태그 이름을 모아 1번 조회하고, 없는 태그만 한 번에 생성한다.
+    // 요청 전체의 태그 키를 모아 1번 조회하고, 없는 태그만 한 번에 생성한다.
+    // 이름은 TagCleaner가 정리한 것이라 한 캡처 안에서 키가 겹치지 않는다(screenshot_tag unique).
+    // 키가 같은 기존 태그가 있으면 그 태그(처음 표기)에 붙는다: "니트가디건"으로 와도 "니트 가디건"에 연결.
     private void linkTags(Map<Screenshot, List<String>> tagNamesByScreenshot) {
-        Set<String> names = tagNamesByScreenshot.values().stream()
+        Map<String, String> nameByKey = new LinkedHashMap<>();
+        tagNamesByScreenshot.values().stream()
                 .flatMap(List::stream)
-                .collect(Collectors.toSet());
-        if (names.isEmpty()) {
+                .forEach(name -> nameByKey.putIfAbsent(Tag.keyOf(name), name));
+        if (nameByKey.isEmpty()) {
             return;
         }
-        Map<String, Tag> tags = tagRepository.findAllByNameIn(names).stream()
-                .collect(Collectors.toMap(Tag::getName, Function.identity()));
+        Map<String, Tag> tags = tagRepository.findAllByNormalizedNameIn(nameByKey.keySet()).stream()
+                .collect(Collectors.toMap(Tag::getNormalizedName, Function.identity()));
 
-        List<Tag> missing = names.stream()
-                .filter(name -> !tags.containsKey(name))
-                .map(Tag::new)
+        List<Tag> missing = nameByKey.entrySet().stream()
+                .filter(e -> !tags.containsKey(e.getKey()))
+                .map(e -> new Tag(e.getValue()))
                 .toList();
-        // TODO: 동시 요청이 같은 새 태그를 만들면 tag.name unique 충돌 가능. 충돌 시 재조회·재시도 처리.
-        tagRepository.saveAll(missing).forEach(tag -> tags.put(tag.getName(), tag));
+        // TODO: 동시 요청이 같은 새 태그를 만들면 tag.normalized_name unique 충돌 가능. 충돌 시 재조회·재시도 처리.
+        tagRepository.saveAll(missing).forEach(tag -> tags.put(tag.getNormalizedName(), tag));
 
         List<ScreenshotTag> links = new ArrayList<>();
         tagNamesByScreenshot.forEach((screenshot, tagNames) ->
-                tagNames.forEach(name -> links.add(new ScreenshotTag(screenshot, tags.get(name)))));
+                tagNames.forEach(name -> links.add(new ScreenshotTag(screenshot, tags.get(Tag.keyOf(name))))));
         screenshotTagRepository.saveAll(links);
     }
 }

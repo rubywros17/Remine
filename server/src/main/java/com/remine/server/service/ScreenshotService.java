@@ -45,6 +45,7 @@ public class ScreenshotService {
     private final Classifier classifier;
     private final ScreenshotPersister persister;
     private final RemineProperties properties;
+    private final TagCleaner tagCleaner;
 
     /** 이미지 없는 요청(JSON). */
     public AnalyzeResponse analyze(Long deviceId, AnalyzeRequest request) {
@@ -150,12 +151,14 @@ public class ScreenshotService {
 
     // 글자도 이미지도 없는 스크린샷은 LLM 호출 없이 '기타'로 처리한다. (spec 11장)
     // 글자는 없지만 쓸 수 있는 이미지가 있으면 분류기로 보낸다.
+    // 태그는 여기서 정리해 응답과 저장이 같은 태그를 쓴다.
     private ClassificationResult classify(String ocrText, byte[] image) {
         boolean blank = ocrText == null || ocrText.isBlank();
         if (blank && image == null) {
             return new ClassificationResult(Category.ETC, List.of(), "");
         }
-        return classifier.classify(blank ? "" : ocrText, image);
+        ClassificationResult raw = classifier.classify(blank ? "" : ocrText, image);
+        return new ClassificationResult(raw.category(), tagCleaner.clean(raw.tags()), raw.summary());
     }
 
     /** 이미지 때문에 이 캡처만 실패 처리한다. 메시지·원인 없이 사유 코드만 담는다. */
