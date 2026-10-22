@@ -2,15 +2,18 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:remine/app.dart';
 import 'package:remine/core/tokens.dart';
+import 'package:remine/data/device/device_services.dart';
 import 'package:remine/data/device/gallery_reader.dart';
 import 'package:remine/screens/debug_ocr_screen.dart';
 import 'package:remine/widgets/wordmark.dart';
 
 import 'support/fake_device.dart';
+import 'support/fake_remote.dart';
 
 Future<void> _pumpApp(WidgetTester tester, FakeGalleryReader reader) async {
   tester.view.physicalSize = const Size(390, 844);
@@ -301,7 +304,9 @@ void main() {
 
         final after = tester.getRect(photo);
         expect(after.width, closeTo(before.width * 0.86, 0.5));
-        expect(after.center, before.center);
+        // 부동소수 반올림 때문에 정확히 같지 않을 수 있다(위치에 따라 끝자리가 달라짐).
+        expect(after.center.dx, closeTo(before.center.dx, 0.01));
+        expect(after.center.dy, closeTo(before.center.dy, 0.01));
         expect(AppColors.selectionDim.a, closeTo(0.15, 0.01));
         expect(dim(), findsOneWidget);
         // 바깥쪽 3px 딥 셀라돈 테두리: 줄어든 사진을 감싸고, 반경은 줄어든 반경 + 3
@@ -374,6 +379,56 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(out.listSync(), isEmpty);
+    });
+  });
+  group('디버그 측정 화면의 서버 기기 id', () {
+    Future<void> pump(WidgetTester tester, DeviceServices services) async {
+      await tester.pumpWidget(
+        MaterialApp(home: DebugOcrScreen(services: services)),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('등록된 id를 보여 주고 길게 누르면 복사한다', (tester) async {
+      final rig = await tester.runAsync(() => SyncRig.create(photos: const []));
+      await rig!.state.setDeviceId(42);
+      String? copied;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method == 'Clipboard.setData') {
+            copied = (call.arguments as Map)['text'] as String?;
+          }
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
+
+      await pump(tester, fakeServices(FakeGalleryReader(), remote: rig.remote));
+      expect(find.text('서버 기기 id: 42'), findsOneWidget);
+
+      await tester.longPress(find.text('서버 기기 id: 42'));
+      await tester.pumpAndSettle();
+      expect(copied, '42');
+    });
+
+    testWidgets('등록 전이면 없다고 알려 준다', (tester) async {
+      final rig = await tester.runAsync(() => SyncRig.create(photos: const []));
+      await pump(
+        tester,
+        fakeServices(FakeGalleryReader(), remote: rig!.remote),
+      );
+      expect(find.text('서버 기기 id: 없음(아직 등록 전)'), findsOneWidget);
+    });
+
+    testWidgets('서버 연동이 없으면 그렇다고 알려 준다', (tester) async {
+      await pump(tester, fakeServices(FakeGalleryReader()));
+      expect(find.textContaining('서버 연동 꺼짐'), findsOneWidget);
     });
   });
 }
