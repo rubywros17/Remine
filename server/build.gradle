@@ -43,6 +43,8 @@ tasks.named('test') {
 	systemProperty 'remine.env-file', layout.buildDirectory.file('no-remine.env').get().asFile.absolutePath
 	environment 'GEMINI_API_KEY', ''
 	environment 'REMINE_CLASSIFIER', 'fake'
+	// - 주간 관심사 집계가 테스트 도중 실제 시각에 돌지 않게 끈다("-" = cron 비활성). 테스트는 메서드를 직접 부른다.
+	systemProperty 'remine.interest.alert-cron', '-'
 }
 
 // Windows 콘솔에서 한글 로그가 깨지지 않도록 bootRun JVM의 인코딩을 UTF-8로 고정한다.
