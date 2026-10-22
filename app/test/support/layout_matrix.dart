@@ -215,7 +215,12 @@ void defineLayoutMatrix({
         await _tap(tester, find.text('#니트가디건'));
         await _tap(tester, find.byType(Hero));
         // 아주 낮은 화면에서는 위쪽 끝으로 스크롤하면 상단 바에 가려지므로 가운데로 맞춘 뒤 누른다.
-        final chip = find.text('쇼핑');
+        // 카드 위 스티커에도 같은 이름이 있으므로 누르는 칩은 키로 찾는다.
+        final chip = find.byWidgetPredicate(
+          (w) =>
+              w.key is ValueKey<String> &&
+              (w.key! as ValueKey<String>).value.startsWith('category-chip-'),
+        );
         Scrollable.ensureVisible(
           tester.element(chip.first),
           alignment: 0.5,

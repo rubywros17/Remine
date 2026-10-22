@@ -64,16 +64,16 @@ void main() {
       );
       final h = detailCardHeight(w, aspect: 0.45);
       expect(h, closeTo(area.height, 0.01)); // 높이를 꽉 채우고
-      expect(w, lessThan(area.width * 0.86)); // 폭은 86%보다 작다
+      expect(w, lessThan(area.width * 0.78)); // 폭은 78%보다 작다
     });
 
-    test('가로로 넓은 사진(1.5)은 폭 기준(영역 폭의 86%)이다', () {
+    test('가로로 넓은 사진(1.5)은 폭 기준(영역 폭의 78%)이다', () {
       final w = detailCardWidth(
         areaWidth: area.width,
         areaHeight: area.height,
         aspect: 1.5,
       );
-      expect(w, closeTo(area.width * 0.86, 0.01));
+      expect(w, closeTo(area.width * 0.78, 0.01));
       expect(detailCardHeight(w, aspect: 1.5), lessThan(area.height));
     });
 
@@ -88,7 +88,7 @@ void main() {
       for (final a in [0.45, 0.62, 1.0, 1.5]) {
         final w = detailCardWidth(areaWidth: 390, areaHeight: 500, aspect: a);
         final h = detailCardHeight(w, aspect: a);
-        final border = w * 0.07;
+        const border = 6.0; // 흰 테두리는 고정 6px
         expect((w - 2 * border) / (h - 2 * border), closeTo(a, 0.001));
       }
     });
@@ -101,21 +101,25 @@ void main() {
   });
 
   group('상세 이미지 카드 크기 (390×844)', () {
-    testWidgets('가짜 데이터 모드: 화면 폭의 86%를 넘지 않고, 상단 바와 정보 카드 사이를 채운다', (
+    testWidgets('가짜 데이터 모드: 화면 폭의 78%를 넘지 않고, 상단 바와 정보 카드 사이를 채운다', (
       tester,
     ) async {
       await _openDetail(tester);
 
       final card = tester.getRect(_card);
       final info = tester.getRect(find.byKey(const ValueKey('info-card-5')));
-      expect(card.width, lessThanOrEqualTo(390 * 0.86 + 0.5));
+      expect(card.width, lessThanOrEqualTo(390 * 0.78 + 0.5));
       expect(card.width, greaterThan(390 * 0.7), reason: '예전처럼 절반 크기면 안 된다');
-      expect(card.top, greaterThanOrEqualTo(56), reason: '상단 바 아래');
+      expect(
+        card.top - 56,
+        greaterThanOrEqualTo(16 - 0.5),
+        reason: '상단 바 아래 최소 16px',
+      );
       expect(card.bottom, lessThanOrEqualTo(info.top + 0.5), reason: '정보 카드 위');
-      // 남는 공간을 최대한 채운다: 폭이 86% 상한에 닿았거나, 아니면 높이를 거의 꽉 채운다.
+      // 남는 공간을 최대한 채운다: 폭이 78% 상한에 닿았거나, 아니면 높이를 거의 꽉 채운다.
       final slack = info.top - card.bottom + (card.top - 56);
       expect(
-        card.width >= 390 * 0.86 - 1 || slack < 40,
+        card.width >= 390 * 0.78 - 1 || slack < 40,
         isTrue,
         reason: '폭 ${card.width}, 남는 세로 $slack',
       );
@@ -133,21 +137,21 @@ void main() {
       expect(card.bottom, lessThanOrEqualTo(info.top + 0.5));
 
       // 안쪽(테두리 제외) 사진 영역의 비율이 사진과 같다 → cover여도 잘리지 않는다.
-      final border = card.width * 0.07;
+      const border = 6.0;
       final inner = (card.width - 2 * border) / (card.height - 2 * border);
       expect(inner, closeTo(0.45, 0.01));
-      // 세로로 긴 사진이라 높이 기준: 폭이 86%보다 작다.
-      expect(card.width, lessThan(390 * 0.86 - 1));
+      // 세로로 긴 사진이라 높이 기준: 폭이 78%보다 작다.
+      expect(card.width, lessThan(390 * 0.78 - 1));
       // 상세 썸네일을 같은 비율로 요청한다(정사각 크롭 방지): 720 × 720/0.45.
       expect(reader.thumbRequests, contains((720, 1600)));
     });
 
-    testWidgets('실제 사진 비율 1.5(가로 사진): 폭 86% 기준', (tester) async {
+    testWidgets('실제 사진 비율 1.5(가로 사진): 폭 78% 기준', (tester) async {
       await _openDetail(tester, reader: _RatioReader(1.5));
 
       final card = tester.getRect(_card);
-      expect(card.width, closeTo(390 * 0.86, 1));
-      final border = card.width * 0.07;
+      expect(card.width, closeTo(390 * 0.78, 1));
+      const border = 6.0;
       expect(
         (card.width - 2 * border) / (card.height - 2 * border),
         closeTo(1.5, 0.01),
@@ -158,7 +162,7 @@ void main() {
       await _openDetail(tester, reader: _RatioReader(null));
 
       final card = tester.getRect(_card);
-      final border = card.width * 0.07;
+      const border = 6.0;
       expect(
         (card.width - 2 * border) / (card.height - 2 * border),
         closeTo(detailCardDefaultAspect, 0.01),

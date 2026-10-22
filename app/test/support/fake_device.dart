@@ -76,7 +76,16 @@ class FakeGalleryReader implements GalleryReader {
     String photoId, {
     int size = 220,
     int? height,
-  }) async => photoId == 'missing' ? null : _png1x1;
+  }) async {
+    thumbnailRequests.add((size, height));
+    return photoId == 'missing' || missingThumbnails ? null : _png1x1;
+  }
+
+  /// 요청된 썸네일 (size, height) 기록.
+  final List<(int, int?)> thumbnailRequests = [];
+
+  /// true면 모든 썸네일이 없는 것으로 돌려준다(기기에서 사진이 지워진 상황).
+  bool missingThumbnails = false;
 
   /// 사진 id별 비율(테스트가 채운다). 없으면 알 수 없음(null).
   final Map<String, double> aspects = {};
