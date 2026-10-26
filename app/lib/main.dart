@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
@@ -95,7 +95,9 @@ RemoteServices _remote(
   LocalDb db,
   PushClient? push,
 ) {
-  final api = RemineApi(_apiBase, http.Client());
+  // 디버그 빌드만 요청별 "메서드 경로 → 상태 코드"를 logcat에 남긴다(본문·쿼리·토큰 없음).
+  final log = kDebugMode ? debugPrint : null;
+  final api = RemineApi(_apiBase, http.Client(), log: log);
   final state = SqfliteRemoteStateStore(db);
   final status = SyncStatus();
   return RemoteServices(
@@ -110,6 +112,7 @@ RemoteServices _remote(
       status: status,
       photoLimit: kDebugMode ? _syncLimit : 0,
       push: push,
+      log: log,
     ),
     status: status,
     state: state,

@@ -34,6 +34,7 @@ class SyncService {
     this.batchSize = defaultBatchSize,
     this.onBatchDone,
     this.push,
+    this.log,
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now;
 
@@ -58,6 +59,9 @@ class SyncService {
 
   /// FCM 토큰을 주는 곳. 없으면(Firebase 초기화 실패 등) 토큰 없이 등록한다.
   final PushClient? push;
+
+  /// 디버그 빌드에서만(main.dart). 동기화가 멈춘 이유를 예외 **종류**로만 남긴다(메시지에 OCR이 섞일 수 있어 안 찍음).
+  final void Function(String line)? log;
   final DateTime Function() _now;
 
   Future<void>? _inFlight;
@@ -104,14 +108,16 @@ class SyncService {
         failedCount: failed,
       );
     } on ApiException catch (e) {
+      log?.call('[sync] 중단: $e'); // ApiException(실패 종류, 상태 코드)뿐
       status.finish(
         issue: e.failure == ApiFailure.offline
             ? SyncIssue.offline
             : SyncIssue.server,
         failedCount: await _safeFailedCount(),
       );
-    } catch (_) {
-      // 어떤 예외든 앱이 죽지 않게 한다. 내용(OCR 원문이 섞일 수 있음)은 남기지 않는다.
+    } catch (e) {
+      // 어떤 예외든 앱이 죽지 않게 한다. 내용(OCR 원문이 섞일 수 있음)은 남기지 않고 종류만.
+      log?.call('[sync] 중단: ${e.runtimeType}');
       status.finish(
         issue: SyncIssue.server,
         failedCount: await _safeFailedCount(),

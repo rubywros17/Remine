@@ -247,6 +247,7 @@ class SyncRig {
     int? batchSize,
     List<GalleryAlbum>? albums,
     PushClient? push,
+    void Function(String line)? log,
   }) async {
     final reader = FakeGalleryReader(photos: photos, albums: albums);
     final ocr = MapOcrEngine(texts);
@@ -278,6 +279,7 @@ class SyncRig {
       onBatchDone: () => batches.add(status.done),
       now: () => DateTime(2026, 10, 21, 12),
       push: push,
+      log: log,
     );
     return SyncRig._(
       c,

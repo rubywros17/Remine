@@ -118,17 +118,22 @@ class AnalyzeResult {
 }
 
 /// 서버 REST 호출. [http.Client]를 주입받아 테스트에서 가짜로 바꾼다.
-/// 로그를 남기지 않고, 예외에 요청·응답 내용을 싣지 않는다.
+/// 예외에 요청·응답 내용을 싣지 않는다. 로그는 [log]가 있을 때(디버그 빌드)만, 요청마다 한 줄
+/// `메서드 경로 → 결과 시간`뿐이다. 쿼리(태그 이름이 들어감)·헤더(기기 id)·본문(OCR·토큰)은 찍지 않는다.
 class RemineApi {
   RemineApi(
     this.baseUrl,
     this._client, {
     this.timeout = const Duration(minutes: 2), // 장당 LLM 호출이 있어 20장 배치는 오래 걸린다
+    this.log,
   });
 
   final String baseUrl;
   final http.Client _client;
   final Duration timeout;
+
+  /// 디버그 빌드에서만 넘긴다(main.dart). 릴리스는 null이라 아무것도 남지 않는다.
+  final void Function(String line)? log;
 
   Uri _uri(String path, [Map<String, String>? query]) {
     final base = Uri.parse(baseUrl);
@@ -144,31 +149,51 @@ class RemineApi {
 
   /// 요청을 보내고 2xx 본문을 돌려준다. 실패는 [ApiException]으로만 나온다.
   Future<Map<String, dynamic>> _send(http.BaseRequest request) async {
+    final watch = Stopwatch()..start();
+    void note(Object result) => log?.call(
+      '[api] ${request.method} ${request.url.path} → $result '
+      '${watch.elapsedMilliseconds}ms',
+    );
     final http.Response response;
     try {
       final streamed = await _client.send(request).timeout(timeout);
       response = await http.Response.fromStream(streamed).timeout(timeout);
     } on TimeoutException {
+      note('timeout');
       throw const ApiException(ApiFailure.offline);
     } on SocketException {
+      note('socket');
       throw const ApiException(ApiFailure.offline);
     } on http.ClientException {
+      note('client');
       throw const ApiException(ApiFailure.offline);
     } on HandshakeException {
+      note('tls');
       throw const ApiException(ApiFailure.offline);
     }
     final code = response.statusCode;
-    if (code >= 500) throw ApiException(ApiFailure.server, code);
+    if (code >= 500) {
+      note(code);
+      throw ApiException(ApiFailure.server, code);
+    }
     if (code < 200 || code >= 300) {
+      note(code);
       throw ApiException(ApiFailure.rejected, code);
     }
-    if (response.bodyBytes.isEmpty) return const {}; // 204 No Content
+    if (response.bodyBytes.isEmpty) {
+      note(code);
+      return const {}; // 204 No Content
+    }
     try {
-      return jsonDecode(utf8.decode(response.bodyBytes))
-          as Map<String, dynamic>;
+      final json =
+          jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+      note(code);
+      return json;
     } on FormatException {
+      note('$code bad-json');
       throw ApiException(ApiFailure.server, code);
     } on TypeError {
+      note('$code bad-json');
       throw ApiException(ApiFailure.server, code);
     }
   }
