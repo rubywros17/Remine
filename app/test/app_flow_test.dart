@@ -49,9 +49,9 @@ void main() {
       expect(find.text('캐냈어요'), findsOneWidget);
       // 관심사 카드
       expect(find.text('잊은 관심사'), findsOneWidget);
-      expect(find.text('×4'), findsOneWidget);
       expect(find.text('#니트가디건'), findsOneWidget);
-      expect(find.text('2주 동안 4번 캡처 · 9일째 잠자는 중'), findsOneWidget);
+      expect(find.text('SHOTS'), findsOneWidget);
+      expect(find.text('9일째 잠자는 중'), findsOneWidget);
       // 서랍
       expect(find.text('내 캡처 서랍'), findsOneWidget);
       expect(find.text('30 shots'), findsOneWidget);

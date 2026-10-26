@@ -52,6 +52,28 @@ abstract final class AppBrain {
   static const maxNodes = 7;
 }
 
+/// 관심사 카드(홈·관심사 탭). 한 화면(360×800)에 3장이 들어가는 높이.
+abstract final class AppInterestCard {
+  static const double minHeight = 168;
+
+  /// 콜라주 위 원형 스티커 "19 / SHOTS": 지름, 기울기(10°).
+  static const double shotsSize = 58;
+  static const double shotsTilt = 10 * math.pi / 180;
+
+  /// 카드 뒤 큰 숫자 워터마크: 크기, 외곽선 두께, 색(흰색 14%).
+  static const double watermarkSize = 132;
+  static const double watermarkStroke = 1.4;
+  static const watermarkColor = Color(0x24FFFFFF);
+
+  /// 왼쪽 아래 점 게이지: 이 장수 이상이면 점 하나씩 더(5칸). 잊은 관심사는 레몬 1칸.
+  static const gaugeSteps = [3, 6, 10, 15, 20];
+  static const double gaugeDot = 7;
+  static const gaugeEmpty = Color(0x40FFFFFF); // 빈 칸: 흰색 25%
+
+  /// 잊은 관심사 레몬 테두리 두께.
+  static const double forgottenBorder = 2;
+}
+
 /// 상세 화면의 이미지 카드·배경 값. 값의 근거는 docs/design.md.
 abstract final class AppDetail {
   /// 이미지 카드 최대 폭(영역 폭 비율), 흰 테두리 두께(px), 상단 바 아래 최소 여백(px), 기울기(-2°, 라디안).

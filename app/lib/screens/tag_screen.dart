@@ -164,9 +164,6 @@ class _TagScreenState extends State<TagScreen> {
   }
 }
 
-/// 집계 기간 이름: 7의 배수면 "2주", 아니면 "10일".
-String windowLabel(int days) => days % 7 == 0 ? '${days ~/ 7}주' : '$days일';
-
 class _SectionTitle extends StatelessWidget {
   const _SectionTitle(this.text);
 
