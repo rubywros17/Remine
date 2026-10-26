@@ -99,6 +99,9 @@
   - 태그는 저장 전에 정리한다: 화면 문구(장바구니·무료배송 등)와 카테고리명(쇼핑·정보 등)은 불용어로 빼고(목록은 `application.yaml`의 `remine.tags.stopwords` 한 곳), `#`·공백·대소문자를 무시한 키로 "니트 가디건"과 "니트가디건"을 같은 태그로 센다. 표시 이름은 처음 들어온 표기.
   - 대표 카테고리는 그 캡처들의 현재 `category`(사용자 수정 반영) 최빈값, 동점이면 가장 최근 캡처의 값.
   - 앱은 휴지통에 넣은 캡처를 횟수에서 빼고, 기준 아래로 내려가면 그 관심사를 숨긴다(응답의 `recent`에 있는 캡처만 알 수 있는 한계).
+- 앱 화면
+  - 관심사 카드(관심사 탭·홈)·상세의 "같은 관심사"·관심사 알림을 누르면 **태그 모아보기**: "#태그" 제목 아래 "최근 2주 N장 · 전체 M장", 그리드는 "최근 2주" → "그 전" 순. 상세의 좌우 넘기기는 이 목록 안에서만.
+  - 관심사 탭에 처음 들어오면(앱 실행당 한 번) **머릿속 캡처 지도** 애니메이션(약 3초): 뇌 윤곽 → 채움 → 소뇌·뇌간 → 주름 → 관심사 원(상위 7개, 많이 캡처할수록 큼) → `linkedTags` 연결선 → 잊은 관심사(마지막 캡처 7일 이상)가 레몬색으로 깨어남 → 목록. 아무 데나 누르면 건너뛰고, 관심사가 없거나 애니메이션 줄이기면 생략.
 - 주간 집계: 주 1회(월 10시, Asia/Seoul) 기기마다 관심사 1순위를 `interest_alert`에 `PENDING`으로 저장한다.
   - 멱등: 기기당 한 주 1건(`device_id + week_start` unique). 같은 주에 다시 돌아도 결과가 같다.
   - 쿨다운: 최근 28일 안에 후보였던 태그는 다시 고르지 않고 다음 순위를 본다. 횟수가 늘어도 예외 없음(주 1건이라 같은 태그 반복보다 다른 관심사에 자리를 준다). 필요해지면 저장해 둔 `capture_count`와 비교해 "2배 이상이면 무시"를 추가할 수 있다.
@@ -266,9 +269,9 @@
 | 등록되지 않은 기기 | 404 |
 | 없는 id **또는 다른 기기의 캡처** | 404 (같은 응답이라 다른 기기의 id 존재를 알 수 없음. 값 검증이 먼저라 400/404 차이로도 알 수 없음) |
 | 분석되지 않은 캡처(`analyzed_at` null) | 409 |
-| GET | `/api/screenshots?category=&tag=&page=&size=` | 분류된 스크린샷 목록. taken_at 최신순, page 기본 0 / size 기본 30·최대 100, 각 항목에 태그 포함. 항목: `{id, localAssetId, takenAt, sourceApp, category, autoCategory, categorySource, summary, tags}` |
+| GET | `/api/screenshots?category=&tag=&page=&size=` | 분류된 스크린샷 목록. taken_at 최신순, page 기본 0 / size 기본 30·최대 100, 각 항목에 태그 포함. 항목: `{id, localAssetId, takenAt, sourceApp, category, autoCategory, categorySource, summary, tags}`. `tag`는 정규화 키로 비교한다(`#`·공백·대소문자 무시, "니트 가디건" = "니트가디건"). `category` 없이 `tag`만 주면 카테고리와 상관없이 그 태그 전부(앱의 태그 모아보기) |
 | GET | `/api/categories/summary` | 홈 화면용. 7개 카테고리 전부 반환(0장은 count 0), 카테고리별 개수·대표 태그 상위 3개·최신 localAssetId 4개 |
-| GET | `/api/interests` | 감지된 관심사 목록(횟수 많은 순 → 마지막 캡처 최근 순 → 이름순). `{windowDays:14, minCount:3, items:[{tag, category, captureCount, dormantDays, recent:[{id, localAssetId}]}]}`. `recent`는 최근 3장(최신순, 앱이 기기 사진으로 썸네일을 그림), `dormantDays`는 마지막 캡처 이후 일수. OCR 원문·요약은 없다. 없으면 `items: []` |
+| GET | `/api/interests` | 감지된 관심사 목록(횟수 많은 순 → 마지막 캡처 최근 순 → 이름순). `{windowDays:14, minCount:3, items:[{tag, category, captureCount, dormantDays, recent:[{id, localAssetId}], linkedTags:[tag]}]}`. `recent`는 최근 3장(최신순, 앱이 기기 사진으로 썸네일을 그림), `dormantDays`는 마지막 캡처 이후 일수, `linkedTags`는 기간 안에 같은 캡처에 함께 붙은 다른 관심사 태그(앱의 머릿속 지도 연결선, 이미 읽은 행으로 묶어 쿼리 추가 없음). OCR 원문·요약은 없다. 없으면 `items: []` |
 
 - 기기 등록(`POST /api/devices`)을 제외한 모든 API는 `X-Device-Id` 헤더로 기기를 식별한다. 미등록 기기는 404, 헤더 누락은 400. (로그인 없는 MVP의 임시 방식)
 
