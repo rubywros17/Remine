@@ -7,6 +7,7 @@ import com.remine.server.service.DeviceService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -33,5 +34,11 @@ public class DeviceController {
     public void updateFcmToken(@RequestHeader("X-Device-Id") Long deviceId,
                                @Valid @RequestBody DeviceTokenRequest request) {
         deviceService.updateFcmToken(deviceId, request.fcmToken());
+    }
+
+    @DeleteMapping("/me/fcm-token")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteFcmToken(@RequestHeader("X-Device-Id") Long deviceId) {
+        deviceService.deleteFcmToken(deviceId);
     }
 }

@@ -8,6 +8,7 @@ import com.remine.server.domain.interest.InterestAlert.Status;
 import com.remine.server.domain.interest.InterestAlertRepository;
 import com.remine.server.domain.screenshot.Category;
 import com.remine.server.dto.AnalyzeRequest.Item;
+import com.remine.server.exception.NoFcmTokenException;
 import com.remine.server.push.PushMessage;
 import com.remine.server.push.PushSender;
 import com.remine.server.service.InterestAlertServiceTest.MovableClock;
@@ -31,6 +32,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
 
 import static com.remine.server.service.InterestAlertServiceTest.THURSDAY;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** 발송을 실제 DB(H2) + 가짜 sender로: SENT·재시도·무효 토큰·지난주 정리, 알림 내용에 원문·요약이 없는지. */
 @SpringBootTest
@@ -207,6 +209,36 @@ class InterestPushServiceTest {
 
         assertThat(alerts(noToken)).singleElement()
                 .satisfies(a -> assertThat(a.getStatus()).isEqualTo(Status.PENDING));
+    }
+
+    @Test
+    void 테스트_알림은_지금_1순위_관심사로_보내고_주간_알림은_건드리지_않는다() {
+        captures(deviceId, "드라마", 4, THURSDAY);
+        long before = alertRepository.count();
+
+        assertThat(service.sendTest(deviceId)).isEqualTo(PushSender.Result.SENT);
+
+        assertThat(sender.callsTo(token)).singleElement().satisfies(call -> {
+            assertThat(call.message().body()).isEqualTo("요즘 '" + prefix + "드라마'를 4번 캡처했어요. 다시 볼까요?");
+            assertThat(call.message().data()).containsEntry("tag", prefix + "드라마").containsEntry("category", "SHOPPING");
+        });
+        assertThat(alertRepository.count()).isEqualTo(before);
+        assertThat(alerts(deviceId)).isEmpty();
+    }
+
+    @Test
+    void 관심사가_없으면_예시_관심사로_보낸다() {
+        service.sendTest(deviceId);
+
+        assertThat(sender.callsTo(token)).singleElement().satisfies(call ->
+                assertThat(call.message().data()).containsEntry("tag", InterestPushService.EXAMPLE_TAG));
+    }
+
+    @Test
+    void 알림을_끈_기기에는_테스트_알림도_보내지_않는다() {
+        Long noToken = deviceRepository.save(new Device(null)).getId();
+
+        assertThatThrownBy(() -> service.sendTest(noToken)).isInstanceOf(NoFcmTokenException.class);
     }
 
     @Test

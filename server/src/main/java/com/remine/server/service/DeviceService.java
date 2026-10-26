@@ -28,4 +28,12 @@ public class DeviceService {
                 .orElseThrow(() -> new DeviceNotFoundException(deviceId))
                 .updateFcmToken(fcmToken);
     }
+
+    /** 사용자가 앱 설정에서 알림을 껐다 → 토큰을 지워 발송 대상에서 뺀다. 이미 없어도 204(멱등). */
+    @Transactional
+    public void deleteFcmToken(Long deviceId) {
+        deviceRepository.findById(deviceId)
+                .orElseThrow(() -> new DeviceNotFoundException(deviceId))
+                .updateFcmToken(null);
+    }
 }

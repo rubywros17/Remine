@@ -1,8 +1,13 @@
 package com.remine.server.service;
 
+import com.remine.server.domain.device.Device;
 import com.remine.server.domain.device.DeviceRepository;
 import com.remine.server.domain.interest.InterestAlert;
 import com.remine.server.domain.interest.InterestAlertRepository;
+import com.remine.server.domain.screenshot.Category;
+import com.remine.server.exception.DeviceNotFoundException;
+import com.remine.server.exception.NoFcmTokenException;
+import com.remine.server.exception.PushDisabledException;
 import com.remine.server.push.PushMessage;
 import com.remine.server.push.PushSender;
 import org.slf4j.Logger;
@@ -36,18 +41,22 @@ import java.util.Map;
 public class InterestPushService {
 
     private static final Logger log = LoggerFactory.getLogger(InterestPushService.class);
+    /** 테스트 알림에서 관심사가 아직 없을 때 쓰는 예시. */
+    static final String EXAMPLE_TAG = "신발";
 
     private final InterestAlertRepository alertRepository;
     private final DeviceRepository deviceRepository;
+    private final InterestService interestService;
     private final PushSender sender; // null이면 푸시 꺼짐(키 파일 없음)
     private final TransactionTemplate tx;
     private final Clock clock;
 
     public InterestPushService(InterestAlertRepository alertRepository, DeviceRepository deviceRepository,
-                               ObjectProvider<PushSender> sender, PlatformTransactionManager transactionManager,
-                               Clock clock) {
+                               InterestService interestService, ObjectProvider<PushSender> sender,
+                               PlatformTransactionManager transactionManager, Clock clock) {
         this.alertRepository = alertRepository;
         this.deviceRepository = deviceRepository;
+        this.interestService = interestService;
         this.sender = sender.getIfAvailable();
         this.tx = new TransactionTemplate(transactionManager);
         this.clock = clock;
@@ -91,13 +100,35 @@ public class InterestPushService {
                 weekStart, pending.size(), sent, invalid, expired);
     }
 
-    /** 문구는 해요체, 내용은 태그·횟수뿐. data는 앱이 열 화면(카테고리 + 태그 필터). */
+    /**
+     * 개발용 테스트 알림(DevPushController). 이 기기의 지금 1순위 관심사로, 없으면 예시 관심사로 1건 보낸다.
+     * interest_alert는 읽지도 쓰지도 않는다(주간 발송·쿨다운에 영향 없음). 무효 토큰이어도 토큰을 지우지 않는다.
+     */
+    public PushSender.Result sendTest(Long deviceId) {
+        Device device = deviceRepository.findById(deviceId).orElseThrow(() -> new DeviceNotFoundException(deviceId));
+        if (device.getFcmToken() == null) {
+            throw new NoFcmTokenException();
+        }
+        if (sender == null) {
+            throw new PushDisabledException();
+        }
+        PushMessage message = interestService.detect(deviceId, LocalDateTime.now(clock)).stream()
+                .findFirst()
+                .map(top -> message(top.tag(), top.captureCount(), top.category()))
+                .orElseGet(() -> message(EXAMPLE_TAG, 3, Category.SHOPPING));
+        return sender.send(device.getFcmToken(), message);
+    }
+
     static PushMessage messageFor(InterestAlert alert) {
-        String tag = alert.getTag().getName();
+        return message(alert.getTag().getName(), alert.getCaptureCount(), alert.getCategory());
+    }
+
+    /** 문구는 해요체, 내용은 태그·횟수뿐. data는 앱이 열 화면(카테고리 + 태그 필터). */
+    static PushMessage message(String tag, int count, Category category) {
         return new PushMessage(
                 "Remine",
-                "요즘 '%s'%s %d번 캡처했어요. 다시 볼까요?".formatted(tag, objectParticle(tag), alert.getCaptureCount()),
-                Map.of("type", "interest", "tag", tag, "category", alert.getCategory().name()));
+                "요즘 '%s'%s %d번 캡처했어요. 다시 볼까요?".formatted(tag, objectParticle(tag), count),
+                Map.of("type", "interest", "tag", tag, "category", category.name()));
     }
 
     /** 받침이 있으면 '을', 없으면 '를'("신발을", "드라마를"). 한글로 끝나지 않으면 "을(를)". */

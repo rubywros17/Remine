@@ -69,6 +69,19 @@ class DeviceServiceTest {
     }
 
     @Test
+    void 알림을_끄면_토큰을_지우고_미등록_기기는_404() {
+        Device device = new Device("token");
+        when(deviceRepository.findById(7L)).thenReturn(Optional.of(device));
+        when(deviceRepository.findById(8L)).thenReturn(Optional.empty());
+
+        service.deleteFcmToken(7L);
+        service.deleteFcmToken(7L); // 이미 없어도 그대로(멱등)
+
+        assertThat(device.getFcmToken()).isNull();
+        assertThatThrownBy(() -> service.deleteFcmToken(8L)).isInstanceOf(DeviceNotFoundException.class);
+    }
+
+    @Test
     void 무효_토큰_정리는_보낸_토큰과_같을_때만_지운다() {
         Device device = new Device("old");
         device.updateFcmToken("new"); // 보내는 사이 앱이 새 토큰을 올림
