@@ -23,11 +23,15 @@ import 'fake_device.dart';
 
 /// 보낸 요청 하나. 본문 바이트 전체를 보관해 테스트가 "무엇이 실렸는지" 검사한다.
 class SentRequest {
-  SentRequest(this.method, this.path, this.body);
+  SentRequest(this.method, this.path, this.body, [this.headers = const {}]);
 
   final String method;
   final String path;
   final Uint8List body;
+  final Map<String, String> headers;
+
+  /// `X-Device-Id` 헤더(없으면 null).
+  int? get deviceId => int.tryParse(headers['X-Device-Id'] ?? '');
 
   /// 바이너리가 섞여 있어도 글자 검사를 할 수 있게 latin1로 푼 본문.
   String get text => latin1.decode(body);
@@ -69,7 +73,12 @@ class RecordingClient extends http.BaseClient {
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     final body = await request.finalize().toBytes();
-    final req = SentRequest(request.method, request.url.path, body);
+    final req = SentRequest(
+      request.method,
+      request.url.path,
+      body,
+      Map.of(request.headers),
+    );
     sent.add(req);
     final error = throwOnSend;
     if (error != null) throw error;

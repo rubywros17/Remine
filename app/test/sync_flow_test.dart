@@ -175,7 +175,7 @@ void main() {
     client = RecordingClient(
       responder: (r) {
         if (r.path == '/api/screenshots/analyze' && ++analyzeCalls == 1) {
-          return jsonResponse({'error': 'unknown device'}, 404);
+          return jsonResponse({'code': 'DEVICE_NOT_FOUND'}, 404);
         }
         return client.defaultFor(r);
       },

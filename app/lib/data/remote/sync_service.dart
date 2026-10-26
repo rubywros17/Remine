@@ -19,8 +19,10 @@ import 'sync_status.dart';
 /// 흐름: 갤러리(최신 [DeviceCaptureService.maxPhotos]장) → 이미 보낸 것 제외(증분) → `maxBatchSize`장씩
 /// OCR·판정 → [planFor]가 정한 것만 전송 → 배치가 끝날 때마다 [onBatchDone](홈 갱신).
 /// 동기화는 한 번에 하나만 돈다([run]을 겹쳐 부르면 진행 중인 실행을 그대로 돌려준다).
+/// 서버가 기기를 잊으면(DB 초기화) [RemineApi]가 [_recoverDevice]를 불러 재등록하고, 전송 기록을 비운 뒤
+/// 이번 실행이 끝나면 한 번 더 돌아 전체를 다시 보낸다.
 ///
-/// 개인정보: 로그를 남기지 않는다. 예외는 [SyncIssue]로만 바뀌어 화면에 나가고 내용은 버린다.
+/// 개인정보: 예외는 [SyncIssue]로만 바뀌어 화면에 나가고 내용은 버린다(디버그 [log]에는 종류만).
 class SyncService {
   SyncService({
     required this.api,
@@ -36,7 +38,9 @@ class SyncService {
     this.push,
     this.log,
     DateTime Function()? now,
-  }) : _now = now ?? DateTime.now;
+  }) : _now = now ?? DateTime.now {
+    api.recoverDevice = _recoverDevice;
+  }
 
   final RemineApi api;
   final GalleryReader reader;
@@ -66,10 +70,35 @@ class SyncService {
 
   Future<void>? _inFlight;
   StreamSubscription<String>? _tokenSub;
+  bool _again = false; // 재등록으로 전송 기록을 비웠다 → 이번 실행 뒤 한 번 더
 
   /// 동기화를 시작한다. 이미 돌고 있으면 새로 시작하지 않고 진행 중인 것을 기다린다.
   Future<void> run() =>
-      _inFlight ??= _run().whenComplete(() => _inFlight = null);
+      _inFlight ??= _runUntilSettled().whenComplete(() => _inFlight = null);
+
+  Future<void> _runUntilSettled() async {
+    // ponytail: 재등록이 연달아 나도 최대 3번까지만 돈다(서버가 계속 기기를 잊는 경우의 무한 반복 방지).
+    for (var i = 0; i < 3; i++) {
+      _again = false;
+      await _run();
+      if (!_again) return;
+    }
+  }
+
+  /// 서버가 이 기기를 모를 때 [RemineApi]가 부른다(동시 요청이 여럿이어도 한 번).
+  /// 새로 등록하고, 서버에 있다고 믿던 전송 기록을 버린 뒤 전체 재전송을 예약한다.
+  Future<int> _recoverDevice() async {
+    log?.call('[sync] 서버가 기기를 모름 → 재등록');
+    await state.clear();
+    final id = await api.registerDevice(await _tokenForRegister());
+    await state.setDeviceId(id);
+    if (_inFlight != null) {
+      _again = true;
+    } else {
+      unawaited(run());
+    }
+    return id;
+  }
 
   bool get isRunning => _inFlight != null;
 
@@ -110,16 +139,15 @@ class SyncService {
     } on ApiException catch (e) {
       log?.call('[sync] 중단: $e'); // ApiException(실패 종류, 상태 코드)뿐
       status.finish(
-        issue: e.failure == ApiFailure.offline
-            ? SyncIssue.offline
-            : SyncIssue.server,
+        issue: SyncIssue.of(e.failure),
         failedCount: await _safeFailedCount(),
       );
     } catch (e) {
-      // 어떤 예외든 앱이 죽지 않게 한다. 내용(OCR 원문이 섞일 수 있음)은 남기지 않고 종류만.
+      // 어떤 예외든 앱이 죽지 않게 한다. 서버 문제가 아니라 앱 안의 오류로 따로 분류한다.
+      // 내용(OCR 원문이 섞일 수 있음)은 남기지 않고 종류만.
       log?.call('[sync] 중단: ${e.runtimeType}');
       status.finish(
-        issue: SyncIssue.server,
+        issue: SyncIssue.internal,
         failedCount: await _safeFailedCount(),
       );
     }
@@ -202,14 +230,6 @@ class SyncService {
     return id;
   }
 
-  /// 서버가 기기를 모를 때(서버 DB가 초기화됨 등): 새로 등록하고, 서버에 있다고 믿던 동기화 기록을 버려 다시 보내게 한다.
-  Future<int> _reregister() async {
-    await state.clear();
-    final id = await api.registerDevice(await _tokenForRegister());
-    await state.setDeviceId(id);
-    return id;
-  }
-
   Future<({int deviceId, int failed})> _batch(
     List<GalleryPhoto> chunk,
     ApiConfig config,
@@ -275,8 +295,7 @@ class SyncService {
 
     // 서버가 일부를 되돌려 보내면(이미지가 크다/잘못됐다) 고쳐서 같은 배치 안에서 최대 3번 더 보낸다.
     var round = 0;
-    var currentDevice = deviceId;
-    var reregistered = false;
+    final currentDevice = deviceId; // 재등록되면 api가 새 id로 바꿔 보낸다
     while (send.isNotEmpty && round < 3) {
       round++;
       final AnalyzeResult result;
@@ -286,16 +305,8 @@ class SyncService {
           for (final o in send.values) o.toItem(),
         ]);
         status.setWaiting(0);
-      } on ApiException catch (e) {
+      } finally {
         status.setWaiting(0);
-        if (e.failure == ApiFailure.rejected &&
-            e.statusCode == 404 &&
-            !reregistered) {
-          reregistered = true;
-          currentDevice = await _reregister();
-          continue;
-        }
-        rethrow;
       }
 
       for (final a in result.analyzed) {

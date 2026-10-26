@@ -80,7 +80,7 @@ void main() {
 
     await rig.sync.run();
 
-    expect(rig.status.issue, SyncIssue.server);
+    expect(rig.status.issue, SyncIssue.internal); // 서버가 아니라 앱 안의 오류
     expect(lines, ['[sync] 중단: StateError']);
   });
 }
