@@ -55,7 +55,7 @@ class ScreenshotQueryServiceTest {
         when(deviceRepository.existsById(1L)).thenReturn(true);
         Screenshot a = screenshot(10L, "a1");
         Screenshot b = screenshot(11L, "a2");
-        when(screenshotRepository.search(eq(1L), eq(Category.SHOPPING), eq("구매"), any()))
+        when(screenshotRepository.search(eq(1L), eq(Category.SHOPPING), eq("구매"), any())) // 태그는 정규화 키로 찾는다
                 .thenReturn(new PageImpl<>(List.of(a, b), PageRequest.of(0, 30), 2));
         when(screenshotTagRepository.findTagRows(List.of(10L, 11L))).thenReturn(List.of(
                 new ScreenshotTagRow(10L, "구매"), new ScreenshotTagRow(10L, "원")));
