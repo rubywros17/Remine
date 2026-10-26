@@ -128,6 +128,8 @@ void main() {
 
       await tester.tap(find.text('관심사'));
       await tester.pumpAndSettle();
+      await tester.tap(find.text('목록 보기')); // 들어오면 머릿속 지도부터
+      await tester.pumpAndSettle();
       expect(find.text('잊은 관심사'), findsWidgets);
       expect(find.byType(InterestCard, skipOffstage: true), findsWidgets);
 
@@ -145,6 +147,8 @@ void main() {
     ) async {
       await _pumpApp(tester);
       await tester.tap(find.text('관심사'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('목록 보기'));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byType(InterestCard, skipOffstage: true).first);

@@ -12,19 +12,14 @@ import 'tag_screen.dart';
 /// 관심사 탭: 반복해서 캡처한 관심사 카드 목록. 없으면 빈 상태 안내.
 ///
 /// 홈과 같은 방식으로 store가 바뀌면(카테고리 수정·휴지통) 다시 읽는다.
-/// 탭이 처음 보일 때([active]) **앱 실행당 한 번** 머릿속 캡처 지도([InterestBrainMap])를 보여 준 뒤 목록으로 넘어간다.
-/// 관심사가 없거나 "애니메이션 줄이기"면 바로 목록(빈 상태)이다.
+/// 탭에 들어올 때마다([active]가 켜질 때) 먼저 머릿속 캡처 지도([InterestBrainMap])를 보여 주고,
+/// [목록 보기]나 화면을 누르면 목록으로 넘어간다. 관심사가 없으면 바로 빈 상태다.
+/// (태그 화면에 갔다가 돌아오면 탭은 계속 보이던 중이라 목록 그대로다.)
 class InterestsScreen extends StatefulWidget {
   const InterestsScreen({super.key, this.active = true});
 
   /// 이 탭이 지금 보이는지. 탭 화면들은 앱이 켜질 때 한꺼번에 만들어져서(IndexedStack) 따로 알려 준다.
   final bool active;
-
-  /// 이번 실행에 지도를 이미 보여 줬는지(탭을 다시 눌러도 또 나오지 않게).
-  static bool _introShown = false;
-
-  @visibleForTesting
-  static void resetIntroForTest() => _introShown = false;
 
   @override
   State<InterestsScreen> createState() => _InterestsScreenState();
@@ -32,7 +27,12 @@ class InterestsScreen extends StatefulWidget {
 
 class _InterestsScreenState extends State<InterestsScreen> {
   int _seenRevision = -1;
-  bool _intro = false;
+
+  /// 이번에 탭에 들어와서 아직 목록으로 넘어가지 않았는지.
+  bool _showMap = true;
+
+  /// 들어올 때마다 늘려서 지도가 처음부터 다시 그려지게 한다(위젯 key).
+  int _entry = 0;
 
   /// null = 아직 불러오는 중.
   List<Interest>? _interests;
@@ -53,41 +53,31 @@ class _InterestsScreenState extends State<InterestsScreen> {
     final interests = await store.repository.interests();
     if (!mounted || seq != _loadSeq) return;
     setState(() => _interests = interests);
-    _maybeStartIntro();
   }
 
   @override
   void didUpdateWidget(InterestsScreen old) {
     super.didUpdateWidget(old);
-    if (widget.active && !old.active) _maybeStartIntro();
-  }
-
-  void _maybeStartIntro() {
-    final interests = _interests;
-    if (!widget.active ||
-        InterestsScreen._introShown ||
-        interests == null ||
-        interests.isEmpty ||
-        MediaQuery.disableAnimationsOf(context)) {
-      return;
+    if (widget.active && !old.active) {
+      _showMap = true;
+      _entry++;
     }
-    InterestsScreen._introShown = true;
-    setState(() => _intro = true);
   }
 
   @override
   Widget build(BuildContext context) {
     final interests = _interests;
     if (interests == null) return const SizedBox.shrink();
+    final map = _showMap && widget.active && interests.isNotEmpty;
     return AnimatedSwitcher(
       duration: MediaQuery.disableAnimationsOf(context)
           ? Duration.zero
           : AppBrain.crossfade,
-      child: _intro
+      child: map
           ? InterestBrainMap(
-              key: const ValueKey('brain'),
+              key: ValueKey('brain-$_entry'),
               interests: interests,
-              onDone: () => setState(() => _intro = false),
+              onList: () => setState(() => _showMap = false),
             )
           : KeyedSubtree(key: const ValueKey('list'), child: _list(interests)),
     );

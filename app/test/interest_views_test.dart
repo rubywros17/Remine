@@ -169,9 +169,9 @@ void main() {
   });
 
   group('관심사 탭 머릿속 지도', () {
-    setUp(InterestsScreen.resetIntroForTest);
-
-    testWidgets('탭이 처음 보일 때 한 번 → 끝나면 목록, 다시 보여도 또 나오지 않는다', (tester) async {
+    testWidgets('탭에 들어올 때마다 지도부터, 다 그려져도 저절로 넘어가지 않고 [목록 보기]로 목록', (
+      tester,
+    ) async {
       await tester.pumpWidget(_scoped(const InterestsScreen(active: false)));
       await tester.pumpAndSettle();
       expect(
@@ -184,7 +184,16 @@ void main() {
       await tester.pump();
       expect(find.byType(InterestBrainMap), findsOneWidget);
 
-      await tester.pump(const Duration(seconds: 3));
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      expect(
+        find.byType(InterestBrainMap),
+        findsOneWidget,
+        reason: '끝나도 지도 그대로',
+      );
+      expect(find.byType(InterestCard), findsNothing);
+
+      await tester.tap(find.text('목록 보기'));
       await tester.pumpAndSettle();
       expect(find.byType(InterestBrainMap), findsNothing);
       expect(find.byType(InterestCard), findsWidgets);
@@ -192,32 +201,65 @@ void main() {
       await tester.pumpWidget(_scoped(const InterestsScreen(active: false)));
       await tester.pumpWidget(_scoped(const InterestsScreen(active: true)));
       await tester.pump();
-      expect(find.byType(InterestBrainMap), findsNothing, reason: '앱 실행당 한 번');
+      expect(
+        find.byType(InterestBrainMap),
+        findsOneWidget,
+        reason: '다시 들어오면 또 지도부터',
+      );
+      final painter =
+          tester
+                  .widget<CustomPaint>(
+                    find
+                        .descendant(
+                          of: find.byType(InterestBrainMap),
+                          matching: find.byType(CustomPaint),
+                        )
+                        .first,
+                  )
+                  .painter
+              as BrainPainter;
+      expect(painter.t, lessThan(0.1), reason: '처음부터 다시 그린다');
     });
 
-    testWidgets('아무 데나 누르면 건너뛴다', (tester) async {
+    testWidgets('그리는 중에도 아무 데나 누르면 목록', (tester) async {
       await tester.pumpWidget(_scoped(const InterestsScreen()));
       await tester.pump();
       expect(find.byType(InterestBrainMap), findsOneWidget);
 
-      await tester.tapAt(const Offset(200, 400));
+      await tester.tapAt(const Offset(200, 300));
       await tester.pumpAndSettle();
 
       expect(find.byType(InterestBrainMap), findsNothing);
       expect(find.byType(InterestCard), findsWidgets);
     });
 
-    testWidgets('애니메이션 줄이기면 생략하고 바로 목록', (tester) async {
+    testWidgets('애니메이션 줄이기면 완성된 지도를 바로 보여 주고 버튼으로 넘어간다', (tester) async {
       await tester.pumpWidget(
         _scoped(const InterestsScreen(), reduceMotion: true),
       );
       await tester.pump();
 
-      expect(find.byType(InterestBrainMap), findsNothing);
+      expect(find.byType(InterestBrainMap), findsOneWidget);
+      final painter =
+          tester
+                  .widget<CustomPaint>(
+                    find
+                        .descendant(
+                          of: find.byType(InterestBrainMap),
+                          matching: find.byType(CustomPaint),
+                        )
+                        .first,
+                  )
+                  .painter
+              as BrainPainter;
+      expect(painter.t, 1.0);
+
+      await tester.tap(find.text('목록 보기'));
+      await tester.pump();
       expect(find.byType(InterestCard), findsWidgets);
     });
 
-    testWidgets('관심사가 없으면 애니메이션 없이 빈 상태', (tester) async {
+    testWidgets('관심사가 없으면 지도 없이 빈 상태', (tester) async {
       await tester.pumpWidget(
         _scoped(
           const InterestsScreen(),

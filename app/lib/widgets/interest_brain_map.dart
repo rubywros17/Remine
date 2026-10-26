@@ -5,11 +5,14 @@ import 'package:flutter/material.dart';
 
 import '../core/tokens.dart';
 import '../models/interest.dart';
+import 'app_button.dart';
 
-/// 관심사 탭에 처음 들어올 때 한 번 보여 주는 "머릿속 캡처 지도"(약 3초). 디자인 캔버스 4안의 뇌 그림을 옮겼다.
+/// 관심사 탭에 들어올 때마다 먼저 보여 주는 "머릿속 캡처 지도"(약 3초 동안 그려진다). 디자인 캔버스 4안의 뇌 그림을 옮겼다.
 ///
 /// 순서: 뇌 윤곽 → 안쪽 채움 → 소뇌·뇌간 → 주름 → 관심사 원(많이 캡처할수록 큼) → 연결선(같은 캡처를 공유한 관심사)
-/// → 잊은 관심사(마지막 캡처 [Interest.forgottenAfterDays]일 이상)가 레몬색으로 깨어남. 끝나거나 화면을 누르면 [onDone].
+/// → 잊은 관심사(마지막 캡처 [Interest.forgottenAfterDays]일 이상)가 레몬색으로 깨어남.
+/// 다 그려져도 저절로 넘어가지 않는다. 아래 [목록 보기]나 화면 아무 데나 누르면 [onList].
+/// "애니메이션 줄이기"면 완성된 지도를 바로 보여 준다.
 ///
 /// [Flutter 메모] AnimationController는 0→1로 흐르는 시계, CustomPainter는 그 값(t)으로 매 프레임 직접 그리는 캔버스다.
 /// 각 단계는 t의 구간(예: 0~0.17)을 0~1로 다시 펴서 쓴다(Interval).
@@ -17,12 +20,12 @@ class InterestBrainMap extends StatefulWidget {
   const InterestBrainMap({
     super.key,
     required this.interests,
-    required this.onDone,
+    required this.onList,
   });
 
   /// 많이 캡처한 순. 앞에서 [AppBrain.maxNodes]개만 지도에 올린다.
   final List<Interest> interests;
-  final VoidCallback onDone;
+  final VoidCallback onList;
 
   @override
   State<InterestBrainMap> createState() => _InterestBrainMapState();
@@ -34,22 +37,16 @@ class _InterestBrainMapState extends State<InterestBrainMap>
     vsync: this,
     duration: AppBrain.duration,
   );
-  bool _done = false;
 
   @override
-  void initState() {
-    super.initState();
-    _clock
-      ..addStatusListener((s) {
-        if (s == AnimationStatus.completed) _finish();
-      })
-      ..forward();
-  }
-
-  void _finish() {
-    if (_done) return;
-    _done = true;
-    widget.onDone();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_clock.isAnimating || _clock.isCompleted) return;
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _clock.value = 1; // 완성된 지도
+    } else {
+      _clock.forward();
+    }
   }
 
   @override
@@ -62,40 +59,40 @@ class _InterestBrainMapState extends State<InterestBrainMap>
   Widget build(BuildContext context) {
     final nodes = layoutNodes(widget.interests);
     final forgotten = nodes.where((n) => n.interest.forgotten).length;
-    return Semantics(
-      button: true,
-      label:
-          '머릿속 캡처 지도. 관심사 ${nodes.length}개'
-          '${forgotten > 0 ? ', 잊고 있던 것 $forgotten개' : ''}. 누르면 목록으로 넘어가요',
-      excludeSemantics: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: _finish, // 아무 데나 누르면 건너뛰기
-        child: ColoredBox(
-          color: AppColors.darkGray,
-          child: SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(
-                AppSpacing.screenPadding,
-                AppSpacing.s16,
-                AppSpacing.screenPadding,
-                AppSpacing.s24,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '관심사',
-                    style: AppText.title.copyWith(color: AppColors.white),
-                  ),
-                  const SizedBox(height: AppSpacing.s4),
-                  Text(
-                    '내 머릿속 캡처 지도',
-                    style: AppText.caption.copyWith(color: AppBrain.subtitle),
-                  ),
-                  const SizedBox(height: AppSpacing.s16),
-                  Expanded(
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: widget.onList, // 아무 데나 눌러도 목록으로
+      child: ColoredBox(
+        color: AppColors.darkGray,
+        child: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.screenPadding,
+              AppSpacing.s16,
+              AppSpacing.screenPadding,
+              AppSpacing.s24,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '관심사',
+                  style: AppText.title.copyWith(color: AppColors.white),
+                ),
+                const SizedBox(height: AppSpacing.s4),
+                Text(
+                  '내 머릿속 캡처 지도',
+                  style: AppText.caption.copyWith(color: AppBrain.subtitle),
+                ),
+                const SizedBox(height: AppSpacing.s16),
+                Expanded(
+                  child: Semantics(
+                    image: true,
+                    label:
+                        '머릿속 캡처 지도. 관심사 ${nodes.length}개'
+                        '${forgotten > 0 ? ', 잊고 있던 것 $forgotten개' : ''}',
+                    excludeSemantics: true,
                     child: AnimatedBuilder(
                       animation: _clock,
                       builder: (context, _) => CustomPaint(
@@ -104,8 +101,12 @@ class _InterestBrainMapState extends State<InterestBrainMap>
                       ),
                     ),
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(height: AppSpacing.s16),
+                Center(
+                  child: AppButton(label: '목록 보기', onTap: widget.onList),
+                ),
+              ],
             ),
           ),
         ),
