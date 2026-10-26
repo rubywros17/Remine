@@ -15,7 +15,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * remine.classifier(fake | gemini)에 따라 분류기 빈 하나를 만든다. 기본은 fake다.
  * gemini인데 API 키가 없으면 기동 시 바로 실패한다(첫 요청에서야 알게 되지 않도록).
- * 키는 Spring Environment에서 읽는다: 환경변수 GEMINI_API_KEY(우선) 또는 ~/.remine.env 파일.
+ * 키는 Spring Environment에서 읽는다: 환경변수 GEMINI_API_KEY(우선) 또는 키 파일(REMINE_ENV_FILE, 기본 ~/.remine.env).
  */
 @Configuration
 @EnableConfigurationProperties(RemineProperties.class)

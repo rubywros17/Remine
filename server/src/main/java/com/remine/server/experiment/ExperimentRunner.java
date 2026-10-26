@@ -84,7 +84,7 @@ class ExperimentRunner implements CommandLineRunner {
                      @Value("${experiment.ocr:}") String ocrOption,
                      @Value("${experiment.mlkit-json:}") String mlkitJson,
                      Environment environment) {
-        // 키는 System.getenv가 아니라 스프링 Environment에서 읽는다: 환경변수(우선) 또는 ~/.remine.env
+        // 키는 System.getenv가 아니라 스프링 Environment에서 읽는다: 환경변수(우선) 또는 키 파일(REMINE_ENV_FILE, 기본 ~/.remine.env)
         // (application-experiment.yaml의 spring.config.import). 값은 출력하지 않는다.
         this(dir, limit, candidatesFilter, promptOption, compareOption, ocrOption, mlkitJson,
                 (candidate, mapper) -> LlmProviders.create(candidate, mapper, environment::getProperty));
@@ -154,7 +154,7 @@ class ExperimentRunner implements CommandLineRunner {
                     () -> skipped.add(candidate.name() + " (" + LlmProviders.envName(candidate.provider()) + ")"));
         }
         if (providers.isEmpty()) {
-            log.error("API 키가 없거나 비어 있어 실행하지 않습니다. 환경변수 또는 ~/.remine.env 파일에 설정하세요: {}",
+            log.error("API 키가 없거나 비어 있어 실행하지 않습니다. 환경변수 또는 키 파일(REMINE_ENV_FILE, 기본 ~/.remine.env)에 설정하세요: {}",
                     candidates.stream().map(c -> LlmProviders.envName(c.provider())).distinct().toList());
             return;
         }

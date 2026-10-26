@@ -9,7 +9,7 @@ import java.util.function.Function;
 
 /**
  * 후보의 provider 이름과 API 키로 구현체를 만든다. 키가 없거나 비어 있으면 비어 있는 Optional.
- * 키는 스프링 Environment에서 읽는다(lookup): 환경변수 GEMINI_API_KEY 또는 ~/.remine.env 파일.
+ * 키는 스프링 Environment에서 읽는다(lookup): 환경변수 GEMINI_API_KEY 또는 키 파일(REMINE_ENV_FILE, 기본 ~/.remine.env).
  * 키 값은 어디에도 출력하지 않는다.
  * 제공사를 추가할 때는 {@link #envName}과 {@link #create}의 switch만 늘리면 된다.
  */

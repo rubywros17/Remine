@@ -38,7 +38,7 @@ dependencies {
 tasks.named('test') {
 	useJUnitPlatform()
 	// 테스트는 개발자 PC의 키·설정과 무관하게 같은 결과여야 하고, 실제 API를 부르지 않는다.
-	// - ~/.remine.env 대신 존재하지 않는 경로를 읽게 한다 (user.home은 건드리지 않는다)
+	// - REMINE_ENV_FILE·~/.remine.env 대신 존재하지 않는 경로를 읽게 한다 (user.home은 건드리지 않는다)
 	// - OS 환경변수의 키·분류기 선택을 중립화한다 (빈 키 = 키 없음)
 	systemProperty 'remine.env-file', layout.buildDirectory.file('no-remine.env').get().asFile.absolutePath
 	environment 'GEMINI_API_KEY', ''

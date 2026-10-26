@@ -14,7 +14,7 @@ spring:
   config:
     # API 키를 셸 export 없이 읽는다. 파일은 레포 밖(사용자 홈)이라 커밋되지 않는다.
     # 내용 예: GEMINI_API_KEY=키값 (따옴표 없이, BOM 없는 UTF-8). 같은 이름의 환경변수가 있으면 환경변수가 우선한다.
-    # remine.env-file로 위치를 바꿀 수 있다 (테스트는 존재하지 않는 경로를 지정해 사용자 파일을 읽지 않는다).
+    # 위치는 remine.env-file(환경변수 REMINE_ENV_FILE)로 바꿀 수 있다 (테스트는 존재하지 않는 경로를 지정해 사용자 파일을 읽지 않는다).
     import: "optional:file:${remine.env-file:${user.home}/.remine.env}[.properties]"
   jpa:
     # 요청 내내 세션(DB 연결)을 쥐지 않는다. analyze는 LLM 호출 중 DB를 점유하지 않도록 서비스에서 트랜잭션을 나눴다.

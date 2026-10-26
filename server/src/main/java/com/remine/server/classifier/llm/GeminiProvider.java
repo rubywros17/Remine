@@ -18,7 +18,7 @@ import java.util.Map;
  */
 public class GeminiProvider extends JsonHttpProvider {
 
-    /** API 키를 읽는 설정 이름(환경변수 또는 ~/.remine.env). 운영과 실험이 같은 이름을 쓴다. */
+    /** API 키를 읽는 설정 이름(환경변수 또는 키 파일(REMINE_ENV_FILE, 기본 ~/.remine.env)). 운영과 실험이 같은 이름을 쓴다. */
     public static final String API_KEY_PROPERTY = "GEMINI_API_KEY";
     public static final String DEFAULT_BASE_URL = "https://generativelanguage.googleapis.com";
     private static final String PATH = "/v1beta/models/%s:generateContent";
