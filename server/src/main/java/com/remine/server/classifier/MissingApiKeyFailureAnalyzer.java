@@ -13,7 +13,8 @@ public class MissingApiKeyFailureAnalyzer extends AbstractFailureAnalyzer<Missin
                 "remine.classifier=gemini 로 실행했지만 API 키(" + name + ")가 설정되어 있지 않습니다.",
                 "다음 중 하나를 하세요.\n"
                         + "  1) 환경변수 " + name + " 를 설정한다.\n"
-                        + "  2) 사용자 홈의 ~/.remine.env 파일에 한 줄을 적는다: " + name + "=키값 (따옴표 없이, BOM 없는 UTF-8)\n"
+                        + "  2) 키 파일에 한 줄을 적는다: " + name + "=키값 (따옴표 없이, BOM 없는 UTF-8)\n"
+                        + "     키 파일 = 환경변수 REMINE_ENV_FILE이 가리키는 파일, 없으면 ~/.remine.env\n"
                         + "  3) 키 없이 쓰려면 remine.classifier=fake (기본값)로 실행한다.",
                 cause);
     }

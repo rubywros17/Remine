@@ -52,8 +52,10 @@ cd server
 ./gradlew bootRun --args="--remine.classifier=gemini"   # 실제 Gemini 분류 (GEMINI_API_KEY 필요)
 ./gradlew test
 ```
-- Gemini 키는 환경변수 `GEMINI_API_KEY` 또는 `~/.remine.env` 파일(`GEMINI_API_KEY=키값`, 따옴표 없이)에 둔다. 키가 없으면 기동이 안내와 함께 실패한다.
-- 테스트는 `~/.remine.env`·키·`REMINE_CLASSIFIER`를 읽지 않고(build.gradle에서 중립화) 실제 API를 부르지 않는다.
+- Gemini 키는 환경변수 `GEMINI_API_KEY` 또는 키 파일(`GEMINI_API_KEY=키값`, 따옴표 없이)에 둔다. 키가 없으면 기동이 안내와 함께 실패한다.
+- 키 파일 위치: 환경변수 `REMINE_ENV_FILE`(이 PC: `E:\dev\secrets\remine\remine.env`), 없으면 `~/.remine.env`. `.properties`로 읽히므로 값의 경로는 `/`로 쓴다(`\`는 이스케이프).
+- Firebase 서비스 계정 키 경로: `remine.fcm.credentials-file`(키 파일에 `remine.fcm.credentials-file=E:/dev/secrets/remine/firebase-admin.json`). 서버 FCM 구현 시 이 이름으로 읽는다.
+- 테스트는 키 파일(`REMINE_ENV_FILE`·`~/.remine.env`)·키·`REMINE_CLASSIFIER`를 읽지 않고(build.gradle에서 중립화) 실제 API를 부르지 않는다.
 - 관심사(`remine.interest.*`): 14일·3회, 주간 집계 cron(`alert-cron`, 테스트에서는 build.gradle이 `-`로 끔), 쿨다운 28일. 태그 불용어는 `remine.tags.stopwords` 한 곳. "지금"은 `Clock` 빈에서만 읽는다(테스트는 고정 시계).
 - analyze는 요청당 최대 20장(`remine.analyze.max-batch-size`). 설정은 `server/src/main/resources/application.yaml`의 `remine.*`.
 - 이미지 입력(`remine.image.*`): 장당 `max-bytes`(1MB), `max-long-side`(1024), `max-pixels`(25,000,000), 요청 `max-request-bytes`(12MB)·파트 `max-part-bytes`(5MB). multipart는 **메모리 전용**(`spring.servlet.multipart.file-size-threshold`를 낮추지 말 것 — 기본 0B는 이미지를 임시 파일로 씀). 앱은 `GET /api/config`로 값을 받는다. 형식은 `docs/spec.md` API 절.

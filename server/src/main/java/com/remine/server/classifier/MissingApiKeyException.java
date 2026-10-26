@@ -10,7 +10,7 @@ public class MissingApiKeyException extends IllegalStateException {
 
     public MissingApiKeyException(String propertyName) {
         super("remine.classifier=gemini 인데 " + propertyName + " 가 설정되어 있지 않습니다. 환경변수 " + propertyName
-                + " 또는 ~/.remine.env 파일에 " + propertyName + "=키값 을 설정하거나, remine.classifier=fake 로 실행하세요.");
+                + " 또는 키 파일(REMINE_ENV_FILE, 기본 ~/.remine.env)에 " + propertyName + "=키값 을 설정하거나, remine.classifier=fake 로 실행하세요.");
         this.propertyName = propertyName;
     }
 

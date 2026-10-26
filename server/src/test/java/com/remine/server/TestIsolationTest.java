@@ -7,17 +7,19 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.PropertySource;
+import org.springframework.core.env.SystemEnvironmentPropertySource;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * 테스트가 개발자 PC의 상태(~/.remine.env, GEMINI_API_KEY, REMINE_CLASSIFIER)에 영향받지 않고
+ * 테스트가 개발자 PC의 상태(REMINE_ENV_FILE·~/.remine.env, GEMINI_API_KEY, REMINE_CLASSIFIER)에 영향받지 않고
  * 실제 LLM API에 닿을 수 없다는 것을 고정한다. 설정은 build.gradle의 test 태스크에 있다.
  */
 @SpringBootTest
@@ -35,6 +37,13 @@ class TestIsolationTest {
         for (PropertySource<?> source : environment.getPropertySources()) {
             assertThat(source.getName()).doesNotContain(".remine.env");
         }
+    }
+
+    @Test
+    void 키_파일_위치는_환경변수_REMINE_ENV_FILE로도_정할_수_있다() {
+        // application.yaml의 ${remine.env-file:...}는 OS 환경변수 REMINE_ENV_FILE로도 채워진다(Spring 이름 변환).
+        var env = new SystemEnvironmentPropertySource("env", Map.of("REMINE_ENV_FILE", "E:/secrets/remine.env"));
+        assertThat(env.getProperty("remine.env-file")).isEqualTo("E:/secrets/remine.env");
     }
 
     @Test
