@@ -9,6 +9,7 @@ import '../data/device/ocr_export.dart';
 import '../data/device/ocr_store.dart';
 import '../data/device/privacy/app_rules.dart';
 import '../data/remine_store.dart';
+import '../data/remote/api_client.dart';
 import '../widgets/app_button.dart';
 import '../widgets/gallery_thumb.dart';
 import '../widgets/pressable_scale.dart';
@@ -73,6 +74,28 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
     await Clipboard.setData(ClipboardData(text: '$id'));
     if (!mounted) return;
     setState(() => _status = '기기 id $id 복사했어.');
+  }
+
+  /// 서버(dev 프로필)가 이 기기에 관심사 알림 1건을 바로 보낸다. 앱이 앞에 있으면 FCM 알림이 화면에 안 뜨므로
+  /// 5초 기다렸다 보낸다(그사이 홈으로 내리면 알림 → 탭 → 관심사 화면까지 확인할 수 있다).
+  Future<void> _sendTestPush() async {
+    final sync = widget.services.remote?.sync;
+    if (sync == null) return;
+    setState(() => _status = '5초 뒤에 보낼게. 앱을 내려 둬(앱이 앞에 있으면 알림이 안 보여).');
+    await Future<void>.delayed(const Duration(seconds: 5));
+    String result;
+    try {
+      await sync.sendTestPush();
+      result = '테스트 알림 보냈어.';
+    } on ApiException catch (e) {
+      result = switch (e.statusCode) {
+        404 => '서버를 dev 프로필로 켜 줘(--spring.profiles.active=dev).',
+        409 => '설정에서 알림을 먼저 켜 줘.',
+        503 => '서버에 Firebase 키가 없어(remine.fcm.credentials-file).',
+        _ => '보내지 못했어(${e.failure.name}).',
+      };
+    }
+    if (mounted) setState(() => _status = result);
   }
 
   Future<void> _loadAlbums() async {
@@ -213,6 +236,22 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
                 ],
               ),
             ),
+            if (widget.services.remote != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.screenPadding,
+                  AppSpacing.s8,
+                  AppSpacing.screenPadding,
+                  0,
+                ),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: PressableScale(
+                    onTap: _sendTestPush,
+                    child: AppChip.outlined(label: '테스트 알림 보내기'),
+                  ),
+                ),
+              ),
             if (_deviceIdLine.isNotEmpty)
               GestureDetector(
                 onLongPress: _copyDeviceId, // 길게 누르면 복사

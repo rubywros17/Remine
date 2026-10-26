@@ -136,29 +136,62 @@ class SyncService {
     return photoLimit > 0 ? all.take(photoLimit).toList() : all;
   }
 
-  /// 앱 시작 때 한 번: 현재 토큰을 서버에 올리고, FCM이 토큰을 바꾸면 다시 올린다.
-  /// 아직 등록 전이면 건너뛴다(등록 요청에 토큰이 실린다). 실패는 무시한다(다음 시작에 다시).
+  /// 앱 시작 때 한 번 서버의 토큰을 알림 설정에 맞춘다. **서버에 토큰이 있는 건 알림을 켰을 때뿐이다.**
+  /// 켜짐 → 지금 토큰을 올리고 FCM이 바꿀 때마다 다시 올림 / 꺼짐 → 지움(지난번 실패분도 여기서 다시) /
+  /// 아직 안 고름 → 그대로. 아직 등록 전이면 건너뛴다(등록 요청이 켜짐일 때만 토큰을 싣는다). 실패는 무시한다.
   Future<void> startTokenSync() async {
     final p = push;
     if (p == null) return;
-    _tokenSub ??= p.tokenRefresh.listen(_uploadToken);
-    await _uploadToken(await p.token());
+    _tokenSub ??= p.tokenRefresh.listen((t) async {
+      if (await settings.notificationsEnabled() == true) await _uploadToken(t);
+    });
+    await _applyToServer(await settings.notificationsEnabled());
+  }
+
+  /// 설정·첫 안내 화면에서 고른 값을 저장하고 서버 토큰을 맞춘다(켜면 올림, 끄면 지움).
+  Future<void> setNotifications(bool on) async {
+    await settings.setNotificationsEnabled(on);
+    await _applyToServer(on);
+  }
+
+  Future<void> _applyToServer(bool? on) async {
+    if (on == true) {
+      await _uploadToken(await push?.token());
+    } else if (on == false) {
+      await _quietly((id) => api.deleteFcmToken(id));
+    }
   }
 
   Future<void> _uploadToken(String? token) async {
-    if (token == null) return;
+    if (token != null) await _quietly((id) => api.updateFcmToken(id, token));
+  }
+
+  /// 등록된 기기에만 부르고 실패는 삼킨다. 서버에 닿지 못했거나 기기를 모름(404)
+  /// → 다음 시작의 [startTokenSync]나 재등록이 설정에 맞게 다시 한다.
+  Future<void> _quietly(Future<void> Function(int deviceId) call) async {
     try {
       final id = await state.deviceId();
-      if (id != null) await api.updateFcmToken(id, token);
-    } catch (_) {
-      // 서버에 닿지 못했거나 기기를 모름(404) → 다음 동기화의 재등록이 새 토큰을 싣는다
-    }
+      if (id != null) await call(id);
+    } catch (_) {}
   }
+
+  /// [개발용] 서버(dev 프로필)가 이 기기에 테스트 알림 1건을 바로 보내게 한다. 실패는 [ApiException].
+  Future<void> sendTestPush() async {
+    final id = await state.deviceId();
+    if (id == null) throw const ApiException(ApiFailure.rejected); // 아직 등록 전
+    await api.sendTestPush(id);
+  }
+
+  /// 알림을 켰을 때만 등록 요청에 토큰을 싣는다.
+  Future<String?> _tokenForRegister() async =>
+      await settings.notificationsEnabled() == true
+      ? await push?.token()
+      : null;
 
   Future<int> _ensureDevice() async {
     final saved = await state.deviceId();
     if (saved != null) return saved;
-    final id = await api.registerDevice(await push?.token());
+    final id = await api.registerDevice(await _tokenForRegister());
     await state.setDeviceId(id);
     return id;
   }
@@ -166,7 +199,7 @@ class SyncService {
   /// 서버가 기기를 모를 때(서버 DB가 초기화됨 등): 새로 등록하고, 서버에 있다고 믿던 동기화 기록을 버려 다시 보내게 한다.
   Future<int> _reregister() async {
     await state.clear();
-    final id = await api.registerDevice(await push?.token());
+    final id = await api.registerDevice(await _tokenForRegister());
     await state.setDeviceId(id);
     return id;
   }

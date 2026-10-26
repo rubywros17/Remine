@@ -1,20 +1,21 @@
 import 'local_db.dart';
 
-/// 기기에 두는 사용자 설정: 이미지 분석 동의, 알림 권한을 이미 물었는지.
+/// 기기에 두는 사용자 설정: 이미지 분석 동의, 관심사 알림 받기.
 abstract interface class SettingsStore {
   /// 이미지 분석 동의. 아직 묻지 않았으면 null, 거부면 false.
   Future<bool?> imageConsent();
 
   Future<void> setImageConsent(bool value);
 
-  /// 첫 동기화 뒤 알림 권한 시트를 이미 보여 줬는지(한 번만 묻는다).
-  Future<bool> notificationAsked();
+  /// 관심사 알림 받기. 아직 고르지 않았으면 null(첫 분석 뒤 안내 화면이 묻는다), 끄면 false.
+  /// 켜져 있을 때만 서버에 FCM 토큰이 있다.
+  Future<bool?> notificationsEnabled();
 
-  Future<void> setNotificationAsked();
+  Future<void> setNotificationsEnabled(bool value);
 }
 
 const _imageConsentKey = 'image_consent';
-const _notificationAskedKey = 'notification_asked';
+const _notificationsKey = 'notifications_enabled';
 
 class SqfliteSettingsStore implements SettingsStore {
   SqfliteSettingsStore(this._local);
@@ -32,11 +33,14 @@ class SqfliteSettingsStore implements SettingsStore {
       _put(_imageConsentKey, value ? '1' : '0');
 
   @override
-  Future<bool> notificationAsked() async =>
-      await _get(_notificationAskedKey) == '1';
+  Future<bool?> notificationsEnabled() async {
+    final v = await _get(_notificationsKey);
+    return v == null ? null : v == '1';
+  }
 
   @override
-  Future<void> setNotificationAsked() => _put(_notificationAskedKey, '1');
+  Future<void> setNotificationsEnabled(bool value) =>
+      _put(_notificationsKey, value ? '1' : '0');
 
   Future<String?> _get(String key) async {
     final rows = await (await _local.db).query(
@@ -64,7 +68,7 @@ class InMemorySettingsStore implements SettingsStore {
   InMemorySettingsStore([this._consent]);
 
   bool? _consent;
-  bool _notificationAsked = false;
+  bool? _notifications;
 
   @override
   Future<bool?> imageConsent() async => _consent;
@@ -73,8 +77,9 @@ class InMemorySettingsStore implements SettingsStore {
   Future<void> setImageConsent(bool value) async => _consent = value;
 
   @override
-  Future<bool> notificationAsked() async => _notificationAsked;
+  Future<bool?> notificationsEnabled() async => _notifications;
 
   @override
-  Future<void> setNotificationAsked() async => _notificationAsked = true;
+  Future<void> setNotificationsEnabled(bool value) async =>
+      _notifications = value;
 }

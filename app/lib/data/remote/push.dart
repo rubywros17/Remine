@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/services.dart';
 
 import '../../models/category.dart';
 
@@ -43,7 +44,14 @@ abstract interface class PushClient {
   Stream<String> get tokenRefresh;
 
   /// 알림 권한을 묻는다(Android 13+는 시스템 창). 허용됐으면 true.
+  /// 이미 영구 거부했으면 창 없이 false — 이때는 [openSystemSettings]로 안내한다.
   Future<bool> requestPermission();
+
+  /// 지금 알림이 허용돼 있는지(묻지 않는다). 사용자가 휴대폰 설정에서 끄면 false.
+  Future<bool> permissionGranted();
+
+  /// 이 앱의 휴대폰 알림 설정 화면을 연다.
+  Future<void> openSystemSettings();
 
   /// 앱이 꺼진 상태에서 알림을 눌러 켜졌으면 그 알림.
   Future<PushTarget?> initialTap();
@@ -73,12 +81,24 @@ class FirebasePushClient implements PushClient {
   // ignore: deprecated_member_use
   Stream<String> get tokenRefresh => _messaging.onTokenRefresh;
 
+  // 휴대폰 설정 열기는 플러그인 없이 MainActivity.kt의 채널 하나로 한다.
+  static const _settings = MethodChannel('remine/settings');
+
   @override
-  Future<bool> requestPermission() async {
-    final s = await _messaging.requestPermission();
-    return s.authorizationStatus == AuthorizationStatus.authorized ||
-        s.authorizationStatus == AuthorizationStatus.provisional;
-  }
+  Future<bool> requestPermission() async =>
+      _allowed(await _messaging.requestPermission());
+
+  @override
+  Future<bool> permissionGranted() async =>
+      _allowed(await _messaging.getNotificationSettings());
+
+  @override
+  Future<void> openSystemSettings() =>
+      _settings.invokeMethod<void>('openNotificationSettings');
+
+  static bool _allowed(NotificationSettings s) =>
+      s.authorizationStatus == AuthorizationStatus.authorized ||
+      s.authorizationStatus == AuthorizationStatus.provisional;
 
   @override
   Future<PushTarget?> initialTap() async {

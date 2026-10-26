@@ -82,7 +82,10 @@ class RecordingClient extends http.BaseClient {
       case 'POST /api/devices':
         return jsonResponse({'deviceId': 7});
       case 'PUT /api/devices/me/fcm-token':
+      case 'DELETE /api/devices/me/fcm-token':
         return http.StreamedResponse(const Stream.empty(), 204);
+      case 'POST /api/dev/push-test':
+        return jsonResponse({'result': 'SENT'});
       case 'GET /api/config':
         return jsonResponse({
           'imageThresholdChars': 150,

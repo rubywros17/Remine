@@ -201,6 +201,20 @@ class RemineApi {
     await _send(request);
   }
 
+  /// DELETE /api/devices/me/fcm-token. 사용자가 알림을 끄면 서버가 이 기기에 보내지 않게 한다.
+  Future<void> deleteFcmToken(int deviceId) async {
+    final request = http.Request('DELETE', _uri('/api/devices/me/fcm-token'));
+    request.headers.addAll(_headers(deviceId));
+    await _send(request);
+  }
+
+  /// [개발용] POST /api/dev/push-test. 서버가 dev 프로필일 때만 있고, 아니면 404.
+  Future<void> sendTestPush(int deviceId) async {
+    final request = http.Request('POST', _uri('/api/dev/push-test'));
+    request.headers.addAll(_headers(deviceId));
+    await _send(request);
+  }
+
   Future<ApiConfig> config() async =>
       ApiConfig.fromJson(await _getJson('/api/config', null));
 

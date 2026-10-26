@@ -8,8 +8,12 @@ class FakePushClient implements PushClient {
 
   String? currentToken;
   PushTarget? initial;
+
+  /// 권한 창에서 허용할지. [granted]는 지금 허용돼 있는지(묻지 않음).
   bool grant = true;
+  bool granted = false;
   int permissionRequests = 0;
+  int settingsOpened = 0;
 
   final refresh = StreamController<String>.broadcast();
   final tapEvents = StreamController<PushTarget>.broadcast();
@@ -23,8 +27,14 @@ class FakePushClient implements PushClient {
   @override
   Future<bool> requestPermission() async {
     permissionRequests++;
-    return grant;
+    return granted = grant;
   }
+
+  @override
+  Future<bool> permissionGranted() async => granted;
+
+  @override
+  Future<void> openSystemSettings() async => settingsOpened++;
 
   @override
   Future<PushTarget?> initialTap() async => initial;

@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
-import '../core/tokens.dart';
 import '../data/device/settings_store.dart';
-import '../widgets/app_button.dart';
+import '../widgets/intro_choice_screen.dart';
 
 /// 이미지 분석 동의 문구. 개인정보 문구는 해요체로 쓴다(docs/design.md).
 const consentTitle = '글자가 적은 캡처는\n사진으로 분석할게요';
@@ -70,72 +69,13 @@ class ConsentScreen extends StatelessWidget {
   final ValueChanged<bool> onChoose;
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(AppSpacing.screenPadding),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: AppSpacing.s24),
-              DecoratedBox(
-                decoration: const BoxDecoration(
-                  color: AppColors.lemon,
-                  shape: BoxShape.circle,
-                ),
-                child: const SizedBox(
-                  width: 56,
-                  height: 56,
-                  child: Icon(
-                    LucideIcons.imageUp,
-                    size: 26,
-                    color: AppColors.ink,
-                  ),
-                ),
-              ),
-              const SizedBox(height: AppSpacing.s24),
-              Text(consentTitle, style: AppText.display),
-              const SizedBox(height: AppSpacing.s12),
-              Text(consentBody, style: AppText.body),
-              const SizedBox(height: AppSpacing.s20),
-              for (final point in consentPoints)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: AppSpacing.s12),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Padding(
-                        padding: EdgeInsets.only(top: 3),
-                        child: Icon(
-                          LucideIcons.check,
-                          size: 18,
-                          color: AppColors.celadonDeep,
-                        ),
-                      ),
-                      const SizedBox(width: AppSpacing.s12),
-                      Expanded(child: Text(point, style: AppText.body)),
-                    ],
-                  ),
-                ),
-              const SizedBox(height: AppSpacing.s20),
-              Wrap(
-                spacing: AppSpacing.s8,
-                runSpacing: AppSpacing.s8,
-                children: [
-                  AppButton(label: '동의할래요', onTap: () => onChoose(true)),
-                  AppButton(
-                    label: '안 할래요',
-                    onTap: () => onChoose(false),
-                    outlined: true,
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => IntroChoiceScreen(
+    icon: LucideIcons.imageUp,
+    title: consentTitle,
+    body: consentBody,
+    points: consentPoints,
+    yesLabel: '동의할래요',
+    noLabel: '안 할래요',
+    onChoose: onChoose,
+  );
 }

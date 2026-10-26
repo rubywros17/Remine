@@ -1,18 +1,23 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
 import 'package:remine/app.dart';
-import 'package:remine/data/device/settings_store.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
 import 'package:remine/data/remote/push.dart';
 import 'package:remine/models/category.dart';
 import 'package:remine/screens/category_screen.dart';
+import 'package:remine/screens/debug_ocr_screen.dart';
+import 'package:remine/screens/notification_screen.dart';
+import 'package:remine/screens/settings_screen.dart';
 import 'package:remine/screens/sync_gate.dart';
 
 import 'support/fake_device.dart';
 import 'support/fake_push.dart';
 import 'support/fake_remote.dart';
 
-const _sheetTitle = '관심사가 생기면 알려 드릴까요?';
+const _askSettings = '휴대폰 설정에서 알림을 켜 주세요';
 
 void main() {
   group('PushTarget.fromData', () {
@@ -40,147 +45,385 @@ void main() {
     });
   });
 
-  group('FCM 토큰', () {
-    test('기기 등록에 실제 토큰을 싣는다(임시값 없음)', () async {
+  group('FCM 토큰은 알림을 켰을 때만 서버에', () {
+    Future<SyncRig> rigWith(
+      bool? enabled, {
+      FakePushClient? push,
+      RecordingClient? client,
+    }) async {
       final rig = await SyncRig.create(
         photos: const [],
-        push: FakePushClient(),
+        push: push ?? FakePushClient(),
+        client: client,
       );
+      if (enabled != null) await rig.settings.setNotificationsEnabled(enabled);
+      return rig;
+    }
+
+    List<(String, String)> tokenCalls(SyncRig rig) => [
+      for (final r in rig.client.sent)
+        if (r.path == '/api/devices/me/fcm-token') (r.method, r.utf8Text),
+    ];
+
+    test('켜져 있으면 기기 등록에 실제 토큰을 싣는다(임시값 없음)', () async {
+      final rig = await rigWith(true);
 
       await rig.sync.run();
 
-      final register = rig.client.sent.singleWhere(
-        (r) => r.method == 'POST' && r.path == '/api/devices',
-      );
-      expect(register.utf8Text, '{"fcmToken":"fcm-test-token"}');
-      expect(register.utf8Text, isNot(contains('pending-fcm-token')));
+      final body = rig.client.sent
+          .singleWhere((r) => r.method == 'POST' && r.path == '/api/devices')
+          .utf8Text;
+      expect(body, '{"fcmToken":"fcm-test-token"}');
+      expect(body, isNot(contains('pending-fcm-token')));
     });
 
-    test('토큰을 못 받아도 등록·동기화는 된다', () async {
-      final rig = await SyncRig.create(
-        photos: const [],
-        push: FakePushClient(currentToken: null),
-      );
+    test('아직 안 골랐거나 껐으면 토큰 없이 등록한다', () async {
+      for (final enabled in [null, false]) {
+        final rig = await rigWith(enabled);
 
-      await rig.sync.run();
+        await rig.sync.run();
 
-      expect(await rig.state.deviceId(), 7);
-      expect(
-        rig.client.sent.singleWhere((r) => r.path == '/api/devices').utf8Text,
-        '{"fcmToken":null}',
-      );
+        expect(await rig.state.deviceId(), 7);
+        expect(
+          rig.client.sent.singleWhere((r) => r.path == '/api/devices').utf8Text,
+          '{"fcmToken":null}',
+          reason: '$enabled',
+        );
+      }
     });
 
-    test('시작할 때 현재 토큰을 올리고, FCM이 토큰을 바꾸면 다시 올린다', () async {
+    test('켜져 있으면 시작할 때 토큰을 올리고, FCM이 바꾸면 다시 올린다', () async {
       final push = FakePushClient();
-      final rig = await SyncRig.create(photos: const [], push: push);
+      final rig = await rigWith(true, push: push);
       await rig.state.setDeviceId(7);
 
       await rig.sync.startTokenSync();
       push.refresh.add('fcm-new-token');
       await pumpEventQueue();
 
-      final puts = rig.client.sent
-          .where((r) => r.method == 'PUT')
-          .map((r) => (r.path, r.utf8Text))
-          .toList();
-      expect(puts, [
-        ('/api/devices/me/fcm-token', '{"fcmToken":"fcm-test-token"}'),
-        ('/api/devices/me/fcm-token', '{"fcmToken":"fcm-new-token"}'),
+      expect(tokenCalls(rig), [
+        ('PUT', '{"fcmToken":"fcm-test-token"}'),
+        ('PUT', '{"fcmToken":"fcm-new-token"}'),
       ]);
     });
 
-    test('아직 등록 전이면 올리지 않는다(등록 요청에 실린다)', () async {
-      final rig = await SyncRig.create(
-        photos: const [],
-        push: FakePushClient(),
-      );
+    test('꺼져 있으면 시작할 때 서버 토큰을 지우고, 토큰이 바뀌어도 올리지 않는다', () async {
+      final push = FakePushClient();
+      final rig = await rigWith(false, push: push);
+      await rig.state.setDeviceId(7);
+
+      await rig.sync.startTokenSync();
+      push.refresh.add('fcm-new-token');
+      await pumpEventQueue();
+
+      expect(tokenCalls(rig), [('DELETE', '')]);
+    });
+
+    test('아직 안 골랐으면 아무것도 하지 않는다', () async {
+      final rig = await rigWith(null);
+      await rig.state.setDeviceId(7);
 
       await rig.sync.startTokenSync();
 
       expect(rig.client.sent, isEmpty);
     });
 
-    test('토큰 올리기가 실패해도 예외가 나지 않는다', () async {
-      final rig = await SyncRig.create(
-        photos: const [],
-        push: FakePushClient(),
+    test('켜고 끄면 저장하고 서버 토큰을 올리거나 지운다', () async {
+      final rig = await rigWith(null);
+      await rig.state.setDeviceId(7);
+
+      await rig.sync.setNotifications(true);
+      expect(await rig.settings.notificationsEnabled(), isTrue);
+      await rig.sync.setNotifications(false);
+      expect(await rig.settings.notificationsEnabled(), isFalse);
+
+      expect(tokenCalls(rig).map((c) => c.$1), ['PUT', 'DELETE']);
+    });
+
+    test('서버 호출이 실패해도 예외가 나지 않고 설정은 저장된다', () async {
+      final rig = await rigWith(
+        null,
         client: RecordingClient(responder: (r) => jsonResponse({}, 404)),
       );
       await rig.state.setDeviceId(7);
 
+      await rig.sync.setNotifications(false);
       await rig.sync.startTokenSync();
+
+      expect(await rig.settings.notificationsEnabled(), isFalse);
     });
   });
 
-  group('알림 권한은 첫 동기화 뒤 한 번', () {
-    Future<void> openGate(
+  group('알림 안내는 첫 분석 완료 화면의 [홈으로] 뒤에 한 번', () {
+    Widget gate(SyncRig rig) => MaterialApp(
+      home: SyncGate(
+        remote: rig.remote,
+        settings: rig.settings,
+        child: const Text('HOME'),
+      ),
+    );
+
+    Future<void> finishFirstAnalysis(WidgetTester tester, SyncRig rig) async {
+      await tester.pumpWidget(gate(rig));
+      await tester.runAsync(() => rig.sync.run());
+      await tester.pump(const Duration(seconds: 3));
+      expect(
+        find.text(notificationTitle),
+        findsNothing,
+        reason: '[홈으로] 전에는 묻지 않는다',
+      );
+      await tester.ensureVisible(find.text('홈으로')); // 오류 문구가 있으면 버튼이 아래로 밀린다
+      await tester.tap(find.text('홈으로'));
+      await tester.runAsync(pumpEventQueue);
+      await tester.pump();
+    }
+
+    Future<void> choose(WidgetTester tester, String label) async {
+      await tester.tap(find.text(label));
+      await tester.runAsync(pumpEventQueue);
+      await tester.pump();
+    }
+
+    Future<SyncRig> newRig(
       WidgetTester tester,
-      SyncRig rig,
-      SettingsStore settings,
-    ) async {
+      FakePushClient push, {
+      RecordingClient? client,
+    }) async => (await tester.runAsync(
+      () => SyncRig.create(photos: const [], push: push, client: client),
+    ))!;
+
+    testWidgets('[알림 받기] → 시스템 권한 창 → 허용이면 켜고 토큰을 올린다', (tester) async {
+      final push = FakePushClient();
+      final rig = await newRig(tester, push);
+
+      await finishFirstAnalysis(tester, rig);
+      expect(find.text(notificationTitle), findsOneWidget);
+      expect(push.permissionRequests, 0, reason: '안내 화면 전에는 시스템 창을 띄우지 않는다');
+
+      await choose(tester, '알림 받기');
+
+      expect(push.permissionRequests, 1);
+      expect(find.text('HOME'), findsOneWidget);
+      expect(await rig.settings.notificationsEnabled(), isTrue);
+      expect(
+        rig.client.sent.where((r) => r.method == 'PUT').map((r) => r.utf8Text),
+        ['{"fcmToken":"fcm-test-token"}'],
+      );
+    });
+
+    testWidgets('권한 창에서 거부하면 꺼짐으로 저장한다', (tester) async {
+      final rig = await newRig(tester, FakePushClient()..grant = false);
+
+      await finishFirstAnalysis(tester, rig);
+      await choose(tester, '알림 받기');
+
+      expect(await rig.settings.notificationsEnabled(), isFalse);
+    });
+
+    testWidgets('[나중에]면 권한을 묻지 않고 꺼짐, 다음 실행에는 다시 묻지 않는다', (tester) async {
+      final push = FakePushClient();
+      final rig = await newRig(tester, push);
+
+      await finishFirstAnalysis(tester, rig);
+      await choose(tester, '나중에');
+
+      expect(push.permissionRequests, 0);
+      expect(find.text('HOME'), findsOneWidget);
+      expect(await rig.settings.notificationsEnabled(), isFalse);
+
+      // 서버가 초기화돼 첫 분석 화면이 다시 보여도 묻지 않는다
+      await tester.runAsync(() => rig.state.clear());
+      await tester.pumpWidget(const SizedBox());
+      await finishFirstAnalysis(tester, rig);
+      expect(find.text(notificationTitle), findsNothing);
+    });
+
+    testWidgets('회귀: 첫 분석이 실패로 끝나도 [홈으로] 뒤에 묻는다', (tester) async {
+      // 예전에는 첫 run이 성공해야만 물어서, 실기기에서 시간 초과가 나면 다시 묻는 경로가 없었다.
+      final rig = await newRig(
+        tester,
+        FakePushClient(),
+        client: RecordingClient()..throwOnSend = Exception('offline'),
+      );
+
+      await finishFirstAnalysis(tester, rig);
+
+      expect(find.text(notificationTitle), findsOneWidget);
+    });
+
+    testWidgets('"홈에서 먼저 볼래요"로 중간에 나가면 묻지 않는다', (tester) async {
+      final rig = await newRig(
+        tester,
+        FakePushClient(),
+        client: RecordingClient(
+          responder: (r) => Completer<http.StreamedResponse>().future,
+        ),
+      );
+      await tester.pumpWidget(gate(rig));
+      await tester.pump();
+      await tester.pump();
+
+      await choose(tester, '홈에서 먼저 볼래요');
+
+      expect(find.text('HOME'), findsOneWidget);
+      expect(find.text(notificationTitle), findsNothing);
+      // 응답 없는 요청의 시간 제한을 흘려보내 대기 타이머를 비운다
+      await tester.pump(const Duration(minutes: 3));
+    });
+  });
+
+  group('설정의 알림 받기 스위치', () {
+    // 설정의 스위치 두 개 중 아래(이미지 분석 다음)가 알림 받기다.
+    final notifySwitch = find.byType(Switch).last;
+
+    Future<SyncRig> openSettings(
+      WidgetTester tester,
+      FakePushClient push, {
+      bool? enabled,
+    }) async {
+      final rig = (await tester.runAsync(() async {
+        final rig = await SyncRig.create(photos: const [], push: push);
+        await rig.state.setDeviceId(7);
+        if (enabled != null) {
+          await rig.settings.setNotificationsEnabled(enabled);
+        }
+        return rig;
+      }))!;
       await tester.pumpWidget(
         MaterialApp(
-          home: SyncGate(
-            remote: rig.remote,
-            settings: settings,
-            child: const Text('HOME'),
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: TextButton(
+                onPressed: () => Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => SettingsScreen(
+                      settings: rig.settings,
+                      remote: rig.remote,
+                    ),
+                  ),
+                ),
+                child: const Text('OPEN'),
+              ),
+            ),
           ),
         ),
       );
-      await tester.runAsync(() => rig.sync.run());
-      await tester.pump();
-      await tester.pump(const Duration(seconds: 1));
+      await tester.tap(find.text('OPEN'));
+      await tester.pumpAndSettle();
+      return rig;
     }
 
-    testWidgets('시트에서 [알림 받기]를 고르면 권한을 묻고, 다음 실행에는 다시 묻지 않는다', (tester) async {
-      final push = FakePushClient();
-      final settings = InMemorySettingsStore(true);
-      final rig = (await tester.runAsync(
-        () => SyncRig.create(photos: const [], push: push),
-      ))!;
+    bool isOn(WidgetTester tester) => tester.widget<Switch>(notifySwitch).value;
 
-      await openGate(tester, rig, settings);
-      expect(find.text(_sheetTitle), findsOneWidget);
-      expect(push.permissionRequests, 0, reason: '시트 전에는 시스템 창을 띄우지 않는다');
-
-      await tester.tap(find.text('알림 받기'));
+    Future<void> toggle(WidgetTester tester) async {
+      await tester.tap(notifySwitch);
+      await tester.runAsync(pumpEventQueue);
       await tester.pump();
-      await tester.pump(const Duration(seconds: 1)); // 시트 닫힘 애니메이션
-      expect(push.permissionRequests, 1);
-      expect(find.text(_sheetTitle), findsNothing);
+      await tester.pump(const Duration(milliseconds: 500)); // 스낵바가 올라오는 시간
+    }
 
-      // 앱을 다시 켠 것처럼 새로 띄운다
-      await tester.pumpWidget(const SizedBox());
-      await openGate(tester, rig, settings);
-      expect(find.text(_sheetTitle), findsNothing);
+    testWidgets('켜 두었어도 휴대폰 권한이 없으면 꺼짐으로 보인다', (tester) async {
+      await openSettings(
+        tester,
+        FakePushClient()..granted = false,
+        enabled: true,
+      );
+
+      expect(isOn(tester), isFalse);
     });
 
-    testWidgets('[나중에]면 권한을 묻지 않는다', (tester) async {
+    testWidgets('켜면 권한을 요청하고 토큰을 올린다, 끄면 서버 토큰을 지운다', (tester) async {
       final push = FakePushClient();
-      final rig = (await tester.runAsync(
-        () => SyncRig.create(photos: const [], push: push),
-      ))!;
+      final rig = await openSettings(tester, push, enabled: false);
 
-      await openGate(tester, rig, InMemorySettingsStore(true));
-      await tester.tap(find.text('나중에'));
-      await tester.pump(const Duration(seconds: 1));
+      await toggle(tester);
+      expect(push.permissionRequests, 1);
+      expect(isOn(tester), isTrue);
 
-      expect(push.permissionRequests, 0);
+      await toggle(tester);
+      expect(isOn(tester), isFalse);
+      expect(await rig.settings.notificationsEnabled(), isFalse);
+      expect(
+        rig.client.sent
+            .where((r) => r.path == '/api/devices/me/fcm-token')
+            .map((r) => r.method),
+        ['PUT', 'DELETE'],
+      );
     });
 
-    testWidgets('첫 동기화가 끝나지 않았으면 묻지 않는다', (tester) async {
-      final rig = (await tester.runAsync(
-        () => SyncRig.create(
+    testWidgets('거부돼 있으면 꺼진 채로 휴대폰 설정 안내 → [설정 열기], 3초 뒤 사라진다', (tester) async {
+      final push = FakePushClient()..grant = false;
+      final rig = await openSettings(tester, push, enabled: false);
+
+      await toggle(tester);
+
+      expect(isOn(tester), isFalse);
+      expect(rig.client.sent, isEmpty);
+      expect(find.text(_askSettings), findsOneWidget);
+      await tester.tap(find.text('설정 열기'));
+      expect(push.settingsOpened, 1);
+
+      await toggle(tester);
+      await tester.pumpAndSettle(); // 앞 스낵바가 닫히고 새 스낵바가 다 올라온 뒤부터 3초를 센다
+      await tester.pump(const Duration(milliseconds: 2500));
+      expect(find.text(_askSettings), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 600));
+      await tester.pumpAndSettle();
+      expect(find.text(_askSettings), findsNothing);
+    });
+
+    testWidgets('설정 화면을 나가면 스낵바도 닫힌다(홈까지 따라가지 않는다)', (tester) async {
+      await openSettings(
+        tester,
+        FakePushClient()..grant = false,
+        enabled: false,
+      );
+
+      await toggle(tester);
+      expect(find.text(_askSettings), findsOneWidget);
+
+      tester.state<NavigatorState>(find.byType(Navigator)).pop();
+      await tester.pumpAndSettle();
+      expect(find.text('OPEN'), findsOneWidget);
+      expect(find.text(_askSettings), findsNothing);
+    });
+  });
+
+  group('디버그 테스트 알림', () {
+    testWidgets('[테스트 알림 보내기] → 5초 뒤 서버 dev 엔드포인트를 부른다', (tester) async {
+      final rig = (await tester.runAsync(() async {
+        final rig = await SyncRig.create(
           photos: const [],
           push: FakePushClient(),
-          client: RecordingClient()..throwOnSend = Exception('offline'),
+        );
+        await rig.state.setDeviceId(7);
+        return rig;
+      }))!;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DebugOcrScreen(
+            services: fakeServices(
+              FakeGalleryReader(photos: const []),
+              remote: rig.remote,
+            ),
+          ),
         ),
-      ))!;
+      );
+      await tester.pump();
+      Iterable<SentRequest> calls() => rig.client.sent.where(
+        (r) => r.method == 'POST' && r.path == '/api/dev/push-test',
+      );
 
-      await openGate(tester, rig, InMemorySettingsStore(true));
+      await tester.tap(find.text('테스트 알림 보내기'));
+      await tester.pump();
+      expect(calls(), isEmpty, reason: '앱을 내릴 시간을 준다');
 
-      expect(find.text(_sheetTitle), findsNothing);
+      await tester.pump(const Duration(seconds: 5));
+      await tester.runAsync(pumpEventQueue);
+      await tester.pump();
+
+      expect(calls(), hasLength(1));
+      expect(find.text('테스트 알림 보냈어.'), findsWidgets);
     });
   });
 

@@ -106,7 +106,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     context,
                     SettingsScreen(
                       settings: device.settings,
-                      push: device.remote?.push,
+                      remote: device.remote,
                     ),
                   ),
                 ),
