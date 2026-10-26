@@ -5,14 +5,17 @@ import com.remine.server.dto.AnalyzeRequest;
 import com.remine.server.dto.AnalyzeResponse;
 import com.remine.server.dto.CategoryUpdateRequest;
 import com.remine.server.dto.CategoryUpdateResponse;
+import com.remine.server.dto.ForgetRequest;
 import com.remine.server.dto.ScreenshotPageResponse;
 import com.remine.server.service.ScreenshotCategoryService;
+import com.remine.server.service.ScreenshotForgetService;
 import com.remine.server.service.ScreenshotQueryService;
 import com.remine.server.service.ScreenshotService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,6 +26,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -35,6 +39,7 @@ public class ScreenshotController {
     private final ScreenshotQueryService screenshotQueryService;
     private final AnalyzeMultipartReader multipartReader;
     private final ScreenshotCategoryService categoryService;
+    private final ScreenshotForgetService forgetService;
 
     @PostMapping(value = "/analyze", consumes = MediaType.APPLICATION_JSON_VALUE)
     public AnalyzeResponse analyze(@RequestHeader("X-Device-Id") Long deviceId,
@@ -56,6 +61,14 @@ public class ScreenshotController {
                                                  @PathVariable("id") Long id,
                                                  @RequestBody CategoryUpdateRequest request) {
         return categoryService.updateCategory(deviceId, id, request.category());
+    }
+
+    /** 앱이 보내지 말았어야 할 캡처(Remine 자기 캡처 등)를 서버에서 지운다. 없는 id는 무시 → 204. */
+    @PostMapping("/forget")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void forget(@RequestHeader("X-Device-Id") Long deviceId,
+                       @Valid @RequestBody ForgetRequest request) {
+        forgetService.forget(deviceId, request.assetIds());
     }
 
     @GetMapping

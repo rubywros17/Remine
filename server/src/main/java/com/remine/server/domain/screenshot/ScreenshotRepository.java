@@ -3,6 +3,7 @@ package com.remine.server.domain.screenshot;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -70,4 +71,9 @@ public interface ScreenshotRepository extends JpaRepository<Screenshot, Long> {
             order by t.category, t.rn
             """, nativeQuery = true)
     List<Object[]> findRecentAssetIdsByCategory(@Param("deviceId") Long deviceId, @Param("limit") int limit);
+
+    @Modifying(clearAutomatically = true)
+    @Query("delete from Screenshot s where s.device.id = :deviceId and s.localAssetId in :localAssetIds")
+    int deleteByDeviceAndAssetIds(@Param("deviceId") Long deviceId,
+                                  @Param("localAssetIds") Collection<String> localAssetIds);
 }

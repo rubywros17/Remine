@@ -270,6 +270,7 @@
 | 없는 id **또는 다른 기기의 캡처** | 404 (같은 응답이라 다른 기기의 id 존재를 알 수 없음. 값 검증이 먼저라 400/404 차이로도 알 수 없음) |
 | 분석되지 않은 캡처(`analyzed_at` null) | 409 |
 | GET | `/api/screenshots?category=&tag=&page=&size=` | 분류된 스크린샷 목록. taken_at 최신순, page 기본 0 / size 기본 30·최대 100, 각 항목에 태그 포함. 항목: `{id, localAssetId, takenAt, sourceApp, category, autoCategory, categorySource, summary, tags}`. `tag`는 정규화 키로 비교한다(`#`·공백·대소문자 무시, "니트 가디건" = "니트가디건"). `category` 없이 `tag`만 주면 카테고리와 상관없이 그 태그 전부(앱의 태그 모아보기) |
+| POST | `/api/screenshots/forget` | 보내지 말았어야 할 캡처(Remine 자기 화면 캡처)를 서버에서 지운다. 본문 `{"assetIds":["..."]}`(최대 500개, 없으면 400) → 204. 이 기기의 캡처와 태그 연결만 지우고 없는 id는 무시(멱등). 관심사·카테고리 개수는 조회 때 다시 세므로 바로 반영된다. 미등록 기기 404 |
 | GET | `/api/categories/summary` | 홈 화면용. 7개 카테고리 전부 반환(0장은 count 0), 카테고리별 개수·대표 태그 상위 3개·최신 localAssetId 4개 |
 | GET | `/api/interests` | 감지된 관심사 목록(횟수 많은 순 → 마지막 캡처 최근 순 → 이름순). `{windowDays:14, minCount:3, items:[{tag, category, captureCount, dormantDays, recent:[{id, localAssetId}], linkedTags:[tag]}]}`. `recent`는 최근 3장(최신순, 앱이 기기 사진으로 썸네일을 그림), `dormantDays`는 마지막 캡처 이후 일수, `linkedTags`는 기간 안에 같은 캡처에 함께 붙은 다른 관심사 태그(앱의 머릿속 지도 연결선, 이미 읽은 행으로 묶어 쿼리 추가 없음). OCR 원문·요약은 없다. 없으면 `items: []` |
 

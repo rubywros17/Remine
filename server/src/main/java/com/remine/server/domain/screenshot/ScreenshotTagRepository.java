@@ -1,6 +1,7 @@
 package com.remine.server.domain.screenshot;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -37,4 +38,13 @@ public interface ScreenshotTagRepository extends JpaRepository<ScreenshotTag, Lo
             order by s.takenAt desc, s.id desc
             """)
     List<InterestRow> findInterestRows(@Param("deviceId") Long deviceId, @Param("since") LocalDateTime since);
+
+    @Modifying(clearAutomatically = true)
+    @Query("""
+            delete from ScreenshotTag st
+            where st.screenshot.id in (
+                select s.id from Screenshot s where s.device.id = :deviceId and s.localAssetId in :localAssetIds)
+            """)
+    int deleteByDeviceAndAssetIds(@Param("deviceId") Long deviceId,
+                                  @Param("localAssetIds") Collection<String> localAssetIds);
 }
