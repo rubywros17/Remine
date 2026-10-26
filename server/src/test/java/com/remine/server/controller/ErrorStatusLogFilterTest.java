@@ -15,6 +15,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /** 4xx·5xx는 WARN 한 줄(메서드·경로·상태 코드)로 남고, 쿼리·헤더·본문은 남지 않는다. */
@@ -33,6 +34,16 @@ class ErrorStatusLogFilterTest {
 
         assertThat(output).contains("WARN").contains("GET /api/screenshots → 404");
         assertThat(output.getOut()).doesNotContain("비밀태그").doesNotContain("987654").doesNotContain("tag=");
+    }
+
+    @Test
+    void 미등록_기기_404는_본문_code로_다른_404와_구분된다() throws Exception {
+        mvc.perform(get("/api/interests").header("X-Device-Id", 987_654))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("DEVICE_NOT_FOUND"));
+        mvc.perform(get("/api/no-such-path").header("X-Device-Id", 987_654))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").doesNotExist());
     }
 
     @Test
