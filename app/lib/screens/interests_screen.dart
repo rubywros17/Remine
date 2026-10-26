@@ -6,13 +6,25 @@ import '../core/tokens.dart';
 import '../data/remine_store.dart';
 import '../models/interest.dart';
 import '../widgets/home_widgets.dart';
-import 'category_screen.dart';
+import '../widgets/interest_brain_map.dart';
+import 'tag_screen.dart';
 
 /// 관심사 탭: 반복해서 캡처한 관심사 카드 목록. 없으면 빈 상태 안내.
 ///
 /// 홈과 같은 방식으로 store가 바뀌면(카테고리 수정·휴지통) 다시 읽는다.
+/// 탭이 처음 보일 때([active]) **앱 실행당 한 번** 머릿속 캡처 지도([InterestBrainMap])를 보여 준 뒤 목록으로 넘어간다.
+/// 관심사가 없거나 "애니메이션 줄이기"면 바로 목록(빈 상태)이다.
 class InterestsScreen extends StatefulWidget {
-  const InterestsScreen({super.key});
+  const InterestsScreen({super.key, this.active = true});
+
+  /// 이 탭이 지금 보이는지. 탭 화면들은 앱이 켜질 때 한꺼번에 만들어져서(IndexedStack) 따로 알려 준다.
+  final bool active;
+
+  /// 이번 실행에 지도를 이미 보여 줬는지(탭을 다시 눌러도 또 나오지 않게).
+  static bool _introShown = false;
+
+  @visibleForTesting
+  static void resetIntroForTest() => _introShown = false;
 
   @override
   State<InterestsScreen> createState() => _InterestsScreenState();
@@ -20,6 +32,7 @@ class InterestsScreen extends StatefulWidget {
 
 class _InterestsScreenState extends State<InterestsScreen> {
   int _seenRevision = -1;
+  bool _intro = false;
 
   /// null = 아직 불러오는 중.
   List<Interest>? _interests;
@@ -40,13 +53,47 @@ class _InterestsScreenState extends State<InterestsScreen> {
     final interests = await store.repository.interests();
     if (!mounted || seq != _loadSeq) return;
     setState(() => _interests = interests);
+    _maybeStartIntro();
+  }
+
+  @override
+  void didUpdateWidget(InterestsScreen old) {
+    super.didUpdateWidget(old);
+    if (widget.active && !old.active) _maybeStartIntro();
+  }
+
+  void _maybeStartIntro() {
+    final interests = _interests;
+    if (!widget.active ||
+        InterestsScreen._introShown ||
+        interests == null ||
+        interests.isEmpty ||
+        MediaQuery.disableAnimationsOf(context)) {
+      return;
+    }
+    InterestsScreen._introShown = true;
+    setState(() => _intro = true);
   }
 
   @override
   Widget build(BuildContext context) {
     final interests = _interests;
     if (interests == null) return const SizedBox.shrink();
+    return AnimatedSwitcher(
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : AppBrain.crossfade,
+      child: _intro
+          ? InterestBrainMap(
+              key: const ValueKey('brain'),
+              interests: interests,
+              onDone: () => setState(() => _intro = false),
+            )
+          : KeyedSubtree(key: const ValueKey('list'), child: _list(interests)),
+    );
+  }
 
+  Widget _list(List<Interest> interests) {
     // 빈 상태도 ListView 안에 둬서 작은 화면·큰 글꼴에서 넘치지 않고 스크롤된다.
     return SafeArea(
       bottom: false,
@@ -69,9 +116,9 @@ class _InterestsScreenState extends State<InterestsScreen> {
                 onTap: () => Navigator.of(context).push(
                   appRoute(
                     context,
-                    (_) => CategoryScreen(
-                      category: interest.category,
-                      initialTag: interest.tag,
+                    (_) => TagScreen(
+                      tag: interest.tag,
+                      windowDays: interest.spanDays,
                     ),
                   ),
                 ),

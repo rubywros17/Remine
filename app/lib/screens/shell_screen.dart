@@ -24,10 +24,10 @@ class _ShellScreenState extends State<ShellScreen> {
       body: IndexedStack(
         index: _index,
         children: [
-          for (final (i, tab) in const [
-            HomeScreen(),
-            InterestsScreen(),
-            _EmptyTab(message: '검색도 곧 열릴 거야'),
+          for (final (i, tab) in [
+            const HomeScreen(),
+            InterestsScreen(active: _index == 1),
+            const _EmptyTab(message: '검색도 곧 열릴 거야'),
           ].indexed)
             HeroMode(enabled: i == _index, child: tab),
         ],

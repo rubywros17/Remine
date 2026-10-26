@@ -24,6 +24,7 @@ class Interest {
     required this.spanDays,
     required this.dormantDays,
     required this.recent,
+    this.linkedTags = const [],
   });
 
   /// '#' 없는 태그 이름 (예: "니트 가디건"). 카테고리 화면의 태그 필터로 그대로 쓴다.
@@ -44,6 +45,14 @@ class Interest {
   /// 최근 캡처 최대 3장 (최신순). 카드 콜라주에 쓴다.
   final List<InterestCapture> recent;
 
+  /// 같은 캡처에 함께 붙은 다른 관심사 태그. 머릿속 지도의 연결선. 옛 서버 응답에는 없어 빈 목록.
+  final List<String> linkedTags;
+
+  /// 마지막 캡처 이후 이만큼 지나면 "잊은 관심사"(머릿속 지도에서 레몬색으로 깨어난다).
+  static const forgottenAfterDays = 7;
+
+  bool get forgotten => dormantDays >= forgottenAfterDays;
+
   /// [spanDays]는 항목이 아니라 응답 맨 위(`windowDays`)에 있어서 따로 받는다.
   factory Interest.fromJson(
     Map<String, dynamic> json, {
@@ -58,6 +67,9 @@ class Interest {
       for (final c in json['recent'] as List)
         InterestCapture.fromJson(c as Map<String, dynamic>),
     ],
+    linkedTags: [
+      for (final t in json['linkedTags'] as List? ?? const []) t as String,
+    ],
   );
 
   /// 휴지통 캡처를 뺀 복사본. 뺀 장수만큼 횟수도 줄인다.
@@ -70,6 +82,7 @@ class Interest {
       spanDays: spanDays,
       dormantDays: dormantDays,
       recent: kept,
+      linkedTags: linkedTags,
     );
   }
 }
