@@ -50,6 +50,7 @@ flutter test
 cd server
 ./gradlew bootRun                                  # 기본: fake 분류기 (키 불필요)
 ./gradlew bootRun --args="--remine.classifier=gemini"   # 실제 Gemini 분류 (GEMINI_API_KEY 필요)
+./gradlew bootRun --args="--spring.profiles.active=dev"  # 개발용 API 열기(POST /api/dev/push-test, 기본은 404)
 ./gradlew test
 ```
 - Gemini 키는 환경변수 `GEMINI_API_KEY` 또는 키 파일(`GEMINI_API_KEY=키값`, 따옴표 없이)에 둔다. 키가 없으면 기동이 안내와 함께 실패한다.

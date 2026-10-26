@@ -107,7 +107,9 @@
   - 성공 → `SENT`(`sent_at`). 실패 → `PENDING` 그대로, 다음 실행에 재시도. 지난주 이전 `PENDING`은 발송 실행이 `EXPIRED`로 정리(지나간 관심사는 보내지 않음).
   - 무효 토큰: FCM이 `UNREGISTERED`·`SENDER_ID_MISMATCH`라고 할 때만 기기 토큰을 지운다(기기 행은 유지). `INVALID_ARGUMENT`는 메시지 문제일 수 있어 재시도. 토큰이 없는 기기에는 보내지 않는다.
   - Firebase 키(`remine.fcm.credentials-file`)가 없으면 푸시만 꺼지고(기동 때 경고 1번) 나머지는 정상.
-  - 앱: 알림을 누르면 그 카테고리 화면을 태그로 거른 상태로 연다. 알림 권한(Android 13+)은 첫 동기화가 끝난 뒤 안내 시트에서 [알림 받기]를 고를 때 한 번 묻는다(설정에도 버튼). 앱이 앞에 있을 때 온 알림은 띄우지 않는다(FCM 기본 동작).
+  - 앱: 알림을 누르면 그 카테고리 화면을 태그로 거른 상태로 연다. 앱이 앞에 있을 때 온 알림은 띄우지 않는다(FCM 기본 동작).
+  - 알림 받기는 사용자가 고른다(로컬 저장, 아직 안 고름/켬/끔). **서버에 토큰이 있는 건 켰을 때뿐**: 켜면 토큰 PUT, 끄면 DELETE, 앱 시작 때 설정에 맞춰 다시 맞춘다.
+  - 첫 분석 완료 화면에서 [홈으로]를 누르면 아직 안 골랐을 때 한 번 전체 화면 안내 → [알림 받기]면 시스템 권한 창(허용이면 켬), [나중에]·뒤로 가기면 끔. 설정의 스위치로 언제든 바꾼다(영구 거부면 휴대폰 설정 안내 + [설정 열기]).
 
 **F-05. 사용자 카테고리 수정**
 - AI가 분류한 카테고리가 틀리면 사용자가 스크린샷 상세 화면에서 **7개 기본 카테고리 중 하나로 직접 바꾼다.**
@@ -230,7 +232,9 @@
 | Method | Path | 설명 |
 |---|---|---|
 | POST | `/api/devices` | 기기 등록 `{fcmToken}` (토큰은 없어도 됨 → 푸시만 안 감) |
-| PUT | `/api/devices/me/fcm-token` | FCM 토큰 갱신 `{fcmToken}`(빈 값 400) → 204. 앱 시작 때·토큰이 바뀔 때. 미등록 기기 404 |
+| PUT | `/api/devices/me/fcm-token` | FCM 토큰 갱신 `{fcmToken}`(빈 값 400) → 204. 알림을 켰을 때·토큰이 바뀔 때. 미등록 기기 404 |
+| DELETE | `/api/devices/me/fcm-token` | 알림 끄기 → 토큰 삭제, 204(이미 없어도 204). 미등록 기기 404 |
+| POST | `/api/dev/push-test` | **dev 프로필 전용**(그 외 404). 이 기기에 관심사 알림 1건을 바로 보낸다(지금 1순위 관심사, 없으면 예시 "신발"). `interest_alert`는 건드리지 않는다. 200 `{result: SENT/INVALID_TOKEN/FAILED}`, 토큰 없음 409, 서버 푸시 꺼짐 503 |
 | GET | `/api/config` | 분석 설정 조회(헤더 불필요). `{imageThresholdChars:150, maxBatchSize:20, imageMaxBytes:1048576, imageMaxLongSide:1024, imageContentType:"image/jpeg", maxRequestBytes:12582912, classifyIntervalMs:0}` — 모두 서버 설정(`remine.*`)에서 읽는다. `classifyIntervalMs`는 장당 분류 최소 간격(gemini면 `min-interval-ms`, 가짜 분류기는 0)이며 앱이 남은 시간을 처음부터 예상하는 데 쓴다 |
 | POST | `/api/screenshots/analyze` | OCR 텍스트 배치(최대 20장, 초과 시 400) 전송 → 분류 결과 반환 `{analyzed, skipped, failed}`. 일부 분류가 실패해도 200이며 실패한 캡처는 `failed`(`localAssetId`, `reason`)에 담기고 미분석으로 남는다(같은 요청을 다시 보내면 재분석). 요청 형식은 둘 중 하나: ① `application/json` — 기존 본문(이미지 없음), ② `multipart/form-data` — 아래 |
 
