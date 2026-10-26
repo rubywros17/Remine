@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import '../../models/category.dart';
@@ -8,6 +9,7 @@ import '../device/privacy/privacy_filter.dart';
 import '../device/settings_store.dart';
 import 'api_client.dart';
 import 'image_prep.dart';
+import 'push.dart';
 import 'remote_state_store.dart';
 import 'sync_plan.dart';
 import 'sync_status.dart';
@@ -31,8 +33,7 @@ class SyncService {
     this.photoLimit = 0,
     this.batchSize = defaultBatchSize,
     this.onBatchDone,
-    // 푸시(FCM) 연동 전 임시값. 서버가 비어 있지 않은 토큰을 요구한다. 푸시 브랜치에서 실제 토큰으로 바꾼다.
-    this.fcmToken = 'pending-fcm-token',
+    this.push,
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now;
 
@@ -54,10 +55,13 @@ class SyncService {
 
   /// 배치 하나가 끝날 때마다(홈이 새로 불러오게).
   void Function()? onBatchDone;
-  final String fcmToken;
+
+  /// FCM 토큰을 주는 곳. 없으면(Firebase 초기화 실패 등) 토큰 없이 등록한다.
+  final PushClient? push;
   final DateTime Function() _now;
 
   Future<void>? _inFlight;
+  StreamSubscription<String>? _tokenSub;
 
   /// 동기화를 시작한다. 이미 돌고 있으면 새로 시작하지 않고 진행 중인 것을 기다린다.
   Future<void> run() =>
@@ -132,10 +136,29 @@ class SyncService {
     return photoLimit > 0 ? all.take(photoLimit).toList() : all;
   }
 
+  /// 앱 시작 때 한 번: 현재 토큰을 서버에 올리고, FCM이 토큰을 바꾸면 다시 올린다.
+  /// 아직 등록 전이면 건너뛴다(등록 요청에 토큰이 실린다). 실패는 무시한다(다음 시작에 다시).
+  Future<void> startTokenSync() async {
+    final p = push;
+    if (p == null) return;
+    _tokenSub ??= p.tokenRefresh.listen(_uploadToken);
+    await _uploadToken(await p.token());
+  }
+
+  Future<void> _uploadToken(String? token) async {
+    if (token == null) return;
+    try {
+      final id = await state.deviceId();
+      if (id != null) await api.updateFcmToken(id, token);
+    } catch (_) {
+      // 서버에 닿지 못했거나 기기를 모름(404) → 다음 동기화의 재등록이 새 토큰을 싣는다
+    }
+  }
+
   Future<int> _ensureDevice() async {
     final saved = await state.deviceId();
     if (saved != null) return saved;
-    final id = await api.registerDevice(fcmToken);
+    final id = await api.registerDevice(await push?.token());
     await state.setDeviceId(id);
     return id;
   }
@@ -143,7 +166,7 @@ class SyncService {
   /// 서버가 기기를 모를 때(서버 DB가 초기화됨 등): 새로 등록하고, 서버에 있다고 믿던 동기화 기록을 버려 다시 보내게 한다.
   Future<int> _reregister() async {
     await state.clear();
-    final id = await api.registerDevice(fcmToken);
+    final id = await api.registerDevice(await push?.token());
     await state.setDeviceId(id);
     return id;
   }

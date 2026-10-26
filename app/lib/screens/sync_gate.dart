@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../data/device/settings_store.dart';
 import '../data/remote/remote_services.dart';
+import '../widgets/notification_sheet.dart';
 import 'analysis_screen.dart';
 
 /// 서버 연동 모드에서 동기화를 시작하고, **첫 분석**(처음 설치해 아직 한 번도 끝내지 못한 동안)에는 진행 화면을 보여 준다.
@@ -10,11 +12,19 @@ import 'analysis_screen.dart';
 /// - 첫 분석이 끝나도(또는 서버에 닿지 못해 멈춰도) 자동으로 넘어가지 않는다. 완료 상태에서 [홈으로]를 눌러야 [child]가 열린다.
 /// - 이후 실행은 곧바로 [child]를 보여 주고 뒤에서 새로 생기거나 바뀐 캡처만 증분으로 보낸다.
 /// - 앱이 다시 앞으로 돌아올 때(resumed)도 한 번 더 시작한다. 이미 돌고 있으면 겹쳐 돌지 않는다.
+/// - 푸시: 시작할 때 FCM 토큰을 서버에 올리고, **첫 동기화가 끝난 뒤 한 번** 알림 안내 시트를 띄운다
+///   ([settings]가 있을 때만). 시스템 권한 창은 시트에서 [알림 받기]를 고른 뒤에만 뜬다.
 class SyncGate extends StatefulWidget {
-  const SyncGate({super.key, required this.remote, required this.child});
+  const SyncGate({
+    super.key,
+    required this.remote,
+    required this.child,
+    this.settings,
+  });
 
   final RemoteServices remote;
   final Widget child;
+  final SettingsStore? settings;
 
   @override
   State<SyncGate> createState() => _SyncGateState();
@@ -38,8 +48,26 @@ class _SyncGateState extends State<SyncGate> with WidgetsBindingObserver {
       _loaded = true;
       _showAnalysis = first;
     });
+    widget.remote.sync.startTokenSync(); // 기다리지 않는다(실패해도 동기화와 무관)
     // 끝나도 자동으로 홈으로 넘어가지 않는다: 분석 화면이 완료 상태("N장 꺼냈어요")와 [홈으로] 버튼을 보여 준다.
     await widget.remote.sync.run();
+    await _askNotificationOnce();
+  }
+
+  /// 첫 동기화가 끝났고 아직 안 물었으면 시트 → [알림 받기]면 시스템 권한 창. 어느 쪽이든 다시 묻지 않는다.
+  Future<void> _askNotificationOnce() async {
+    final push = widget.remote.push;
+    final settings = widget.settings;
+    if (push == null || settings == null) return;
+    if (!await widget.remote.state.firstSyncDone() ||
+        await settings.notificationAsked()) {
+      return;
+    }
+    if (!mounted) return;
+    await settings.setNotificationAsked();
+    if (!mounted) return;
+    final want = await showNotificationSheet(context);
+    if (want == true) await push.requestPermission();
   }
 
   @override

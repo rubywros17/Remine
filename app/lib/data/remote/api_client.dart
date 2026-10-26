@@ -162,6 +162,7 @@ class RemineApi {
     if (code < 200 || code >= 300) {
       throw ApiException(ApiFailure.rejected, code);
     }
+    if (response.bodyBytes.isEmpty) return const {}; // 204 No Content
     try {
       return jsonDecode(utf8.decode(response.bodyBytes))
           as Map<String, dynamic>;
@@ -182,13 +183,22 @@ class RemineApi {
     return _send(request);
   }
 
-  /// POST /api/devices → 기기 id.
-  Future<int> registerDevice(String fcmToken) async {
+  /// POST /api/devices → 기기 id. 토큰을 못 받았으면 null로 등록한다(푸시만 안 간다).
+  Future<int> registerDevice(String? fcmToken) async {
     final request = http.Request('POST', _uri('/api/devices'))
       ..headers['Content-Type'] = 'application/json'
       ..body = jsonEncode({'fcmToken': fcmToken});
     final json = await _send(request);
     return (json['deviceId'] as num).toInt();
+  }
+
+  /// PUT /api/devices/me/fcm-token. 앱 시작 때·FCM이 토큰을 바꿀 때.
+  Future<void> updateFcmToken(int deviceId, String fcmToken) async {
+    final request = http.Request('PUT', _uri('/api/devices/me/fcm-token'))
+      ..headers['Content-Type'] = 'application/json'
+      ..body = jsonEncode({'fcmToken': fcmToken});
+    request.headers.addAll(_headers(deviceId));
+    await _send(request);
   }
 
   Future<ApiConfig> config() async =>

@@ -102,8 +102,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 RoundIconButton(
                   icon: LucideIcons.settings,
                   label: '설정',
-                  onTap: () =>
-                      _open(context, SettingsScreen(settings: device.settings)),
+                  onTap: () => _open(
+                    context,
+                    SettingsScreen(
+                      settings: device.settings,
+                      push: device.remote?.push,
+                    ),
+                  ),
                 ),
             ],
           ),

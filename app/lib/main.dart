@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
@@ -19,6 +20,7 @@ import 'data/device/ocr_temp_files.dart';
 import 'data/device/photo_manager_gallery_reader.dart';
 import 'data/remote/api_client.dart';
 import 'data/remote/image_prep.dart';
+import 'data/remote/push.dart';
 import 'data/remote/remote_repository.dart';
 import 'data/remote/remote_services.dart';
 import 'data/remote/remote_state_store.dart';
@@ -66,11 +68,24 @@ Future<DeviceServices> _deviceServices() async {
     reader: reader,
     capture: capture,
     settings: settings,
-    remote: _apiBaseAllowed ? _remote(reader, capture, settings, db) : null,
+    remote: _apiBaseAllowed
+        ? _remote(reader, capture, settings, db, await _push())
+        : null,
     exportDir: () async =>
         (await getExternalStorageDirectory()) ??
         await getApplicationSupportDirectory(),
   );
+}
+
+/// 푸시는 서버 연동(기기 모드 + API_BASE)일 때만 켠다. 크롬·테스트는 Firebase를 건드리지 않는다.
+/// 설정 파일(google-services.json)은 Gradle 플러그인이 빌드에 넣는다. 초기화에 실패하면 푸시 없이 동작한다.
+Future<PushClient?> _push() async {
+  try {
+    await Firebase.initializeApp();
+    return FirebasePushClient();
+  } catch (_) {
+    return null;
+  }
 }
 
 RemoteServices _remote(
@@ -78,6 +93,7 @@ RemoteServices _remote(
   DeviceCaptureService capture,
   SettingsStore settings,
   LocalDb db,
+  PushClient? push,
 ) {
   final api = RemineApi(_apiBase, http.Client());
   final state = SqfliteRemoteStateStore(db);
@@ -93,8 +109,10 @@ RemoteServices _remote(
       images: ImagePreparer(reader, const FlutterImageShrinker()),
       status: status,
       photoLimit: kDebugMode ? _syncLimit : 0,
+      push: push,
     ),
     status: status,
     state: state,
+    push: push,
   );
 }

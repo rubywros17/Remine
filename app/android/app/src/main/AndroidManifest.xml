@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
     <!-- 서버 분석 API 호출. 릴리스는 HTTPS만 쓴다(평문 허용은 디버그 빌드의 network_security_config뿐) -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- 관심사 알림(FCM). 13+는 런타임 권한이라 첫 동기화 뒤 안내 시트에서 [알림 받기]를 골랐을 때만 묻는다 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- OCR 원문이 든 로컬 DB가 Google 계정 백업으로 올라가지 않게 한다 -->
     <application
         android:allowBackup="false"

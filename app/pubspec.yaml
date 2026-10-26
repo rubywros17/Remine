@@ -8,6 +8,9 @@ environment:
   sdk: ^3.13.5
 
 dependencies:
+  # 관심사 알림(FCM). Firebase는 이 둘만 쓴다(test/device_capture_test.dart가 막는다)
+  firebase_core: ^5.1.0
+  firebase_messaging: ^17.0.1
   flutter:
     sdk: flutter
   # 카테고리·탭 아이콘 (ISC 라이선스)
