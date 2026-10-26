@@ -1,11 +1,15 @@
 import 'dart:async';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:remine/data/remote/api_client.dart';
 import 'package:remine/data/remote/remote_state_store.dart';
 import 'package:remine/data/remote/sync_status.dart';
 import 'package:remine/models/category.dart';
+import 'package:remine/screens/analysis_screen.dart';
+import 'package:remine/screens/sync_gate.dart';
+import 'package:remine/widgets/sync_banner.dart';
 
 import 'support/fake_push.dart';
 import 'support/fake_remote.dart';
@@ -18,6 +22,9 @@ class RestartableServer {
 
   late final RecordingClient client;
   final Set<int> known = {};
+
+  /// 있으면 analyze 응답을 이 Future가 끝날 때까지 붙잡는다(재전송이 진행 중인 화면을 보려고).
+  Future<void>? holdAnalyze;
   int _nextId = 7;
 
   /// 서버를 다시 켠 것처럼 모든 기기를 잊는다.
@@ -43,6 +50,10 @@ class RestartableServer {
           '/api/screenshots',
         }.contains(r.path)) {
       return jsonResponse({}); // 해석은 저장소가 알아서(빈 결과)
+    }
+    final hold = holdAnalyze;
+    if (hold != null && r.path == '/api/screenshots/analyze') {
+      return hold.then((_) => client.defaultFor(r));
     }
     return client.defaultFor(r);
   }
@@ -191,5 +202,71 @@ void main() {
 
     await api.interestsJson(7); // 끝난 뒤에는 다시 보낸다
     expect(client.sent.where((r) => r.path == '/api/interests'), hasLength(2));
+  });
+
+  testWidgets('서버 초기화 뒤에도 첫 분석 화면은 다시 안 뜨고, 재전송은 홈 배너로만 보인다. 사용자 선택은 그대로', (
+    tester,
+  ) async {
+    final server = RestartableServer();
+    final rig = (await tester.runAsync(() async {
+      final rig = await SyncRig.create(
+        photos: photosNamed({'p0': 'Screenshot_1.png'}),
+        texts: {'p0': '캡처 글자'},
+        push: FakePushClient(),
+        client: server.client,
+      );
+      await rig.settings.setNotificationsEnabled(true);
+      await rig.sync.run(); // 첫 분석 완료(기기 7)
+      return rig;
+    }))!;
+    server.restart();
+    final release = Completer<void>();
+    server.holdAnalyze = release.future;
+
+    // 앱을 다시 켠다: 시작하면서 토큰 PUT이 404 → 재등록 → 전체 재전송(analyze는 붙잡아 둔다)
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SyncGate(
+          remote: rig.remote,
+          settings: rig.settings,
+          child: Scaffold(
+            body: Column(
+              children: [
+                const Text('HOME'),
+                SyncBanner(remote: rig.remote),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    for (var i = 0; i < 5; i++) {
+      await tester.runAsync(pumpEventQueue);
+      await tester.pump();
+    }
+
+    expect(server.registrations, 2);
+    expect(
+      find.byType(AnalysisScreen),
+      findsNothing,
+      reason: '첫 분석 화면을 다시 띄우지 않는다',
+    );
+    expect(find.text('HOME'), findsOneWidget);
+    expect(find.textContaining('새 캡처를 정리하는 중이에요'), findsOneWidget);
+
+    release.complete();
+    for (var i = 0; i < 5; i++) {
+      await tester.runAsync(pumpEventQueue);
+      await tester.pump();
+    }
+
+    expect(find.textContaining('새 캡처를 정리하는 중이에요'), findsNothing);
+    expect(rig.status.issue, SyncIssue.none);
+    await tester.runAsync(() async {
+      expect(await rig.state.firstSyncDone(), isTrue);
+      expect(await rig.settings.notificationsEnabled(), isTrue);
+      expect(await rig.settings.imageConsent(), isTrue);
+      expect((await rig.state.entry('p0'))?.status, SyncStatusCode.synced);
+    });
   });
 }

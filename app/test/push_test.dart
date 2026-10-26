@@ -231,10 +231,12 @@ void main() {
       expect(find.text('HOME'), findsOneWidget);
       expect(await rig.settings.notificationsEnabled(), isFalse);
 
-      // 서버가 초기화돼 첫 분석 화면이 다시 보여도 묻지 않는다
-      await tester.runAsync(() => rig.state.clear());
+      // 다시 켜면 첫 분석 화면 없이 바로 홈 → 다시 묻지 않는다
       await tester.pumpWidget(const SizedBox());
-      await finishFirstAnalysis(tester, rig);
+      await tester.pumpWidget(gate(rig));
+      await tester.runAsync(() => rig.sync.run());
+      await tester.pump();
+      expect(find.text('HOME'), findsOneWidget);
       expect(find.text(notificationTitle), findsNothing);
     });
 

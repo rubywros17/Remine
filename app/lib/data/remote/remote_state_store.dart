@@ -43,6 +43,9 @@ abstract interface class RemoteStateStore {
   Future<String?> cached(String key);
   Future<void> putCache(String key, String json);
 
+  /// 서버가 이 기기를 잊었을 때(서버 DB 초기화): **서버 쪽 기록만** 지운다(기기 id·전송 기록·응답 캐시).
+  /// 첫 분석 완료는 남긴다 — 사용자가 한 일이 아니므로 첫 분석 화면을 다시 띄우지 않고, 재전송은 홈 배너로만 보인다.
+  /// (알림 선택·이미지 동의는 [SettingsStore]에 있어 여기서 건드리지 않는다.)
   Future<void> clear();
 }
 
@@ -159,11 +162,7 @@ class SqfliteRemoteStateStore implements RemoteStateStore {
     final db = await _db;
     await db.delete('server_map');
     await db.delete('server_cache');
-    await db.delete(
-      'setting',
-      where: 'key IN (?, ?)',
-      whereArgs: ['device_id', 'first_sync_done'],
-    );
+    await db.delete('setting', where: 'key = ?', whereArgs: ['device_id']);
   }
 }
 
@@ -224,7 +223,6 @@ class InMemoryRemoteStateStore implements RemoteStateStore {
   @override
   Future<void> clear() async {
     _deviceId = null;
-    _first = false;
     _entries.clear();
     _cache.clear();
   }
