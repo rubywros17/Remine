@@ -12,10 +12,16 @@ abstract interface class SettingsStore {
   Future<bool?> notificationsEnabled();
 
   Future<void> setNotificationsEnabled(bool value);
+
+  /// Remine 자기 캡처 판정용 기록(앱이 앞에 있던 구간, JSON). [ForegroundLog]만 읽고 쓴다. 기기 밖으로 나가지 않는다.
+  Future<String?> ownCaptureLog();
+
+  Future<void> setOwnCaptureLog(String json);
 }
 
 const _imageConsentKey = 'image_consent';
 const _notificationsKey = 'notifications_enabled';
+const _ownCaptureLogKey = 'own_capture_log';
 
 class SqfliteSettingsStore implements SettingsStore {
   SqfliteSettingsStore(this._local);
@@ -41,6 +47,12 @@ class SqfliteSettingsStore implements SettingsStore {
   @override
   Future<void> setNotificationsEnabled(bool value) =>
       _put(_notificationsKey, value ? '1' : '0');
+
+  @override
+  Future<String?> ownCaptureLog() => _get(_ownCaptureLogKey);
+
+  @override
+  Future<void> setOwnCaptureLog(String json) => _put(_ownCaptureLogKey, json);
 
   Future<String?> _get(String key) async {
     final rows = await (await _local.db).query(
@@ -69,6 +81,7 @@ class InMemorySettingsStore implements SettingsStore {
 
   bool? _consent;
   bool? _notifications;
+  String? _ownCaptureLog;
 
   @override
   Future<bool?> imageConsent() async => _consent;
@@ -82,4 +95,10 @@ class InMemorySettingsStore implements SettingsStore {
   @override
   Future<void> setNotificationsEnabled(bool value) async =>
       _notifications = value;
+
+  @override
+  Future<String?> ownCaptureLog() async => _ownCaptureLog;
+
+  @override
+  Future<void> setOwnCaptureLog(String json) async => _ownCaptureLog = json;
 }

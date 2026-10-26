@@ -9,6 +9,7 @@ import 'package:remine/data/device/gallery_reader.dart';
 import 'package:remine/data/device/ocr_engine.dart';
 import 'package:remine/data/device/ocr_store.dart';
 import 'package:remine/data/device/ocr_temp_files.dart';
+import 'package:remine/data/device/own_capture.dart';
 import 'package:remine/data/device/settings_store.dart';
 import 'package:remine/data/remote/api_client.dart';
 import 'package:remine/data/remote/image_prep.dart';
@@ -92,6 +93,7 @@ class RecordingClient extends http.BaseClient {
         return jsonResponse({'deviceId': 7});
       case 'PUT /api/devices/me/fcm-token':
       case 'DELETE /api/devices/me/fcm-token':
+      case 'POST /api/screenshots/forget':
         return http.StreamedResponse(const Stream.empty(), 204);
       case 'POST /api/dev/push-test':
         return jsonResponse({'result': 'SENT'});
@@ -257,6 +259,7 @@ class SyncRig {
     List<GalleryAlbum>? albums,
     PushClient? push,
     void Function(String line)? log,
+    ForegroundLog? foreground,
   }) async {
     final reader = FakeGalleryReader(photos: photos, albums: albums);
     final ocr = MapOcrEngine(texts);
@@ -266,6 +269,7 @@ class SyncRig {
       ocr: ocr,
       store: InMemoryOcrStore(),
       temp: OcrTempFiles(tmp),
+      foreground: foreground,
       now: () => DateTime(2026, 10, 21, 12),
     );
     final settings = InMemorySettingsStore(consent);

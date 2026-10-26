@@ -71,6 +71,7 @@ class SyncService {
   Future<void>? _inFlight;
   StreamSubscription<String>? _tokenSub;
   bool _again = false; // 재등록으로 전송 기록을 비웠다 → 이번 실행 뒤 한 번 더
+  Future<int>? _reregistering;
 
   /// 동기화를 시작한다. 이미 돌고 있으면 새로 시작하지 않고 진행 중인 것을 기다린다.
   Future<void> run() =>
@@ -89,9 +90,12 @@ class SyncService {
   /// 새로 등록하고, 서버에 있다고 믿던 전송 기록을 버린 뒤 전체 재전송을 예약한다.
   Future<int> _recoverDevice() async {
     log?.call('[sync] 서버가 기기를 모름 → 재등록');
-    await state.clear();
-    final id = await api.registerDevice(await _tokenForRegister());
-    await state.setDeviceId(id);
+    final id = await (_reregistering = () async {
+      final id = await api.registerDevice(await _tokenForRegister());
+      await state.clear();
+      await state.setDeviceId(id);
+      return id;
+    }().whenComplete(() => _reregistering = null));
     if (_inFlight != null) {
       _again = true;
     } else {
@@ -105,9 +109,11 @@ class SyncService {
   Future<void> _run() async {
     var failed = 0;
     try {
-      final photos = await _photos();
+      final (:mine, :own) = await _photos();
+      final photos = mine;
       final config = await api.config();
       final deviceId = await _ensureDevice();
+      await _forgetOwn(deviceId, own);
       final pending = <GalleryPhoto>[];
       for (final photo in photos) {
         final e = await state.entry(photo.id);
@@ -162,13 +168,38 @@ class SyncService {
     }
   }
 
-  Future<List<GalleryPhoto>> _photos() async {
+  Future<({List<GalleryPhoto> mine, List<GalleryPhoto> own})> _photos() async {
     final albums = await reader.albums();
     final shots = albums.where((a) => a.isScreenshots).toList();
-    if (shots.isEmpty) return const [];
-    final all = await capture.recent(shots.first.id);
-    return photoLimit > 0 ? all.take(photoLimit).toList() : all;
+    if (shots.isEmpty) return (mine: <GalleryPhoto>[], own: <GalleryPhoto>[]);
+    final (:mine, :own) = await capture.recentSplit(shots.first.id);
+    return (
+      mine: photoLimit > 0 ? mine.take(photoLimit).toList() : mine,
+      own: own,
+    );
   }
+
+  /// 예전에 보냈던 캡처가 지금 보니 Remine 자기 캡처면(판정 규칙이 생기기 전에 보낸 것) 서버에서 지운다.
+  /// 지운 뒤 전송 기록을 없애서 다음 실행에는 다시 보내지 않는다. 실패하면 다음 실행에서 다시(분석은 계속).
+  Future<void> _forgetOwn(int deviceId, List<GalleryPhoto> own) async {
+    final sent = [
+      for (final p in own)
+        if (await state.entry(p.id) != null) p.id,
+    ];
+    if (sent.isEmpty) return;
+    try {
+      for (var i = 0; i < sent.length; i += _forgetChunk) {
+        final ids = sent.sublist(i, (i + _forgetChunk).clamp(0, sent.length));
+        await api.forget(deviceId, ids);
+        await state.removeEntries(ids);
+      }
+      log?.call('[sync] 자기 캡처 ${sent.length}장 서버에서 지움');
+    } on ApiException catch (e) {
+      log?.call('[sync] 자기 캡처 지우기 실패: $e');
+    }
+  }
+
+  static const _forgetChunk = 500; // 서버 forget 상한
 
   /// 앱 시작 때 한 번 서버의 토큰을 알림 설정에 맞춘다. **서버에 토큰이 있는 건 알림을 켰을 때뿐이다.**
   /// 켜짐 → 지금 토큰을 올리고 FCM이 바꿀 때마다 다시 올림 / 꺼짐 → 지움(지난번 실패분도 여기서 다시) /
@@ -223,6 +254,9 @@ class SyncService {
       : null;
 
   Future<int> _ensureDevice() async {
+    // 재등록 중이면(기기 id를 비우고 새로 받는 사이) 따로 등록하지 않고 그 결과를 쓴다.
+    final pending = _reregistering;
+    if (pending != null) return pending;
     final saved = await state.deviceId();
     if (saved != null) return saved;
     final id = await api.registerDevice(await _tokenForRegister());

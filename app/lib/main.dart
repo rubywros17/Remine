@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as p;
@@ -17,6 +18,7 @@ import 'data/device/privacy/local_verdict_store.dart';
 import 'data/device/ocr_engine.dart';
 import 'data/device/ocr_store.dart';
 import 'data/device/ocr_temp_files.dart';
+import 'data/device/own_capture.dart';
 import 'data/device/photo_manager_gallery_reader.dart';
 import 'data/remote/api_client.dart';
 import 'data/remote/image_prep.dart';
@@ -56,14 +58,16 @@ Future<DeviceServices> _deviceServices() async {
       await getTemporaryDirectory(); // 앱 캐시 폴더 — OCR 임시 복사본은 여기 안에서만 만들고 지운다
   final reader = PhotoManagerGalleryReader();
   final db = LocalDb();
+  final settings = SqfliteSettingsStore(db);
+  final foreground = await _foregroundLog(settings);
   final capture = DeviceCaptureService(
     reader: reader,
     ocr: MlKitOcrEngine(),
     store: SqfliteOcrStore(db),
     verdicts: SqfliteLocalVerdictStore(db),
     temp: OcrTempFiles(Directory(p.join(cache.path, 'ocr_tmp'))),
+    foreground: foreground,
   );
-  final settings = SqfliteSettingsStore(db);
   return DeviceServices(
     reader: reader,
     capture: capture,
@@ -75,6 +79,34 @@ Future<DeviceServices> _deviceServices() async {
         (await getExternalStorageDirectory()) ??
         await getApplicationSupportDirectory(),
   );
+}
+
+/// 앱이 앞에 있던 구간을 기록한다(Remine 자기 캡처 판정, 기기 밖으로 안 나감).
+/// 처음 한 번은 설치 ~ 지금을 이름 없는 캡처 제외 기간으로 정한다(구간 기록이 없던 때의 자기 캡처 정리).
+Future<ForegroundLog> _foregroundLog(SettingsStore settings) async {
+  final log = ForegroundLog(settings);
+  try {
+    final ms = await const MethodChannel(
+      'remine/settings',
+    ).invokeMethod<int>('firstInstallTime');
+    if (ms != null) {
+      await log.ensureBackfill(DateTime.fromMillisecondsSinceEpoch(ms));
+    }
+  } on PlatformException catch (_) {
+    // 설치 시각을 못 읽으면 1회 정리 없이 구간 규칙만
+  }
+  await log.resumed(); // 시작할 때는 상태 변화 알림이 없어서 직접 연다
+  // 바인딩에 스스로 등록되므로 따로 붙잡아 둘 필요가 없다.
+  AppLifecycleListener(
+    onStateChange: (s) => switch (s) {
+      AppLifecycleState.resumed => log.resumed(),
+      AppLifecycleState.hidden ||
+      AppLifecycleState.paused ||
+      AppLifecycleState.detached => log.paused(),
+      AppLifecycleState.inactive => null, // 캡처 도구·알림창이 잠깐 덮을 때 — 앱은 아직 앞에 있다
+    },
+  );
+  return log;
 }
 
 /// 푸시는 서버 연동(기기 모드 + API_BASE)일 때만 켠다. 크롬·테스트는 Firebase를 건드리지 않는다.

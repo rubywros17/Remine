@@ -285,6 +285,14 @@ class RemineApi {
     () => http.Request('DELETE', _uri('/api/devices/me/fcm-token')),
   );
 
+  /// POST /api/screenshots/forget. 보내지 말았어야 할 캡처(Remine 자기 캡처)를 서버에서 지운다(없는 id는 무시).
+  Future<void> forget(int deviceId, List<String> assetIds) => _withDevice(
+    deviceId,
+    () => http.Request('POST', _uri('/api/screenshots/forget'))
+      ..headers['Content-Type'] = 'application/json'
+      ..body = jsonEncode({'assetIds': assetIds}),
+  );
+
   /// [개발용] POST /api/dev/push-test. 서버가 dev 프로필일 때만 있고, 아니면 404.
   Future<void> sendTestPush(int deviceId) => _withDevice(
     deviceId,

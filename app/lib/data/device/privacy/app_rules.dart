@@ -90,10 +90,17 @@ final _appNamePattern = RegExp(
 String? appNameFromFileName(String fileName) =>
     _appNamePattern.firstMatch(fileName)?.group(1)?.trim();
 
-/// Remine 앱 자신의 스크린샷인지(파일명 앱 이름이 `Remine`, 대소문자·공백 무관).
+/// 파일명 앱 이름이 `Remine`인지(대소문자·공백 무관). 파일명만으로 알 수 있는 자기 캡처.
+/// 실기기(갤럭시)는 Remine 화면 캡처에 앱 이름을 붙이지 않아서, 나머지는 [OwnCaptureRule]이 촬영 시각으로 잡는다.
 /// 우리 앱 화면을 찍은 캡처는 분류할 대상이 아니다 → OCR도 전송도 하지 않고 목록에도 올리지 않는다.
 bool isOwnAppCapture(String fileName) =>
     normalizeAppName(appNameFromFileName(fileName) ?? '') == 'remine';
+
+final _namelessPattern = RegExp(r'^Screenshot_\d{8}[_-]\d{6}\.[A-Za-z0-9]+$');
+
+/// 스크린샷 파일명인데 앱 이름이 없음(예: `Screenshot_20261026_151044.jpg`). 갤럭시는 Remine 화면을 이렇게 남긴다.
+bool isNamelessScreenshot(String fileName) =>
+    _namelessPattern.hasMatch(fileName);
 
 /// 디버그 화면용: 파일명 앱 이름별 장수. 앱 이름이 없는 파일은 [name]이 null.
 class AppCount {

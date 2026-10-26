@@ -2,6 +2,7 @@ import 'gallery_reader.dart';
 import 'ocr_engine.dart';
 import 'ocr_store.dart';
 import 'ocr_temp_files.dart';
+import 'own_capture.dart';
 import 'privacy/app_rules.dart';
 import 'privacy/local_verdict_store.dart';
 import 'privacy/privacy_filter.dart';
@@ -17,6 +18,7 @@ class DeviceCaptureService {
     required this.store,
     required this.temp,
     LocalVerdictStore? verdicts,
+    this.foreground,
     DateTime Function()? now,
   }) : verdicts = verdicts ?? InMemoryLocalVerdictStore(),
        _now = now ?? DateTime.now;
@@ -29,13 +31,26 @@ class DeviceCaptureService {
   final OcrStore store;
   final OcrTempFiles temp;
   final LocalVerdictStore verdicts;
+
+  /// 앱이 앞에 있던 구간 기록(자기 캡처 판정). 없으면(테스트) 파일명 규칙만.
+  final ForegroundLog? foreground;
   final DateTime Function() _now;
 
   /// 최신순 최대 [maxPhotos]장. Remine 자신의 스크린샷은 뺀다(분류 대상이 아니다).
-  Future<List<GalleryPhoto>> recent(String albumId) async => [
-    for (final p in await reader.recent(albumId, limit: maxPhotos))
-      if (!isOwnAppCapture(p.fileName)) p,
-  ];
+  Future<List<GalleryPhoto>> recent(String albumId) async =>
+      (await recentSplit(albumId)).mine;
+
+  /// [recent]와 같은 범위를 (분류할 것, Remine 자기 캡처)로 나눈다. 판정은 [OwnCaptureRule].
+  Future<({List<GalleryPhoto> mine, List<GalleryPhoto> own})> recentSplit(
+    String albumId,
+  ) async {
+    final rule = await foreground?.rule() ?? const OwnCaptureRule();
+    final mine = <GalleryPhoto>[], own = <GalleryPhoto>[];
+    for (final p in await reader.recent(albumId, limit: maxPhotos)) {
+      (rule.isOwn(p) ? own : mine).add(p);
+    }
+    return (mine: mine, own: own);
+  }
 
   /// 앨범의 모든 사진(파일명 집계용). OCR은 하지 않는다.
   Future<List<GalleryPhoto>> all(String albumId) =>

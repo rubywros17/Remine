@@ -36,6 +36,9 @@ abstract interface class RemoteStateStore {
   Future<SyncEntry?> entry(String assetId);
   Future<void> putEntry(SyncEntry entry);
 
+  /// 서버에서 지운 캡처의 전송 기록을 없앤다([RemineApi.forget] 뒤).
+  Future<void> removeEntries(Iterable<String> assetIds);
+
   /// 서버 목록에서 본 (asset id → 서버 id)를 매핑에 채운다.
   Future<void> linkServerIds(Map<String, int> idsByAsset);
   Future<int> failedCount();
@@ -117,6 +120,16 @@ class SqfliteRemoteStateStore implements RemoteStateStore {
   }
 
   @override
+  Future<void> removeEntries(Iterable<String> assetIds) async {
+    final db = await _db;
+    final batch = db.batch();
+    for (final id in assetIds) {
+      batch.delete('server_map', where: 'asset_id = ?', whereArgs: [id]);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  @override
   Future<void> linkServerIds(Map<String, int> idsByAsset) async {
     final db = await _db;
     final batch = db.batch();
@@ -194,6 +207,10 @@ class InMemoryRemoteStateStore implements RemoteStateStore {
     status: e.status,
     serverId: e.serverId ?? _entries[e.assetId]?.serverId,
   );
+
+  @override
+  Future<void> removeEntries(Iterable<String> assetIds) async =>
+      assetIds.forEach(_entries.remove);
 
   @override
   Future<void> linkServerIds(Map<String, int> idsByAsset) async {
