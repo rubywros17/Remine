@@ -54,7 +54,9 @@ cd server
 ```
 - Gemini 키는 환경변수 `GEMINI_API_KEY` 또는 키 파일(`GEMINI_API_KEY=키값`, 따옴표 없이)에 둔다. 키가 없으면 기동이 안내와 함께 실패한다.
 - 키 파일 위치: 환경변수 `REMINE_ENV_FILE`(이 PC: `E:\dev\secrets\remine\remine.env`), 없으면 `~/.remine.env`. `.properties`로 읽히므로 값의 경로는 `/`로 쓴다(`\`는 이스케이프).
-- Firebase 서비스 계정 키 경로: `remine.fcm.credentials-file`(키 파일에 `remine.fcm.credentials-file=E:/dev/secrets/remine/firebase-admin.json`). 서버 FCM 구현 시 이 이름으로 읽는다.
+- Firebase 서비스 계정 키 경로: `remine.fcm.credentials-file`(키 파일에 `remine.fcm.credentials-file=E:/dev/secrets/remine/firebase-admin.json`). 없으면 **푸시만 꺼지고**(기동 때 경고 1번) 나머지는 정상.
+- 푸시 발송(`remine.push.send-cron`, 기본 10~21시 30분마다): 이번 주 PENDING → SENT, 지난주 이전은 EXPIRED. 테스트는 build.gradle이 cron을 끄고 키 경로를 비운다. 발송 테스트는 가짜 `PushSender`를 주입한다.
+- 앱 Firebase 설정 `app/android/app/google-services.json`은 커밋 금지(`.gitignore`, `test/secrets_guard_test.dart`). Firebase import는 `lib/data/remote/push.dart`·`main.dart`에만(가드 테스트).
 - 테스트는 키 파일(`REMINE_ENV_FILE`·`~/.remine.env`)·키·`REMINE_CLASSIFIER`를 읽지 않고(build.gradle에서 중립화) 실제 API를 부르지 않는다.
 - 관심사(`remine.interest.*`): 14일·3회, 주간 집계 cron(`alert-cron`, 테스트에서는 build.gradle이 `-`로 끔), 쿨다운 28일. 태그 불용어는 `remine.tags.stopwords` 한 곳. "지금"은 `Clock` 빈에서만 읽는다(테스트는 고정 시계).
 - analyze는 요청당 최대 20장(`remine.analyze.max-batch-size`). 설정은 `server/src/main/resources/application.yaml`의 `remine.*`.

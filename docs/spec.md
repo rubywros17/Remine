@@ -102,9 +102,12 @@
 - 주간 집계: 주 1회(월 10시, Asia/Seoul) 기기마다 관심사 1순위를 `interest_alert`에 `PENDING`으로 저장한다.
   - 멱등: 기기당 한 주 1건(`device_id + week_start` unique). 같은 주에 다시 돌아도 결과가 같다.
   - 쿨다운: 최근 28일 안에 후보였던 태그는 다시 고르지 않고 다음 순위를 본다. 횟수가 늘어도 예외 없음(주 1건이라 같은 태그 반복보다 다른 관심사에 자리를 준다). 필요해지면 저장해 둔 `capture_count`와 비교해 "2배 이상이면 무시"를 추가할 수 있다.
-- 주 1회 푸시 알림 (FCM) — `PENDING` 후보를 보내는 것은 다음 단계
-  - 예: "요즘 '니트 가디건'을 4번 캡처했어요 👀"
-  - 예: "한 달 전에 저장한 드라마, 아직 안 봤죠?"
+- 푸시 발송 (FCM): 발송 cron(`remine.push.send-cron`, 기본 10~21시 30분마다, Asia/Seoul)이 **이번 주** `PENDING`을 보낸다.
+  - 문구(해요체): "요즘 '신발'을 3번 캡처했어요. 다시 볼까요?" (을/를은 받침으로 고름). data는 `{type: interest, tag, category}`뿐 — OCR 원문·요약 없음.
+  - 성공 → `SENT`(`sent_at`). 실패 → `PENDING` 그대로, 다음 실행에 재시도. 지난주 이전 `PENDING`은 발송 실행이 `EXPIRED`로 정리(지나간 관심사는 보내지 않음).
+  - 무효 토큰: FCM이 `UNREGISTERED`·`SENDER_ID_MISMATCH`라고 할 때만 기기 토큰을 지운다(기기 행은 유지). `INVALID_ARGUMENT`는 메시지 문제일 수 있어 재시도. 토큰이 없는 기기에는 보내지 않는다.
+  - Firebase 키(`remine.fcm.credentials-file`)가 없으면 푸시만 꺼지고(기동 때 경고 1번) 나머지는 정상.
+  - 앱: 알림을 누르면 그 카테고리 화면을 태그로 거른 상태로 연다. 알림 권한(Android 13+)은 첫 동기화가 끝난 뒤 안내 시트에서 [알림 받기]를 고를 때 한 번 묻는다(설정에도 버튼). 앱이 앞에 있을 때 온 알림은 띄우지 않는다(FCM 기본 동작).
 
 **F-05. 사용자 카테고리 수정**
 - AI가 분류한 카테고리가 틀리면 사용자가 스크린샷 상세 화면에서 **7개 기본 카테고리 중 하나로 직접 바꾼다.**
@@ -201,11 +204,11 @@
 
 | 테이블 | 주요 컬럼 |
 |---|---|
-| `device` | id, fcm_token, created_at |
+| `device` | id, fcm_token(nullable — 못 받았거나 FCM이 해제했으면 null), created_at |
 | `screenshot` | id, device_id, local_asset_id, taken_at, source_app, ocr_text, auto_category(모델 최초 값, 불변), category(현재 값), category_source(AUTO/USER), summary, analyzed_at |
 | `tag` | id, name(표시용, 처음 표기), normalized_name(unique, `#`·공백·대소문자 무시한 키) |
 | `screenshot_tag` | id, screenshot_id, tag_id (unique: screenshot_id + tag_id) |
-| `interest_alert` | id, device_id, tag_id, capture_count, week_start(그 주 월요일), status(PENDING/SENT), created_at, sent_at (unique: device_id + week_start). 문구는 발송 때 만든다 |
+| `interest_alert` | id, device_id, tag_id, category(집계 당시 대표 카테고리), capture_count, week_start(그 주 월요일), status(PENDING/SENT/EXPIRED), created_at, sent_at (unique: device_id + week_start). 문구는 발송 때 만든다 |
 
 ### 운영 DB 전환 메모 (카테고리 수정 컬럼)
 - 지금은 H2 인메모리 + 자동 스키마 생성이라 마이그레이션이 없다(기동마다 새 스키마).
@@ -226,7 +229,8 @@
 
 | Method | Path | 설명 |
 |---|---|---|
-| POST | `/api/devices` | 기기 등록 (FCM 토큰 포함) |
+| POST | `/api/devices` | 기기 등록 `{fcmToken}` (토큰은 없어도 됨 → 푸시만 안 감) |
+| PUT | `/api/devices/me/fcm-token` | FCM 토큰 갱신 `{fcmToken}`(빈 값 400) → 204. 앱 시작 때·토큰이 바뀔 때. 미등록 기기 404 |
 | GET | `/api/config` | 분석 설정 조회(헤더 불필요). `{imageThresholdChars:150, maxBatchSize:20, imageMaxBytes:1048576, imageMaxLongSide:1024, imageContentType:"image/jpeg", maxRequestBytes:12582912, classifyIntervalMs:0}` — 모두 서버 설정(`remine.*`)에서 읽는다. `classifyIntervalMs`는 장당 분류 최소 간격(gemini면 `min-interval-ms`, 가짜 분류기는 0)이며 앱이 남은 시간을 처음부터 예상하는 데 쓴다 |
 | POST | `/api/screenshots/analyze` | OCR 텍스트 배치(최대 20장, 초과 시 400) 전송 → 분류 결과 반환 `{analyzed, skipped, failed}`. 일부 분류가 실패해도 200이며 실패한 캡처는 `failed`(`localAssetId`, `reason`)에 담기고 미분석으로 남는다(같은 요청을 다시 보내면 재분석). 요청 형식은 둘 중 하나: ① `application/json` — 기존 본문(이미지 없음), ② `multipart/form-data` — 아래 |
 
@@ -311,7 +315,9 @@
 - [ ] 3주차 서버 연동 시 `GET /api/screenshots` 항목에 `autoCategory`, `categorySource` 추가 (수정 시트의 "AI는 X라고 했어요"에 필요. 서버 변경은 연동 PR에서)
 - [x] `GET /api/interests` 응답 형식 — 9장 API 표
 - [x] 관심사 감지 규칙의 기준값 — 14일·3회, 쿨다운 28일 (설정 `remine.interest.*`)
-- [ ] 관심사 알림 발송(FCM): `PENDING` 후보 → 문구 생성·전송·`SENT` — 다음 브랜치
+- [x] 관심사 알림 발송(FCM): `PENDING` 후보 → 문구 생성·전송·`SENT`, 지난주 `EXPIRED`, 무효 토큰 정리
+- [ ] FCM 토큰 → FID 등록(`register`/`onRegistered`) 전환 — firebase_messaging 17에서 토큰 API가 deprecated. 서버 발송 대상도 함께 바꿔야 함
+- [ ] 앱이 앞에 있을 때 온 알림 표시(`flutter_local_notifications`) — 필요해지면
 - [ ] 하이브리드 기준값 재검증 (ML Kit OCR, 더 큰 표본)
 - [ ] 분류 힌트 입력(앱 이름, 인스타 저장 컬렉션 이름 등 화면 상단 문구) — **ML Kit(텍스트 위치 정보) 도입 후 재검토.**
   Tesseract 텍스트로는 Instagram 37장 중 컬렉션 이름처럼 보이는 첫 줄이 3~4장(약 10%)뿐이라 효과를 검증할 수 없었고,
