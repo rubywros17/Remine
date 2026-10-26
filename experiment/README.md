@@ -16,12 +16,12 @@
    `ocr/*.txt`와 `labels.csv` 템플릿이 생성된다.
 3. **정답 입력** — `labels.csv`의 `category` 칸을 아래 값 중 하나로 채운다. ([라벨링 기준](#라벨링-기준) 참고)
 4. **API 키 설정** — Gemini만 지원한다. 러너는 스프링 설정(Environment)에서 `GEMINI_API_KEY`를 읽으므로 방법이 두 가지다.
-   - **파일(권장, 셸마다 export 불필요)**: 사용자 홈에 `~/.remine.env`(Windows: `C:\Users\<이름>\.remine.env`)를 만들고 한 줄을 적는다.
+   - **파일(권장, 셸마다 export 불필요)**: 환경변수 `REMINE_ENV_FILE`이 가리키는 파일(예: `E:\dev\secrets\remine\remine.env`), 없으면 사용자 홈의 `~/.remine.env`(Windows: `C:\Users\<이름>\.remine.env`)에 한 줄을 적는다.
      ```
      GEMINI_API_KEY=키값
      ```
      따옴표나 `export`를 붙이지 않고, **BOM 없는 UTF-8**로 저장한다(메모장의 "UTF-8(BOM 포함)"으로 저장하면 첫 줄 이름이 깨져 키가 없는 것으로 읽힌다).
-     파일은 레포 밖이라 커밋되지 않는다. 실험 프로필(`application-experiment.yaml`의 `spring.config.import`)에서만 읽으며 파일이 없어도 기동한다.
+     파일은 레포 밖이라 커밋되지 않는다. 공통 설정(`application.yaml`의 `spring.config.import`)에서 읽으며 파일이 없어도 기동한다.
    - **환경변수**: `export GEMINI_API_KEY=키값`(Git Bash) 또는 `$env:GEMINI_API_KEY = "키값"`(PowerShell). 환경변수가 있으면 파일보다 **우선**한다.
 
    키가 없거나 비어 있으면 표본을 읽거나 API를 부르기 **전에** 오류 로그를 남기고 바로 끝나며 어떤 파일도 쓰지 않는다.
