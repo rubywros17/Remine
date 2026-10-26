@@ -6,8 +6,8 @@ import '../data/remine_store.dart';
 import '../models/category.dart';
 import '../models/screenshot_item.dart';
 import '../widgets/pressable_scale.dart';
+import '../widgets/capture_grid.dart';
 import '../widgets/small_widgets.dart';
-import '../widgets/capture_thumb.dart';
 import 'detail_screen.dart';
 
 /// 카테고리 상세: 큰 제목 + 거대한 개수, 태그 칩 필터, 높이가 다른 2열 엇갈림 그리드.
@@ -176,7 +176,7 @@ class _CategoryScreenState extends State<CategoryScreen> {
               _TagRow(tags: _allTags, selected: _tag, onSelect: _selectTag),
               const SizedBox(height: AppSpacing.s20),
               if (_loaded)
-                _StaggeredGrid(
+                CaptureGrid(
                   items: _items,
                   keyFor: (id) => _tileKeys.putIfAbsent(id, GlobalKey.new),
                   onOpen: _openDetail,
@@ -234,118 +234,6 @@ class _TagRow extends StatelessWidget {
           child: on
               ? AppChip.selected(label: label)
               : AppChip.outlined(label: label),
-        ),
-      ),
-    );
-  }
-}
-
-/// 두 열로 나누고 높이를 달리해 엇갈리게 쌓는다. (한 화면에 담기는 개수가 적어 단순 Column 두 개로 만들었다.
-/// 실제 서버 연동에서 수백 장이 되면 지연 로딩 그리드로 바꾼다.)
-class _StaggeredGrid extends StatelessWidget {
-  const _StaggeredGrid({
-    required this.items,
-    required this.keyFor,
-    required this.onOpen,
-  });
-
-  final List<ScreenshotItem> items;
-  final GlobalKey Function(int id) keyFor;
-  final ValueChanged<int> onOpen; // 목록 안의 위치(index)
-
-  static const _heights = [230.0, 170.0, 200.0, 250.0, 160.0];
-
-  @override
-  Widget build(BuildContext context) {
-    if (items.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(vertical: AppSpacing.s40),
-        child: Center(child: Text('아직 여기엔 아무것도 없어', style: AppText.body)),
-      );
-    }
-    final left = <Widget>[];
-    final right = <Widget>[];
-    for (var i = 0; i < items.length; i++) {
-      final tile = Padding(
-        padding: const EdgeInsets.only(bottom: AppSpacing.s12),
-        child: _Tile(
-          key: ValueKey('tile-${items[i].id}'),
-          item: items[i],
-          height: _heights[(items[i].id + i) % _heights.length],
-          anchorKey: keyFor(items[i].id),
-          onTap: () => onOpen(i),
-        ),
-      );
-      (i.isEven ? left : right).add(tile);
-    }
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(child: Column(children: left)),
-        const SizedBox(width: AppSpacing.s12),
-        // 오른쪽 열을 아래로 밀어 엇갈리게
-        Expanded(
-          child: Padding(
-            padding: const EdgeInsets.only(top: 36),
-            child: Column(children: right),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _Tile extends StatelessWidget {
-  const _Tile({
-    super.key,
-    required this.item,
-    required this.height,
-    required this.anchorKey,
-    required this.onTap,
-  });
-
-  final ScreenshotItem item;
-  final double height;
-
-  /// 상세에서 돌아올 때 이 타일이 보이게 스크롤하려고 쓰는 키.
-  final GlobalKey anchorKey;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return PressableScale(
-      onTap: onTap,
-      label:
-          '${item.summary ?? item.category.label}, ${formatMonthDay(item.takenAt)}',
-      child: SizedBox(
-        key: anchorKey,
-        height: height,
-        child: Hero(
-          tag: 'screenshot-${item.id}',
-          child: CaptureThumb(
-            assetId: item.localAssetId,
-            seed: item.id,
-            child: Positioned(
-              left: 12,
-              bottom: 12,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: AppColors.white,
-                  borderRadius: BorderRadius.circular(AppRadii.pill),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  child: Text(
-                    formatMonthDay(item.takenAt),
-                    style: AppText.numBadge(),
-                  ),
-                ),
-              ),
-            ),
-          ),
         ),
       ),
     );

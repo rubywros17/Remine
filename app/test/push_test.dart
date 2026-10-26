@@ -7,7 +7,7 @@ import 'package:remine/app.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
 import 'package:remine/data/remote/push.dart';
 import 'package:remine/models/category.dart';
-import 'package:remine/screens/category_screen.dart';
+import 'package:remine/screens/tag_screen.dart';
 import 'package:remine/screens/debug_ocr_screen.dart';
 import 'package:remine/screens/notification_screen.dart';
 import 'package:remine/screens/settings_screen.dart';
@@ -452,24 +452,22 @@ void main() {
       return push;
     }
 
-    void expectCategory(WidgetTester tester, Category category, String tag) {
-      final screen = tester.widget<CategoryScreen>(find.byType(CategoryScreen));
-      expect(screen.category, category);
-      expect(screen.initialTag, tag);
+    void expectTag(WidgetTester tester, String tag) {
+      expect(tester.widget<TagScreen>(find.byType(TagScreen)).tag, tag);
     }
 
-    testWidgets('꺼진 앱을 알림으로 켜면 그 태그로 거른 카테고리 화면이 열린다', (tester) async {
+    testWidgets('꺼진 앱을 알림으로 켜면 그 태그 모아보기 화면이 열린다', (tester) async {
       await openApp(
         tester,
         initial: const PushTarget(tag: '신발', category: Category.shopping),
       );
 
-      expectCategory(tester, Category.shopping, '신발');
+      expectTag(tester, '신발');
     });
 
     testWidgets('백그라운드에서 알림을 누르면 그 화면이 열린다', (tester) async {
       final push = await openApp(tester);
-      expect(find.byType(CategoryScreen), findsNothing);
+      expect(find.byType(TagScreen), findsNothing);
 
       push.tapEvents.add(
         const PushTarget(tag: '전시', category: Category.entertainment),
@@ -477,7 +475,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(seconds: 1));
 
-      expectCategory(tester, Category.entertainment, '전시');
+      expectTag(tester, '전시');
     });
   });
 }

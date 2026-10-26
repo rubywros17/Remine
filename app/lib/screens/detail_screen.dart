@@ -20,7 +20,7 @@ import '../widgets/category_sheet.dart';
 import '../widgets/pressable_scale.dart';
 import '../widgets/small_widgets.dart';
 import '../widgets/thumb_placeholder.dart';
-import 'category_screen.dart';
+import 'tag_screen.dart';
 import 'photo_viewer_screen.dart';
 
 /// 스크린샷 상세. 들어온 목록(카테고리 전체 또는 선택된 태그로 거른 결과) 안에서 좌우로 넘긴다.
@@ -512,15 +512,9 @@ class _DetailPageState extends State<_DetailPage> {
                     onEditCategory: _editCategory,
                     onMore: tag == null
                         ? null
-                        : () => Navigator.of(context).push(
-                            appRoute(
-                              context,
-                              (_) => CategoryScreen(
-                                category: _item.category,
-                                initialTag: tag,
-                              ),
-                            ),
-                          ),
+                        : () => Navigator.of(
+                            context,
+                          ).push(appRoute(context, (_) => TagScreen(tag: tag))),
                   ),
                 ],
               ),

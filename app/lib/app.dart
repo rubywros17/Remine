@@ -12,7 +12,7 @@ import 'data/remote/push.dart';
 import 'data/remine_store.dart';
 import 'data/screenshot_repository.dart';
 import 'screens/analysis_screen.dart';
-import 'screens/category_screen.dart';
+import 'screens/tag_screen.dart';
 import 'screens/consent_screen.dart';
 import 'screens/permission_gate.dart';
 import 'screens/shell_screen.dart';
@@ -75,20 +75,14 @@ class _RemineAppState extends State<RemineApp> {
     }
   }
 
-  /// 관심사 알림 → 그 태그로 거른 카테고리 화면. 첫 화면이 아직 안 그려졌으면 다음 프레임에 연다.
+  /// 관심사 알림 → 그 태그 모아보기 화면. 첫 화면이 아직 안 그려졌으면 다음 프레임에 연다.
   void _openTarget(PushTarget target) {
     final nav = _navigatorKey.currentState;
     if (nav == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _openTarget(target));
       return;
     }
-    nav.push(
-      appRoute(
-        nav.context,
-        (_) =>
-            CategoryScreen(category: target.category, initialTag: target.tag),
-      ),
-    );
+    nav.push(appRoute(nav.context, (_) => TagScreen(tag: target.tag)));
   }
 
   ScreenshotRepository _withLocal(ScreenshotRepository base) {
