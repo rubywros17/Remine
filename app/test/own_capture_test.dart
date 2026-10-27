@@ -213,4 +213,107 @@ void main() {
       },
     );
   });
+
+  group('재전송 대상: 정리 기간·SYNC_LIMIT', () {
+    Future<ForegroundLog> backfilled() async {
+      final log = ForegroundLog(
+        InMemorySettingsStore(),
+        now: () => DateTime(2026, 10, 26, 9),
+      );
+      await log.ensureBackfill(DateTime(2026, 10, 20, 15));
+      return log;
+    }
+
+    GalleryPhoto insta(String id, DateTime at) =>
+        _shot(id, 'Screenshot_${_stamp(at)}_Instagram.jpg', at);
+
+    test('1회 정리 기간 안이라도 이름 있는 캡처(인스타)는 보내고, 이름 없는 것만 뺀다', () async {
+      final at = DateTime(2026, 10, 22, 14);
+      final rig = await SyncRig.create(
+        photos: [
+          insta('i1', at),
+          _nameless('own', at.add(const Duration(minutes: 1))),
+          insta('i2', at.add(const Duration(minutes: 2))),
+        ],
+        texts: {'i1': '글자 ' * 60, 'i2': '글자 ' * 60, 'own': '우리 앱'},
+        foreground: await backfilled(),
+      );
+
+      await rig.sync.run();
+
+      final body = rig.client.analyzeCalls.map((r) => r.utf8Text).join();
+      expect(body, contains('"i1"'));
+      expect(body, contains('"i2"'));
+      expect(body, isNot(contains('"own"')));
+    });
+
+    test('SYNC_LIMIT는 자기 캡처·이미 보낸 것을 빼고 남은 후보에서 센다', () async {
+      final at = DateTime(2026, 10, 22, 14);
+      final photos = [
+        for (var k = 0; k < 6; k++)
+          insta('i$k', at.subtract(Duration(minutes: k))),
+        _nameless('own1', at.subtract(const Duration(hours: 1))),
+        _nameless('own2', at.subtract(const Duration(hours: 2))),
+      ];
+      final logs = <String>[];
+      final rig = await SyncRig.create(
+        photos: photos,
+        texts: {for (final p in photos) p.id: '글자 ' * 60},
+        foreground: await backfilled(),
+        photoLimit: 3,
+        log: logs.add,
+      );
+      for (final id in ['i0', 'i1']) {
+        await rig.state.putEntry(
+          SyncEntry(assetId: id, modifiedAt: 1, status: SyncStatusCode.synced),
+        );
+      }
+
+      await rig.sync.run();
+
+      final body = rig.client.analyzeCalls.map((r) => r.utf8Text).join();
+      for (final id in ['i2', 'i3', 'i4']) {
+        expect(body, contains('"$id"'), reason: id);
+      }
+      expect(body, isNot(contains('"i5"')), reason: '후보 4장 중 최신 3장만');
+      expect(
+        logs,
+        contains(
+          '[sync] 대상 갤러리 8 → 자기 캡처 2(이름 0 · 앞에 있던 구간 0 · 1회 정리 기간 2)'
+          ' → 이미 보냄 2 → 보낼 후보 4 → SYNC_LIMIT 후 3',
+        ),
+      );
+      expect(logs.any((l) => l.startsWith('[sync] 결과 보냄 3 ')), isTrue);
+      expect(logs.join(), isNot(contains('Screenshot_')), reason: '파일명 없음');
+      expect(logs.join(), isNot(contains('i2')), reason: 'asset id 없음');
+    });
+
+    test('재등록으로 기록이 지워지면 SYNC_LIMIT만큼 다시 보낸다', () async {
+      final at = DateTime(2026, 10, 22, 14);
+      final photos = [
+        for (var k = 0; k < 5; k++)
+          insta('i$k', at.subtract(Duration(minutes: k))),
+      ];
+      final rig = await SyncRig.create(
+        photos: photos,
+        texts: {for (final p in photos) p.id: '글자 ' * 60},
+        photoLimit: 4,
+      );
+      await rig.sync.run();
+      expect(rig.client.analyzeCalls, isNotEmpty);
+      await rig.state.clear(); // 서버가 기기를 잊음 → 전송 기록 비움
+      await rig.state.setDeviceId(7);
+      final before = rig.client.analyzeCalls.length;
+
+      await rig.sync.run();
+
+      final again = rig.client.analyzeCalls
+          .skip(before)
+          .map((r) => r.utf8Text)
+          .join();
+      for (final id in ['i0', 'i1', 'i2', 'i3']) {
+        expect(again, contains('"$id"'), reason: id);
+      }
+    });
+  });
 }

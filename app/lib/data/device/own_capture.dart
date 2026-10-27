@@ -22,17 +22,25 @@ class OwnCaptureRule {
   final List<(DateTime, DateTime)> intervals;
   final (DateTime, DateTime)? backfill;
 
-  bool isOwn(GalleryPhoto p) {
-    if (isOwnAppCapture(p.fileName)) return true;
-    if (!isNamelessScreenshot(p.fileName)) return false;
+  bool isOwn(GalleryPhoto p) => reasonOf(p) != null;
+
+  /// 자기 캡처인 이유(디버그 로그의 사유별 개수). 자기 캡처가 아니면 null.
+  OwnReason? reasonOf(GalleryPhoto p) {
+    if (isOwnAppCapture(p.fileName)) return OwnReason.name;
+    // 이름 있는 캡처(인스타 등)는 구간·정리 기간 안이어도 자기 캡처가 아니다
+    if (!isNamelessScreenshot(p.fileName)) return null;
     final t = p.takenAt;
     bool inside((DateTime, DateTime) r, Duration pad) =>
         !t.isBefore(r.$1.subtract(pad)) && !t.isAfter(r.$2.add(pad));
+    if (intervals.any((r) => inside(r, margin))) return OwnReason.interval;
     final b = backfill;
-    if (b != null && inside(b, Duration.zero)) return true;
-    return intervals.any((r) => inside(r, margin));
+    if (b != null && inside(b, Duration.zero)) return OwnReason.backfill;
+    return null;
   }
 }
+
+/// 자기 캡처로 본 이유: 파일명 앱 이름 Remine / 앱이 앞에 있던 구간 / 1회 정리 기간.
+enum OwnReason { name, interval, backfill }
 
 /// 앱이 앞에 있던 구간(resumed ~ paused)을 기기에 기록한다. 최근 [keep]만 두고, 서버로 보내지 않는다.
 ///

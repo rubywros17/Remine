@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import '../../models/category.dart';
 import '../device/device_capture_service.dart';
 import '../device/gallery_reader.dart';
+import '../device/own_capture.dart';
 import '../device/privacy/local_verdict_store.dart';
 import '../device/privacy/privacy_filter.dart';
 import '../device/settings_store.dart';
@@ -109,20 +110,30 @@ class SyncService {
   Future<void> _run() async {
     var failed = 0;
     try {
-      final (:mine, :own) = await _photos();
-      final photos = mine;
+      final (:all, :mine, :own, :ownBy) = await _photos();
       final config = await api.config();
       final deviceId = await _ensureDevice();
       await _forgetOwn(deviceId, own);
-      final pending = <GalleryPhoto>[];
-      for (final photo in photos) {
+      final waiting = <GalleryPhoto>[];
+      for (final photo in mine) {
         final e = await state.entry(photo.id);
         final upToDate =
             e != null &&
             e.status == SyncStatusCode.synced &&
             e.modifiedAt == photo.modifiedAt;
-        if (!upToDate) pending.add(photo);
+        if (!upToDate) waiting.add(photo);
       }
+      // SYNC_LIMIT는 실제로 보낼 후보(자기 캡처·이미 보낸 것을 뺀 나머지)의 최신 N장에 건다.
+      final pending = photoLimit > 0
+          ? waiting.take(photoLimit).toList()
+          : waiting;
+      log?.call(
+        '[sync] 대상 갤러리 $all → 자기 캡처 ${own.length}'
+        '(이름 ${ownBy[OwnReason.name]} · 앞에 있던 구간 ${ownBy[OwnReason.interval]} · '
+        '1회 정리 기간 ${ownBy[OwnReason.backfill]}) → 이미 보냄 ${mine.length - waiting.length}'
+        ' → 보낼 후보 ${waiting.length} → SYNC_LIMIT 후 ${pending.length}',
+      );
+      final tally = _Tally();
       status.begin(pending.length, intervalMs: config.classifyIntervalMs);
       var deviceIdNow = deviceId;
       final size = batchSize < config.maxBatchSize
@@ -130,12 +141,16 @@ class SyncService {
           : config.maxBatchSize;
       for (var i = 0; i < pending.length; i += size) {
         final chunk = pending.sublist(i, (i + size).clamp(0, pending.length));
-        final r = await _batch(chunk, config, deviceIdNow);
+        final r = await _batch(chunk, config, deviceIdNow, tally);
         deviceIdNow = r.deviceId;
         failed += r.failed;
         status.advance(chunk.length);
         onBatchDone?.call();
       }
+      log?.call(
+        '[sync] 결과 보냄 ${tally.sent} · 기기에서 끝남(앱·민감) ${tally.deviceOnly}'
+        ' · 글자 없음 ETC ${tally.noTextEtc} · 건너뜀(판정 없음 등) ${tally.skipped} · 실패 $failed',
+      );
       await state.setFirstSyncDone();
       failed = await state.failedCount();
       status.finish(
@@ -168,15 +183,28 @@ class SyncService {
     }
   }
 
-  Future<({List<GalleryPhoto> mine, List<GalleryPhoto> own})> _photos() async {
+  /// 갤러리 최신 [DeviceCaptureService.maxPhotos]장을 (분류할 것, 자기 캡처)로 나눈다. [all]은 읽은 장수.
+  Future<
+    ({
+      int all,
+      List<GalleryPhoto> mine,
+      List<GalleryPhoto> own,
+      Map<OwnReason, int> ownBy,
+    })
+  >
+  _photos() async {
     final albums = await reader.albums();
     final shots = albums.where((a) => a.isScreenshots).toList();
-    if (shots.isEmpty) return (mine: <GalleryPhoto>[], own: <GalleryPhoto>[]);
-    final (:mine, :own) = await capture.recentSplit(shots.first.id);
-    return (
-      mine: photoLimit > 0 ? mine.take(photoLimit).toList() : mine,
-      own: own,
-    );
+    if (shots.isEmpty) {
+      return (
+        all: 0,
+        mine: <GalleryPhoto>[],
+        own: <GalleryPhoto>[],
+        ownBy: <OwnReason, int>{for (final r in OwnReason.values) r: 0},
+      );
+    }
+    final (:mine, :own, :ownBy) = await capture.recentSplit(shots.first.id);
+    return (all: mine.length + own.length, mine: mine, own: own, ownBy: ownBy);
   }
 
   /// 예전에 보냈던 캡처가 지금 보니 Remine 자기 캡처면(판정 규칙이 생기기 전에 보낸 것) 서버에서 지운다.
@@ -268,6 +296,7 @@ class SyncService {
     List<GalleryPhoto> chunk,
     ApiConfig config,
     int deviceId,
+    _Tally tally,
   ) async {
     await capture.run(chunk); // OCR·판정(이미 한 것은 건너뛴다). 실패한 장은 기록이 없어 아래에서 걸러진다.
     final consent = await settings.imageConsent() == true;
@@ -278,6 +307,7 @@ class SyncService {
     for (final photo in chunk) {
       final verdict = await capture.verdicts.find(photo.id);
       final record = await capture.store.find(photo.id);
+      if (verdict?.route == LocalRoute.deviceOnly) tally.deviceOnly++;
       if (verdict?.route == LocalRoute.deviceOnly &&
           verdict!.category != null) {
         status.count(
@@ -306,9 +336,10 @@ class SyncService {
       );
       switch (entry.action) {
         case PlanAction.skip:
-          break;
+          if (verdict?.route != LocalRoute.deviceOnly) tally.skipped++;
         case PlanAction.deviceEtc:
           await _classifyOnDevice(photo, Category.etc);
+          tally.noTextEtc++;
         case PlanAction.sendText:
           send[photo.id] = _Outgoing(entry);
         case PlanAction.sendWithImage:
@@ -347,6 +378,7 @@ class SyncService {
         final photo = photoById[a.assetId];
         if (photo == null || !send.containsKey(a.assetId)) continue;
         await state.putEntry(_entry(photo, SyncStatusCode.synced));
+        tally.sent++;
         status.count(a.category, assetId: a.assetId);
         send.remove(a.assetId);
       }
@@ -354,6 +386,7 @@ class SyncService {
         final photo = photoById[id];
         if (photo == null || !send.containsKey(id)) continue;
         await state.putEntry(_entry(photo, SyncStatusCode.synced));
+        tally.sent++;
         send.remove(id);
       }
       for (final f in result.failed) {
@@ -403,7 +436,10 @@ class SyncService {
   ) async {
     if (out.entry.text.trim().isEmpty) {
       send.remove(photo.id);
-      await _classifyOnDevice(photo, Category.etc);
+      await _classifyOnDevice(
+        photo,
+        Category.etc,
+      ); // ponytail: 사유 로그에서는 세지 않는다(드묾)
     } else {
       send[photo.id] = _Outgoing(out.entry);
     }
@@ -428,6 +464,14 @@ class SyncService {
 
   SyncEntry _entry(GalleryPhoto photo, SyncStatusCode code) =>
       SyncEntry(assetId: photo.id, modifiedAt: photo.modifiedAt, status: code);
+}
+
+/// 한 번의 실행에서 캡처가 어디로 갔는지 센다(디버그 로그에 숫자만).
+class _Tally {
+  int sent = 0;
+  int deviceOnly = 0;
+  int noTextEtc = 0;
+  int skipped = 0;
 }
 
 /// 보내려고 준비한 한 장. 이미지는 [level]단계로 줄인 것이다.

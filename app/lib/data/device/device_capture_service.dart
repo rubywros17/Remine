@@ -41,15 +41,28 @@ class DeviceCaptureService {
       (await recentSplit(albumId)).mine;
 
   /// [recent]와 같은 범위를 (분류할 것, Remine 자기 캡처)로 나눈다. 판정은 [OwnCaptureRule].
-  Future<({List<GalleryPhoto> mine, List<GalleryPhoto> own})> recentSplit(
-    String albumId,
-  ) async {
+  /// [ownBy]는 자기 캡처로 본 이유별 장수(디버그 로그용).
+  Future<
+    ({
+      List<GalleryPhoto> mine,
+      List<GalleryPhoto> own,
+      Map<OwnReason, int> ownBy,
+    })
+  >
+  recentSplit(String albumId) async {
     final rule = await foreground?.rule() ?? const OwnCaptureRule();
     final mine = <GalleryPhoto>[], own = <GalleryPhoto>[];
+    final ownBy = {for (final r in OwnReason.values) r: 0};
     for (final p in await reader.recent(albumId, limit: maxPhotos)) {
-      (rule.isOwn(p) ? own : mine).add(p);
+      final reason = rule.reasonOf(p);
+      if (reason == null) {
+        mine.add(p);
+      } else {
+        own.add(p);
+        ownBy[reason] = ownBy[reason]! + 1;
+      }
     }
-    return (mine: mine, own: own);
+    return (mine: mine, own: own, ownBy: ownBy);
   }
 
   /// 앨범의 모든 사진(파일명 집계용). OCR은 하지 않는다.
