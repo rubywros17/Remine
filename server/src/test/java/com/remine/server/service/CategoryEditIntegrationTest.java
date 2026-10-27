@@ -34,7 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 
 /**
- * 카테고리 수정(F-05)을 실제 DB(H2)로 검증한다: HTTP 계약, 집계 즉시 반영, auto_category 불변,
+ * 카테고리 수정(F-05)을 실제 DB(PostgreSQL)로 검증한다: HTTP 계약, 집계 즉시 반영, auto_category 불변,
  * 재분석에서의 USER 값 보호, 쿼리 수. 분류는 기본 fake 분류기(키워드)라 외부 호출은 없다.
  */
 @SpringBootTest(properties = "spring.jpa.properties.hibernate.generate_statistics=true")

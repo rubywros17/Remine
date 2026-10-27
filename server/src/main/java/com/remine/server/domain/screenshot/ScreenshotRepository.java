@@ -59,7 +59,7 @@ public interface ScreenshotRepository extends JpaRepository<Screenshot, Long> {
 
     /**
      * 카테고리별 최신 limit개의 localAssetId. 행: [category(String), localAssetId(String)]
-     * window 함수(row_number)로 카테고리 수와 무관하게 쿼리 1번. (H2 / PostgreSQL / MySQL 8 공통 문법)
+     * window 함수(row_number)로 카테고리 수와 무관하게 쿼리 1번. (PostgreSQL / MySQL 8 공통 문법)
      */
     @Query(value = """
             select t.category, t.local_asset_id

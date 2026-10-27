@@ -28,7 +28,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** 주간 집계를 실제 DB(H2)로: 1순위만 PENDING, 같은 주 재실행은 그대로(멱등), 쿨다운 동안 같은 태그는 다음 순위로. */
+/** 주간 집계를 실제 DB(PostgreSQL)로: 1순위만 PENDING, 같은 주 재실행은 그대로(멱등), 쿨다운 동안 같은 태그는 다음 순위로. */
 @SpringBootTest
 class InterestAlertServiceTest {
 

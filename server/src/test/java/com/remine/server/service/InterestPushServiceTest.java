@@ -34,7 +34,7 @@ import static com.remine.server.service.InterestAlertServiceTest.THURSDAY;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** 발송을 실제 DB(H2) + 가짜 sender로: SENT·재시도·무효 토큰·지난주 정리, 알림 내용에 원문·요약이 없는지. */
+/** 발송을 실제 DB(PostgreSQL) + 가짜 sender로: SENT·재시도·무효 토큰·지난주 정리, 알림 내용에 원문·요약이 없는지. */
 @SpringBootTest
 class InterestPushServiceTest {
 

@@ -18,7 +18,7 @@ import java.util.Locale;
 public class Tag {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE)
     private Long id;
 
     // 화면에 보이는 이름. 같은 키의 태그가 처음 들어왔을 때의 표기를 유지한다("니트 가디건").

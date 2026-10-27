@@ -18,7 +18,7 @@ import java.time.LocalDateTime;
 public class Device {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.SEQUENCE)
     private Long id;
 
     // 푸시 토큰은 갱신될 수 있으므로 unique 제약은 걸지 않는다. 토큰을 못 받았거나 FCM이 무효라고 하면 null(푸시만 안 간다).
