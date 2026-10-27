@@ -269,10 +269,11 @@ class SyncService {
   }
 
   /// [개발용] 서버(dev 프로필)가 이 기기에 테스트 알림 1건을 바로 보내게 한다. 실패는 [ApiException].
-  Future<void> sendTestPush() async {
+  /// 서버가 [delaySeconds] 기다렸다 보내고 발송 결과를 돌려준다.
+  Future<String> sendTestPush({int delaySeconds = 0}) async {
     final id = await state.deviceId();
     if (id == null) throw const ApiException(ApiFailure.rejected); // 아직 등록 전
-    await api.sendTestPush(id);
+    return api.sendTestPush(id, delaySeconds: delaySeconds);
   }
 
   /// 알림을 켰을 때만 등록 요청에 토큰을 싣는다.

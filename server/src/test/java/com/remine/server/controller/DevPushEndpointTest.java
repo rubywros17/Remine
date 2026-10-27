@@ -59,6 +59,16 @@ class DevPushEndpointTest {
         }
 
         @Test
+        void 서버가_기다렸다_보낼_수_있고_10초를_넘으면_400() throws Exception {
+            Long id = deviceRepository.save(new Device("token")).getId();
+            mvc.perform(post("/api/dev/push-test").header("X-Device-Id", id).param("delaySeconds", "1"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.result").value("SENT"));
+            mvc.perform(post("/api/dev/push-test").header("X-Device-Id", id).param("delaySeconds", "11"))
+                    .andExpect(status().isBadRequest());
+        }
+
+        @Test
         void 토큰이_없으면_409_미등록_기기는_404() throws Exception {
             Long id = deviceRepository.save(new Device(null)).getId();
             mvc.perform(post("/api/dev/push-test").header("X-Device-Id", id)).andExpect(status().isConflict());

@@ -392,11 +392,15 @@ void main() {
   });
 
   group('디버그 테스트 알림', () {
-    testWidgets('[테스트 알림 보내기] → 5초 뒤 서버 dev 엔드포인트를 부른다', (tester) async {
+    testWidgets('[테스트 알림 보내기] → 바로 요청하고 5초 대기는 서버가, 결과를 로그에 남긴다', (
+      tester,
+    ) async {
+      final logs = <String>[];
       final rig = (await tester.runAsync(() async {
         final rig = await SyncRig.create(
           photos: const [],
           push: FakePushClient(),
+          log: logs.add,
         );
         await rig.state.setDeviceId(7);
         return rig;
@@ -417,14 +421,12 @@ void main() {
       );
 
       await tester.tap(find.text('테스트 알림 보내기'));
-      await tester.pump();
-      expect(calls(), isEmpty, reason: '앱을 내릴 시간을 준다');
-
-      await tester.pump(const Duration(seconds: 5));
       await tester.runAsync(pumpEventQueue);
       await tester.pump();
 
-      expect(calls(), hasLength(1));
+      expect(calls(), hasLength(1), reason: '앱이 기다리지 않는다(내려가도 요청은 이미 나감)');
+      expect(calls().single.query, {'delaySeconds': '5'});
+      expect(logs, contains('[api] POST /api/dev/push-test result=SENT'));
       expect(find.text('테스트 알림 보냈어.'), findsWidgets);
     });
   });

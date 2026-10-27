@@ -1,8 +1,11 @@
 package com.remine.server.push;
 
+import com.google.api.client.json.gson.GsonFactory;
 import com.google.firebase.messaging.MessagingErrorCode;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -33,5 +36,18 @@ class PushConfigTest {
         assertThat(FcmPushSender.resultOf(MessagingErrorCode.INVALID_ARGUMENT)).isEqualTo(PushSender.Result.FAILED);
         assertThat(FcmPushSender.resultOf(MessagingErrorCode.UNAVAILABLE)).isEqualTo(PushSender.Result.FAILED);
         assertThat(FcmPushSender.resultOf(null)).isEqualTo(PushSender.Result.FAILED);
+    }
+
+    @Test
+    void 메시지에_알림_제목_본문과_안드로이드_채널_우선순위가_들어간다() throws Exception {
+        PushMessage message = new PushMessage("Remine", "본문", Map.of("type", "interest"));
+
+        // FCM으로 나가는 JSON 그대로(Admin SDK가 쓰는 직렬화)
+        String json = GsonFactory.getDefaultInstance().toString(FcmPushSender.toMessage("tok", message));
+
+        assertThat(json).contains("\"notification\":{\"body\":\"본문\",\"title\":\"Remine\"}");
+        assertThat(json).contains("\"priority\":\"high\"");
+        assertThat(json).contains("\"channel_id\":\"" + FcmPushSender.CHANNEL_ID + "\"");
+        assertThat(json).contains("\"data\":{\"type\":\"interest\"}");
     }
 }

@@ -76,17 +76,19 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
     setState(() => _status = '기기 id $id 복사했어.');
   }
 
-  /// 서버(dev 프로필)가 이 기기에 관심사 알림 1건을 바로 보낸다. 앱이 앞에 있으면 FCM 알림이 화면에 안 뜨므로
-  /// 5초 기다렸다 보낸다(그사이 홈으로 내리면 알림 → 탭 → 관심사 화면까지 확인할 수 있다).
+  /// 서버(dev 프로필)가 이 기기에 관심사 알림 1건을 보낸다. 앱이 앞에 있으면 FCM 알림이 화면에 안 뜨므로
+  /// 서버가 5초 기다렸다 보낸다. 요청은 지금 바로 나가서, 앱을 내려도(안드로이드가 앱을 멈춰도) 끊기지 않는다.
   Future<void> _sendTestPush() async {
     final sync = widget.services.remote?.sync;
     if (sync == null) return;
     setState(() => _status = '5초 뒤에 보낼게. 앱을 내려 둬(앱이 앞에 있으면 알림이 안 보여).');
-    await Future<void>.delayed(const Duration(seconds: 5));
     String result;
     try {
-      await sync.sendTestPush();
-      result = '테스트 알림 보냈어.';
+      result = switch (await sync.sendTestPush(delaySeconds: 5)) {
+        'SENT' => '테스트 알림 보냈어.',
+        'INVALID_TOKEN' => 'FCM이 이 기기 토큰을 모른대. 알림을 껐다 켜 줘.',
+        final r => '서버가 보내지 못했어($r). 서버 로그의 code를 봐 줘.',
+      };
     } on ApiException catch (e) {
       result = switch (e.statusCode) {
         404 => '서버를 dev 프로필로 켜 줘(--spring.profiles.active=dev).',

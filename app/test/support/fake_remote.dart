@@ -24,10 +24,17 @@ import 'fake_device.dart';
 
 /// 보낸 요청 하나. 본문 바이트 전체를 보관해 테스트가 "무엇이 실렸는지" 검사한다.
 class SentRequest {
-  SentRequest(this.method, this.path, this.body, [this.headers = const {}]);
+  SentRequest(
+    this.method,
+    this.path,
+    this.body, [
+    this.headers = const {},
+    this.query = const {},
+  ]);
 
   final String method;
   final String path;
+  final Map<String, String> query;
   final Uint8List body;
   final Map<String, String> headers;
 
@@ -79,6 +86,7 @@ class RecordingClient extends http.BaseClient {
       request.url.path,
       body,
       Map.of(request.headers),
+      request.url.queryParameters,
     );
     sent.add(req);
     final error = throwOnSend;
@@ -276,7 +284,7 @@ class SyncRig {
     final state = InMemoryRemoteStateStore();
     final status = SyncStatus();
     final c = client ?? RecordingClient();
-    final api = RemineApi('http://localhost:8080', c);
+    final api = RemineApi('http://localhost:8080', c, log: log);
     final shrink = shrinker ?? FakeShrinker();
     final batches = <int>[];
     final sync = SyncService(

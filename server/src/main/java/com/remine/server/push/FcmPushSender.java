@@ -1,5 +1,7 @@
 package com.remine.server.push;
 
+import com.google.firebase.messaging.AndroidConfig;
+import com.google.firebase.messaging.AndroidNotification;
 import com.google.firebase.messaging.FirebaseMessaging;
 import com.google.firebase.messaging.FirebaseMessagingException;
 import com.google.firebase.messaging.Message;
@@ -8,8 +10,14 @@ import com.google.firebase.messaging.Notification;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-/** Firebase Admin SDK로 보낸다. 로그에는 오류 코드만 남긴다(토큰·문구·예외 메시지 없음). */
+/**
+ * Firebase Admin SDK로 보낸다. 발송마다 결과와 FCM 오류 코드만 INFO로 남긴다(토큰·문구·태그·예외 메시지 없음).
+ * 주간 발송과 dev 테스트 발송이 모두 여기를 지난다.
+ */
 public class FcmPushSender implements PushSender {
+
+    /** 앱(MainActivity.kt)이 만드는 알림 채널. 이름이 다르면 안드로이드가 기본 채널로 보낸다. */
+    public static final String CHANNEL_ID = "interest_alerts";
 
     private static final Logger log = LoggerFactory.getLogger(FcmPushSender.class);
 
@@ -22,20 +30,33 @@ public class FcmPushSender implements PushSender {
     @Override
     public Result send(String token, PushMessage message) {
         try {
-            messaging.send(Message.builder()
-                    .setToken(token)
-                    // notification이 있어야 앱이 백그라운드·종료 상태일 때 시스템이 알림을 띄운다.
-                    .setNotification(Notification.builder().setTitle(message.title()).setBody(message.body()).build())
-                    .putAllData(message.data())
-                    .build());
+            messaging.send(toMessage(token, message));
+            log.info("push result={}", Result.SENT);
             return Result.SENT;
         } catch (FirebaseMessagingException e) {
-            log.warn("push failed code={}", e.getMessagingErrorCode());
-            return resultOf(e.getMessagingErrorCode());
+            Result result = resultOf(e.getMessagingErrorCode());
+            log.info("push result={} code={}", result, e.getMessagingErrorCode());
+            return result;
         } catch (RuntimeException e) {
-            log.warn("push failed type={}", e.getClass().getSimpleName());
+            log.info("push result={} type={}", Result.FAILED, e.getClass().getSimpleName());
             return Result.FAILED;
         }
+    }
+
+    /**
+     * notification(제목·본문)이 있어야 앱이 백그라운드·종료 상태일 때 시스템이 알림을 띄운다(data만 있으면 안 뜸).
+     * 안드로이드는 우선순위 HIGH(절전 중에도 바로 전달) + 앱의 알림 채널.
+     */
+    static Message toMessage(String token, PushMessage message) {
+        return Message.builder()
+                .setToken(token)
+                .setNotification(Notification.builder().setTitle(message.title()).setBody(message.body()).build())
+                .setAndroidConfig(AndroidConfig.builder()
+                        .setPriority(AndroidConfig.Priority.HIGH)
+                        .setNotification(AndroidNotification.builder().setChannelId(CHANNEL_ID).build())
+                        .build())
+                .putAllData(message.data())
+                .build();
     }
 
     /**

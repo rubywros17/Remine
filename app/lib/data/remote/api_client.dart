@@ -294,10 +294,19 @@ class RemineApi {
   );
 
   /// [개발용] POST /api/dev/push-test. 서버가 dev 프로필일 때만 있고, 아니면 404.
-  Future<void> sendTestPush(int deviceId) => _withDevice(
-    deviceId,
-    () => http.Request('POST', _uri('/api/dev/push-test')),
-  );
+  /// 서버가 [delaySeconds] 기다렸다 보낸다(앱은 바로 내려도 된다). 발송 결과(SENT/INVALID_TOKEN/FAILED)를 돌려준다.
+  Future<String> sendTestPush(int deviceId, {int delaySeconds = 0}) async {
+    final body = await _withDevice(
+      deviceId,
+      () => http.Request(
+        'POST',
+        _uri('/api/dev/push-test', {'delaySeconds': '$delaySeconds'}),
+      ),
+    );
+    final result = '${body['result']}';
+    log?.call('[api] POST /api/dev/push-test result=$result');
+    return result;
+  }
 
   Future<ApiConfig> config() async =>
       ApiConfig.fromJson(await _getJson('/api/config', null));
