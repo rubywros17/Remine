@@ -32,6 +32,13 @@ spring:
     hibernate:
       # Hibernate는 스키마를 만들지 않고 엔티티와 Flyway 스키마가 맞는지만 확인한다(안 맞으면 기동 실패).
       ddl-auto: validate
+    properties:
+      hibernate:
+        # ID가 SEQUENCE(allocationSize 50)라 INSERT를 모아 보낼 수 있다. analyze 저장이 캡처·태그 연결 수만큼 왕복하지 않게.
+        jdbc:
+          batch_size: 50
+        order_inserts: true
+        order_updates: true
   servlet:
     multipart:
       # 분석용 이미지는 디스크에 쓰지 않는다. file-size-threshold 기본값 0B는 모든 파트를 임시 파일로 쓰므로,

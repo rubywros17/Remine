@@ -45,8 +45,9 @@ class ScreenshotAnalyzeQueryCountTest {
 
         long count = statistics.getPrepareStatementCount();
         System.out.println("QUERY_COUNT=" + count);
-        // 개선 전 2019회 → 태그 조회·생성을 일괄 처리해 1170회.
-        // 남은 쿼리는 IDENTITY 키 전략이라 배치되지 않는 INSERT(screenshot 300 + screenshot_tag 850 + tag 17).
-        assertThat(count).isLessThan(1200);
+        // H2: 개선 전 2019회 → 태그 조회·생성을 일괄 처리해 1170회.
+        // PostgreSQL + IDENTITY: 916회 — INSERT가 행마다 나가 배치되지 않는다(screenshot 300 + screenshot_tag·tag).
+        // PostgreSQL + SEQUENCE(50개씩 할당) + JDBC 배치 50: 29회 — 조회 2 + 시퀀스 nextval + 테이블별 배치 INSERT(19 배치).
+        assertThat(count).isLessThan(50);
     }
 }
