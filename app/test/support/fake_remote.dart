@@ -268,6 +268,7 @@ class SyncRig {
     PushClient? push,
     void Function(String line)? log,
     ForegroundLog? foreground,
+    bool autoSync = true,
   }) async {
     final reader = FakeGalleryReader(photos: photos, albums: albums);
     final ocr = MapOcrEngine(texts);
@@ -301,6 +302,7 @@ class SyncRig {
       now: () => DateTime(2026, 10, 21, 12),
       push: push,
       log: log,
+      autoSync: autoSync,
     );
     return SyncRig._(
       c,

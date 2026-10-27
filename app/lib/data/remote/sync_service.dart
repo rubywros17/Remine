@@ -38,6 +38,7 @@ class SyncService {
     this.onBatchDone,
     this.push,
     this.log,
+    this.autoSync = true,
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now {
     api.recoverDevice = _recoverDevice;
@@ -69,6 +70,10 @@ class SyncService {
   final void Function(String line)? log;
   final DateTime Function() _now;
 
+  /// 앱이 열리거나 앞으로 올 때·재등록 뒤에 저절로 동기화할지. 디버그의 `--dart-define=AUTO_SYNC=false`만 끈다
+  /// (main.dart, 릴리스는 항상 켜짐). 꺼져도 서버 조회·토큰·기기 재등록은 그대로이고 [run]으로 수동 실행한다.
+  final bool autoSync;
+
   Future<void>? _inFlight;
   StreamSubscription<String>? _tokenSub;
   bool _again = false; // 재등록으로 전송 기록을 비웠다 → 이번 실행 뒤 한 번 더
@@ -77,6 +82,9 @@ class SyncService {
   /// 동기화를 시작한다. 이미 돌고 있으면 새로 시작하지 않고 진행 중인 것을 기다린다.
   Future<void> run() =>
       _inFlight ??= _runUntilSettled().whenComplete(() => _inFlight = null);
+
+  /// 저절로 도는 자리(앱 시작·복귀)에서 부른다. [autoSync]가 꺼져 있으면 아무것도 하지 않는다.
+  Future<void> runAuto() => autoSync ? run() : Future.value();
 
   Future<void> _runUntilSettled() async {
     // ponytail: 재등록이 연달아 나도 최대 3번까지만 돈다(서버가 계속 기기를 잊는 경우의 무한 반복 방지).
@@ -98,8 +106,8 @@ class SyncService {
       return id;
     }().whenComplete(() => _reregistering = null));
     if (_inFlight != null) {
-      _again = true;
-    } else {
+      _again = true; // 돌고 있던 실행(수동이어도)이 끝나면 한 번 더
+    } else if (autoSync) {
       unawaited(run());
     }
     return id;

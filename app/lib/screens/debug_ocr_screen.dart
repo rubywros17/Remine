@@ -10,6 +10,7 @@ import '../data/device/ocr_store.dart';
 import '../data/device/privacy/app_rules.dart';
 import '../data/remine_store.dart';
 import '../data/remote/api_client.dart';
+import '../data/remote/sync_status.dart';
 import '../widgets/app_button.dart';
 import '../widgets/gallery_thumb.dart';
 import '../widgets/pressable_scale.dart';
@@ -78,6 +79,21 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
 
   /// 서버(dev 프로필)가 이 기기에 관심사 알림 1건을 보낸다. 앱이 앞에 있으면 FCM 알림이 화면에 안 뜨므로
   /// 서버가 5초 기다렸다 보낸다. 요청은 지금 바로 나가서, 앱을 내려도(안드로이드가 앱을 멈춰도) 끊기지 않는다.
+  /// 자동 동기화를 껐을 때(`AUTO_SYNC=false`) 손으로 한 번 돌린다. 켜져 있어도 진행 중이면 그걸 기다린다.
+  Future<void> _syncNow() async {
+    final remote = widget.services.remote;
+    if (remote == null) return;
+    setState(() => _status = '동기화하는 중…');
+    await remote.sync.run();
+    if (!mounted) return;
+    final s = remote.status;
+    setState(
+      () => _status = s.issue == SyncIssue.none
+          ? '동기화 끝(${s.total}장 처리).'
+          : '동기화 멈춤: ${s.bannerMessage}',
+    );
+  }
+
   Future<void> _sendTestPush() async {
     final sync = widget.services.remote?.sync;
     if (sync == null) return;
@@ -246,12 +262,19 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
                   AppSpacing.screenPadding,
                   0,
                 ),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: PressableScale(
-                    onTap: _sendTestPush,
-                    child: AppChip.outlined(label: '테스트 알림 보내기'),
-                  ),
+                child: Wrap(
+                  spacing: AppSpacing.s8,
+                  runSpacing: AppSpacing.s8,
+                  children: [
+                    PressableScale(
+                      onTap: _syncNow,
+                      child: AppChip.outlined(label: '지금 동기화'),
+                    ),
+                    PressableScale(
+                      onTap: _sendTestPush,
+                      child: AppChip.outlined(label: '테스트 알림 보내기'),
+                    ),
+                  ],
                 ),
               ),
             if (_deviceIdLine.isNotEmpty)

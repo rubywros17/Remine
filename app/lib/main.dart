@@ -39,6 +39,10 @@ const _apiBase = String.fromEnvironment('API_BASE');
 /// 디버그 전용: 이 장수만 서버로 보낸다(`--dart-define=SYNC_LIMIT=15`). 0이면 제한 없음. 릴리스에서는 무시한다.
 const _syncLimit = int.fromEnvironment('SYNC_LIMIT');
 
+/// 디버그 전용: false면 자동 동기화(OCR·서버 전송)를 끈다(`--dart-define=AUTO_SYNC=false`).
+/// 디버그 화면의 [지금 동기화]로 수동 실행한다. 릴리스에서는 무시하고 항상 켠다.
+const _autoSync = bool.fromEnvironment('AUTO_SYNC', defaultValue: true);
+
 bool get _apiBaseAllowed =>
     _apiBase.isNotEmpty && (kDebugMode || _apiBase.startsWith('https://'));
 
@@ -86,9 +90,8 @@ Future<DeviceServices> _deviceServices() async {
 Future<ForegroundLog> _foregroundLog(SettingsStore settings) async {
   final log = ForegroundLog(settings);
   try {
-    final ms = await const MethodChannel(
-      'remine/settings',
-    ).invokeMethod<int>('firstInstallTime');
+    final ms = await const MethodChannel('remine/settings')
+        .invokeMethod<int>('firstInstallTime');
     if (ms != null) {
       await log.ensureBackfill(DateTime.fromMillisecondsSinceEpoch(ms));
     }
@@ -143,6 +146,7 @@ RemoteServices _remote(
       images: ImagePreparer(reader, const FlutterImageShrinker()),
       status: status,
       photoLimit: kDebugMode ? _syncLimit : 0,
+      autoSync: !kDebugMode || _autoSync,
       push: push,
       log: log,
     ),

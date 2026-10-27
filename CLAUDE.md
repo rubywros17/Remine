@@ -43,6 +43,7 @@ flutter run -d <id>    # 연결된 갤럭시에서 실행
 adb reverse tcp:8080 tcp:8080
 flutter run -d <id> --dart-define=DATA=device --dart-define=API_BASE=http://localhost:8080
 #   첫 확인은 소량으로: --dart-define=SYNC_LIMIT=15  (디버그 전용, 최신 N장만 서버로 전송)
+#   자동 동기화 끄기: --dart-define=AUTO_SYNC=false  (디버그 전용, 디버그 화면 [지금 동기화]로 수동 실행)
 flutter analyze
 flutter test
 
@@ -80,3 +81,5 @@ cd server
 - 큰 기능은 구현 전에 만들 파일·구조를 먼저 보여주고 확인받는다.
 - 완료 조건: ./gradlew test 통과.
 - Git: 기능 단위 브랜치(feat/...), 작업 단위로 커밋 나누기.
+
+테스트 규칙: 작업 중에는 바뀐 파일과 관련된 테스트만(flutter test test/파일.dart, ./gradlew test --tests ...) + flutter analyze. 전체 테스트는 PR 올리기 전에 한 번만, --timeout 2m.

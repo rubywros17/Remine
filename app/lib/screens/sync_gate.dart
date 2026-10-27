@@ -48,11 +48,12 @@ class _SyncGateState extends State<SyncGate> with WidgetsBindingObserver {
     if (!mounted) return;
     setState(() {
       _loaded = true;
-      _showAnalysis = first;
+      // 자동 동기화가 꺼져 있으면(디버그) 진행 화면이 기다리기만 하므로 바로 홈
+      _showAnalysis = first && widget.remote.sync.autoSync;
     });
     widget.remote.sync.startTokenSync(); // 기다리지 않는다(실패해도 동기화와 무관)
     // 끝나도 자동으로 홈으로 넘어가지 않는다: 분석 화면이 완료 상태("N장 꺼냈어요")와 [홈으로] 버튼을 보여 준다.
-    await widget.remote.sync.run();
+    await widget.remote.sync.runAuto();
   }
 
   /// 분석 화면의 홈 버튼. 완료 상태의 [홈으로]이고 아직 알림을 고르지 않았으면 알림 안내를 먼저 보여 준다.
@@ -79,7 +80,7 @@ class _SyncGateState extends State<SyncGate> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && _loaded) {
-      widget.remote.sync.run(); // 진행 중이면 새로 시작하지 않는다
+      widget.remote.sync.runAuto(); // 진행 중이면 새로 시작하지 않는다
     }
   }
 

@@ -26,7 +26,18 @@ class SyncBanner extends StatelessWidget {
         final String? text = status.running
             ? '새 캡처를 정리하는 중이에요 · ${status.done}/${status.total}장'
             : (retry ? '${status.bannerMessage} · 다시 시도' : null);
-        if (text == null) return const SizedBox.shrink();
+        if (text == null) {
+          // 디버그에서 자동 동기화를 껐을 때만: 왜 새 캡처가 안 올라가는지 알 수 있게 작게
+          return remote.sync.autoSync
+              ? const SizedBox.shrink()
+              : Padding(
+                  padding: const EdgeInsets.only(top: AppSpacing.s8),
+                  child: Text(
+                    '자동 정리 꺼짐(디버그)',
+                    style: AppText.caption.copyWith(color: AppColors.inkSub),
+                  ),
+                );
+        }
         return Padding(
           padding: const EdgeInsets.only(top: AppSpacing.s8),
           child: PressableScale(
