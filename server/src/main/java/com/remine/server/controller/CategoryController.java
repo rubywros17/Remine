@@ -1,5 +1,6 @@
 package com.remine.server.controller;
 
+import com.remine.server.dto.CategoryAccuracyResponse;
 import com.remine.server.dto.CategorySummaryResponse;
 import com.remine.server.service.ScreenshotQueryService;
 import lombok.RequiredArgsConstructor;
@@ -18,5 +19,10 @@ public class CategoryController {
     @GetMapping("/summary")
     public CategorySummaryResponse summary(@RequestHeader("X-Device-Id") Long deviceId) {
         return screenshotQueryService.summary(deviceId);
+    }
+
+    @GetMapping("/accuracy")
+    public CategoryAccuracyResponse accuracy(@RequestHeader("X-Device-Id") Long deviceId) {
+        return screenshotQueryService.accuracy(deviceId);
     }
 }

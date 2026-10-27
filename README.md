@@ -73,6 +73,7 @@
 | GET | `/api/screenshots` | 분류된 스크린샷 목록 (카테고리·태그 필터, 페이지) |
 | GET | `/api/categories/summary` | 홈 화면용 카테고리별 개수·대표 태그·최신 캡처 |
 | PATCH | `/api/screenshots/{id}/category` | 사용자 카테고리 수정 |
+| GET | `/api/categories/accuracy` | 실사용 분류 정확도(수정률·검토 기준 정확도·혼동 쌍) |
 
 요청·응답 형식과 오류 규칙은 [docs/spec.md](docs/spec.md)의 API 절을 참고하세요. 예정: `GET /api/interests`.
 

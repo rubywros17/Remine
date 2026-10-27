@@ -233,7 +233,7 @@
 - **검토 기준 정확도** = confirmed / (confirmed + corrected). 사용자가 직접 본 표본뿐이라 작고 편향될 수 있어 참고용이다.
 - **혼동 쌍** (auto_category → category) 건수: 프롬프트·카테고리 정의 개선의 입력.
 - 한계: 수정 이력 없음, 기기 안에서 분류한 캡처(민감·은행·메신저 앱)는 서버에 없어 제외, 모델·프롬프트 버전별 분리는 버전 컬럼(`classifier_version`)이 생기면 가능.
-- 조회 API(제안, **이번에는 구현하지 않음**): `GET /api/categories/accuracy` (헤더 `X-Device-Id`, 선택 `from`/`to`) → `{analyzed, corrected, confirmed, unreviewed, correctionRate, byAutoCategory:[{category, analyzed, corrected}], confusions:[{from, to, count}]}`. `group by auto_category, category, category_source` 쿼리 1회. 기기 전체 합산은 인증이 없는 지금은 API로 열지 않고 관리용 SQL로만 본다.
+- 조회 API: `GET /api/categories/accuracy` (헤더 `X-Device-Id`) → `{analyzed, corrected, confirmed, unreviewed, correctionRate, accuracyUpperBound, reviewedAccuracy, byAutoCategory:[{category, analyzed, corrected, confirmed}], confusions:[{from, to, count}]}`. 비율은 분모가 0이면 `null`. `confirmed`는 앱 수정 시트의 "응, X 맞아"(같은 값 저장)로 생긴다. `from`/`to` 기간 필터는 아직 없다. `group by auto_category, category, category_source` 쿼리 1회. 기기 전체 합산은 인증이 없는 지금은 API로 열지 않고 관리용 SQL로만 본다.
 
 ## 9. API (초안)
 
@@ -324,7 +324,7 @@
 - [ ] 분석의 비동기·병렬화 (작업 큐 + 진행 상태 조회, 제한된 동시성). 지금은 동기 순차 호출이라 요청당 20장으로 제한한다.
 - [x] 이미지 수신 API(multipart, 메모리 전용)와 "빈 OCR + 이미지" 분류 경로
 - [x] 사용자 카테고리 수정(F-05): `auto_category` + `category_source(AUTO/USER)`, 같은 값 수정 = USER
-- [ ] 실사용 정확도 조회 API(`GET /api/categories/accuracy`) — 5주차 Key Numbers 측정 시 구현
+- [x] 실사용 정확도 조회 API(`GET /api/categories/accuracy`) — 5주차 Key Numbers
 - [ ] 3주차 서버 연동 시 `GET /api/screenshots` 항목에 `autoCategory`, `categorySource` 추가 (수정 시트의 "AI는 X라고 했어요"에 필요. 서버 변경은 연동 PR에서)
 - [x] `GET /api/interests` 응답 형식 — 9장 API 표
 - [x] 관심사 감지 규칙의 기준값 — 14일·3회, 쿨다운 28일 (설정 `remine.interest.*`)
