@@ -7,6 +7,7 @@ import ch.qos.logback.classic.spi.ThrowableProxyUtil;
 import ch.qos.logback.core.read.ListAppender;
 import com.remine.server.classifier.ClassificationException;
 import com.remine.server.classifier.RemineProperties;
+import com.remine.server.classifier.UsageMeter;
 import com.remine.server.classifier.llm.HybridLlmClassifier;
 import com.remine.server.classifier.llm.LlmClassifier;
 import com.remine.server.classifier.llm.LlmProvider;
@@ -124,7 +125,7 @@ class AnalyzeLogRedactionTest {
                 new RemineProperties.Interest(14, 3, 28));
         HybridLlmClassifier classifier = hybridWithFakeProvider();
         ScreenshotService service = new ScreenshotService(deviceRepository, screenshotRepository, classifier, persister,
-                properties, new TagCleaner(properties));
+                properties, new TagCleaner(properties), new UsageMeter());
         LocalDateTime now = LocalDateTime.of(2026, 10, 19, 12, 0);
 
         AnalyzeResponse response = service.analyze(1L, new AnalyzeRequest(List.of(

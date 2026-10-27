@@ -5,6 +5,7 @@ import com.remine.server.classifier.ClassificationException.Reason;
 import com.remine.server.classifier.ClassificationResult;
 import com.remine.server.classifier.Classifier;
 import com.remine.server.classifier.RemineProperties;
+import com.remine.server.classifier.UsageMeter;
 import com.remine.server.domain.device.DeviceRepository;
 import com.remine.server.domain.screenshot.Category;
 import com.remine.server.domain.screenshot.ScreenshotRepository;
@@ -66,7 +67,8 @@ class ScreenshotServiceTest {
     private static ScreenshotService service(RemineProperties properties, DeviceRepository devices,
                                              ScreenshotRepository screenshots, Classifier classifier,
                                              ScreenshotPersister persister) {
-        return new ScreenshotService(devices, screenshots, classifier, persister, properties, new TagCleaner(properties));
+        return new ScreenshotService(devices, screenshots, classifier, persister, properties, new TagCleaner(properties),
+                new UsageMeter());
     }
 
     @BeforeEach

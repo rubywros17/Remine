@@ -5,6 +5,7 @@ import com.remine.server.classifier.ClassificationResult;
 import com.remine.server.classifier.Classifier;
 import com.remine.server.classifier.ImageDecision;
 import com.remine.server.classifier.PrivacyMarkers;
+import com.remine.server.classifier.UsageMeter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -21,10 +22,16 @@ public class HybridLlmClassifier implements Classifier {
 
     private final LlmClassifier llm;
     private final int imageThresholdChars;
+    private final UsageMeter meter;
 
     public HybridLlmClassifier(LlmClassifier llm, int imageThresholdChars) {
+        this(llm, imageThresholdChars, new UsageMeter());
+    }
+
+    public HybridLlmClassifier(LlmClassifier llm, int imageThresholdChars, UsageMeter meter) {
         this.llm = llm;
         this.imageThresholdChars = imageThresholdChars;
+        this.meter = meter;
     }
 
     public int imageThresholdChars() {
@@ -54,6 +61,7 @@ public class HybridLlmClassifier implements Classifier {
         }
 
         LlmOutcome outcome = llm.classifyWithUsage(ocrText, useImage ? jpegImage : null);
+        meter.recordCall(1, outcome.usage());
 
         log.info("분류 status={} image={} tokens={}/{} latencyMs={}", outcome.status(), useImage,
                 outcome.usage().inputTokens(), outcome.usage().outputTokens(), outcome.usage().latencyMs());

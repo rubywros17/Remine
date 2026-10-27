@@ -5,6 +5,7 @@ import com.remine.server.classifier.ClassificationResult;
 import com.remine.server.classifier.Classifier;
 import com.remine.server.classifier.ImageDecision;
 import com.remine.server.classifier.RemineProperties;
+import com.remine.server.classifier.UsageMeter;
 import com.remine.server.domain.device.DeviceRepository;
 import com.remine.server.domain.screenshot.Category;
 import com.remine.server.domain.screenshot.ScreenshotRepository;
@@ -46,6 +47,7 @@ public class ScreenshotService {
     private final ScreenshotPersister persister;
     private final RemineProperties properties;
     private final TagCleaner tagCleaner;
+    private final UsageMeter meter;
 
     /** 이미지 없는 요청(JSON). */
     public AnalyzeResponse analyze(Long deviceId, AnalyzeRequest request) {
@@ -108,9 +110,11 @@ public class ScreenshotService {
             persister.saveAll(deviceId, outcomes);
         }
 
+        long endedNanos = System.nanoTime();
+        meter.recordRequest(startedNanos, endedNanos);
         log.info("analyze deviceId={} requested={} analyzed={} skipped={} failed={} elapsedMs={}",
                 deviceId, requested, analyzed.size(), skipped.size(), failed.size(),
-                (System.nanoTime() - startedNanos) / 1_000_000);
+                (endedNanos - startedNanos) / 1_000_000);
         if (stats.received > 0) {
             // 이미지 관련 로그는 건수·바이트 수·사유 코드만. 이미지 내용은 남기지 않는다.
             log.info("analyze images received={} used={} rejected={} ignored={} bytesIn={} bytesUsed={}",
