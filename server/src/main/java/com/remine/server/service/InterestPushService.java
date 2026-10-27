@@ -1,5 +1,6 @@
 package com.remine.server.service;
 
+import com.remine.server.ServerApplication;
 import com.remine.server.domain.device.Device;
 import com.remine.server.domain.device.DeviceRepository;
 import com.remine.server.domain.interest.InterestAlert;
@@ -66,7 +67,7 @@ public class InterestPushService {
     }
 
     // ponytail: 이번 주 PENDING을 한 번에 읽어 순차 발송한다. 기기가 많아지면 페이지 단위 + FCM sendEach(500개 묶음).
-    @Scheduled(cron = "${remine.push.send-cron}", zone = "Asia/Seoul")
+    @Scheduled(cron = "${remine.push.send-cron}", zone = ServerApplication.ZONE)
     public void sendPending() {
         if (sender == null) {
             return;
