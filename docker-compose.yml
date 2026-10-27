@@ -1,0 +1,18 @@
+# 로컬 개발용 PostgreSQL. 비밀번호는 레포 밖 키 파일(remine.env)의 REMINE_DB_PASSWORD에서 읽는다.
+#   docker compose --env-file "$REMINE_ENV_FILE" up -d
+# 데이터는 볼륨(remine-pgdata)에 남는다. 지우려면 docker compose down -v
+services:
+  postgres:
+    image: postgres:17.6   # 테스트(Testcontainers, server/build.gradle)와 같은 버전
+    environment:
+      POSTGRES_DB: remine
+      POSTGRES_USER: remine
+      POSTGRES_PASSWORD: ${REMINE_DB_PASSWORD:?remine.env에 REMINE_DB_PASSWORD를 넣고 --env-file로 실행하세요}
+    ports:
+      # 이 PC에서만 접속(같은 와이파이의 다른 기기는 못 붙음). 5433: 이 PC의 Windows용 PostgreSQL이 5432를 쓴다
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - remine-pgdata:/var/lib/postgresql/data
+
+volumes:
+  remine-pgdata:
