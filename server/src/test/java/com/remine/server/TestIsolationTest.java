@@ -2,7 +2,9 @@ package com.remine.server;
 
 import com.remine.server.classifier.Classifier;
 import com.remine.server.classifier.FakeClassifier;
+import com.remine.server.push.PushSender;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.env.ConfigurableEnvironment;
@@ -29,6 +31,7 @@ class TestIsolationTest {
 
     @Autowired ConfigurableEnvironment environment;
     @Autowired Classifier classifier;
+    @Autowired ObjectProvider<PushSender> pushSender;
 
     @Test
     void 테스트는_사용자_홈의_remine_env를_읽지_않는다() {
@@ -44,6 +47,12 @@ class TestIsolationTest {
         // application.yaml의 ${remine.env-file:...}는 OS 환경변수 REMINE_ENV_FILE로도 채워진다(Spring 이름 변환).
         var env = new SystemEnvironmentPropertySource("env", Map.of("REMINE_ENV_FILE", "E:/secrets/remine.env"));
         assertThat(env.getProperty("remine.env-file")).isEqualTo("E:/secrets/remine.env");
+    }
+
+    @Test
+    void 테스트는_Firebase_키를_읽지_않아_푸시_sender가_없다() {
+        assertThat(environment.getProperty("remine.fcm.credentials-file", "")).isBlank();
+        assertThat(pushSender.getIfAvailable()).isNull();
     }
 
     @Test

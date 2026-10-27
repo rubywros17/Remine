@@ -146,6 +146,10 @@ void defineLayoutMatrix({
         await _pump(tester, size, scale);
         await tester.tap(find.byIcon(LucideIcons.star));
         await tester.pumpAndSettle();
+        // 먼저 머릿속 지도: 다 그려진 뒤에도 [목록 보기]가 화면 안에 있어야 한다
+        expect(find.text('목록 보기').hitTestable(), findsOneWidget);
+        await tester.tap(find.text('목록 보기'));
+        await tester.pumpAndSettle();
         expect(find.text('#니트가디건', skipOffstage: true), findsWidgets);
       });
       _expectClean('관심사 탭 $label', errors);

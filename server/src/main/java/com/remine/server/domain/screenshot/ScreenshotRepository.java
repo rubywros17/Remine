@@ -3,6 +3,7 @@ package com.remine.server.domain.screenshot;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -30,7 +31,8 @@ public interface ScreenshotRepository extends JpaRepository<Screenshot, Long> {
 
     /**
      * 분석이 끝난 캡처만 돌려준다(분석에 실패해 카테고리가 null인 행은 목록에 섞이지 않는다).
-     * category, tag는 null이면 조건에서 빠진다.
+     * category, tagKey는 null이면 조건에서 빠진다. tagKey는 {@code Tag.keyOf}로 정규화한 값이라
+     * "니트 가디건"으로 찾아도 "니트가디건" 캡처가 나온다(관심사 집계와 같은 기준).
      * 태그 필터는 join 대신 exists로 걸어 한 스크린샷이 중복 행으로 나오지 않게 한다(페이지네이션 정확성).
      */
     @Query("""
@@ -38,13 +40,13 @@ public interface ScreenshotRepository extends JpaRepository<Screenshot, Long> {
             where s.device.id = :deviceId
               and s.analyzedAt is not null
               and (:category is null or s.category = :category)
-              and (:tag is null or exists (
-                    select 1 from ScreenshotTag st where st.screenshot = s and st.tag.name = :tag))
+              and (:tagKey is null or exists (
+                    select 1 from ScreenshotTag st where st.screenshot = s and st.tag.normalizedName = :tagKey))
             order by s.takenAt desc, s.id desc
             """)
     Page<Screenshot> search(@Param("deviceId") Long deviceId,
                             @Param("category") Category category,
-                            @Param("tag") String tag,
+                            @Param("tagKey") String tagKey,
                             Pageable pageable);
 
     @Query("""
@@ -69,4 +71,9 @@ public interface ScreenshotRepository extends JpaRepository<Screenshot, Long> {
             order by t.category, t.rn
             """, nativeQuery = true)
     List<Object[]> findRecentAssetIdsByCategory(@Param("deviceId") Long deviceId, @Param("limit") int limit);
+
+    @Modifying(clearAutomatically = true)
+    @Query("delete from Screenshot s where s.device.id = :deviceId and s.localAssetId in :localAssetIds")
+    int deleteByDeviceAndAssetIds(@Param("deviceId") Long deviceId,
+                                  @Param("localAssetIds") Collection<String> localAssetIds);
 }

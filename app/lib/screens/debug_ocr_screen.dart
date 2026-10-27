@@ -9,6 +9,8 @@ import '../data/device/ocr_export.dart';
 import '../data/device/ocr_store.dart';
 import '../data/device/privacy/app_rules.dart';
 import '../data/remine_store.dart';
+import '../data/remote/api_client.dart';
+import '../data/remote/sync_status.dart';
 import '../widgets/app_button.dart';
 import '../widgets/gallery_thumb.dart';
 import '../widgets/pressable_scale.dart';
@@ -73,6 +75,45 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
     await Clipboard.setData(ClipboardData(text: '$id'));
     if (!mounted) return;
     setState(() => _status = '기기 id $id 복사했어.');
+  }
+
+  /// 서버(dev 프로필)가 이 기기에 관심사 알림 1건을 보낸다. 앱이 앞에 있으면 FCM 알림이 화면에 안 뜨므로
+  /// 서버가 5초 기다렸다 보낸다. 요청은 지금 바로 나가서, 앱을 내려도(안드로이드가 앱을 멈춰도) 끊기지 않는다.
+  /// 자동 동기화를 껐을 때(`AUTO_SYNC=false`) 손으로 한 번 돌린다. 켜져 있어도 진행 중이면 그걸 기다린다.
+  Future<void> _syncNow() async {
+    final remote = widget.services.remote;
+    if (remote == null) return;
+    setState(() => _status = '동기화하는 중…');
+    await remote.sync.run();
+    if (!mounted) return;
+    final s = remote.status;
+    setState(
+      () => _status = s.issue == SyncIssue.none
+          ? '동기화 끝(${s.total}장 처리).'
+          : '동기화 멈춤: ${s.bannerMessage}',
+    );
+  }
+
+  Future<void> _sendTestPush() async {
+    final sync = widget.services.remote?.sync;
+    if (sync == null) return;
+    setState(() => _status = '5초 뒤에 보낼게. 앱을 내려 둬(앱이 앞에 있으면 알림이 안 보여).');
+    String result;
+    try {
+      result = switch (await sync.sendTestPush(delaySeconds: 5)) {
+        'SENT' => '테스트 알림 보냈어.',
+        'INVALID_TOKEN' => 'FCM이 이 기기 토큰을 모른대. 알림을 껐다 켜 줘.',
+        final r => '서버가 보내지 못했어($r). 서버 로그의 code를 봐 줘.',
+      };
+    } on ApiException catch (e) {
+      result = switch (e.statusCode) {
+        404 => '서버를 dev 프로필로 켜 줘(--spring.profiles.active=dev).',
+        409 => '설정에서 알림을 먼저 켜 줘.',
+        503 => '서버에 Firebase 키가 없어(remine.fcm.credentials-file).',
+        _ => '보내지 못했어(${e.failure.name}).',
+      };
+    }
+    if (mounted) setState(() => _status = result);
   }
 
   Future<void> _loadAlbums() async {
@@ -213,6 +254,29 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
                 ],
               ),
             ),
+            if (widget.services.remote != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.screenPadding,
+                  AppSpacing.s8,
+                  AppSpacing.screenPadding,
+                  0,
+                ),
+                child: Wrap(
+                  spacing: AppSpacing.s8,
+                  runSpacing: AppSpacing.s8,
+                  children: [
+                    PressableScale(
+                      onTap: _syncNow,
+                      child: AppChip.outlined(label: '지금 동기화'),
+                    ),
+                    PressableScale(
+                      onTap: _sendTestPush,
+                      child: AppChip.outlined(label: '테스트 알림 보내기'),
+                    ),
+                  ],
+                ),
+              ),
             if (_deviceIdLine.isNotEmpty)
               GestureDetector(
                 onLongPress: _copyDeviceId, // 길게 누르면 복사

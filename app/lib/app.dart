@@ -1,14 +1,18 @@
+import 'dart:async';
 import 'dart:ui' show PointerDeviceKind;
 
 import 'package:flutter/material.dart';
 
+import 'core/helpers.dart';
 import 'core/tokens.dart';
 import 'data/device/device_services.dart';
 import 'data/fake_screenshot_repository.dart';
 import 'data/local_merged_repository.dart';
+import 'data/remote/push.dart';
 import 'data/remine_store.dart';
 import 'data/screenshot_repository.dart';
 import 'screens/analysis_screen.dart';
+import 'screens/tag_screen.dart';
 import 'screens/consent_screen.dart';
 import 'screens/permission_gate.dart';
 import 'screens/shell_screen.dart';
@@ -53,11 +57,32 @@ class _RemineAppState extends State<RemineApp> {
     now: widget.now,
   );
 
+  // 알림을 눌렀을 때 화면을 띄우려고 Navigator를 바깥에서 잡는다(알림은 위젯 트리 밖에서 온다).
+  final _navigatorKey = GlobalKey<NavigatorState>();
+  StreamSubscription<PushTarget>? _taps;
+
   @override
   void initState() {
     super.initState();
     // 배치(20장)가 끝날 때마다 홈·카테고리가 새로 불러온다.
     widget.device?.remote?.sync.onBatchDone = _store.refresh;
+    final push = widget.device?.remote?.push;
+    if (push != null) {
+      push.initialTap().then((t) {
+        if (t != null) _openTarget(t); // 꺼진 앱을 알림으로 켰을 때
+      });
+      _taps = push.taps.listen(_openTarget); // 백그라운드에서 알림을 눌렀을 때
+    }
+  }
+
+  /// 관심사 알림 → 그 태그 모아보기 화면. 첫 화면이 아직 안 그려졌으면 다음 프레임에 연다.
+  void _openTarget(PushTarget target) {
+    final nav = _navigatorKey.currentState;
+    if (nav == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _openTarget(target));
+      return;
+    }
+    nav.push(appRoute(nav.context, (_) => TagScreen(tag: target.tag)));
   }
 
   ScreenshotRepository _withLocal(ScreenshotRepository base) {
@@ -69,6 +94,7 @@ class _RemineAppState extends State<RemineApp> {
 
   @override
   void dispose() {
+    _taps?.cancel();
     _store.dispose();
     super.dispose();
   }
@@ -79,6 +105,7 @@ class _RemineAppState extends State<RemineApp> {
     return RemineScope(
       store: _store,
       child: MaterialApp(
+        navigatorKey: _navigatorKey,
         title: 'Remine',
         debugShowCheckedModeBanner: false,
         theme: _theme,
@@ -102,6 +129,7 @@ class _RemineAppState extends State<RemineApp> {
                       ? const ShellScreen()
                       : SyncGate(
                           remote: device.remote!,
+                          settings: device.settings,
                           child: const ShellScreen(),
                         ),
                 ),

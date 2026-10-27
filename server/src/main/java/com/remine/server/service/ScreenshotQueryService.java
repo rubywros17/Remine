@@ -8,6 +8,7 @@ import com.remine.server.domain.screenshot.Screenshot;
 import com.remine.server.domain.screenshot.ScreenshotRepository;
 import com.remine.server.domain.screenshot.ScreenshotTagRepository;
 import com.remine.server.domain.screenshot.ScreenshotTagRow;
+import com.remine.server.domain.tag.Tag;
 import com.remine.server.dto.CategorySummaryResponse;
 import com.remine.server.dto.ScreenshotPageResponse;
 import com.remine.server.dto.ScreenshotResponse;
@@ -40,7 +41,7 @@ public class ScreenshotQueryService {
 
     public ScreenshotPageResponse list(Long deviceId, Category category, String tag, int page, int size) {
         requireDevice(deviceId);
-        String tagFilter = (tag == null || tag.isBlank()) ? null : tag;
+        String tagFilter = (tag == null || tag.isBlank()) ? null : Tag.keyOf(tag);
 
         Page<Screenshot> result = screenshotRepository.search(
                 deviceId, category, tagFilter, PageRequest.of(page, size));

@@ -60,6 +60,19 @@ public class ApiExceptionHandler {
         return problem;
     }
 
+    /**
+     * 미등록 기기. 앱은 code로 "서버가 이 기기를 잊었다(DB 초기화 등)"를 다른 404(없는 캡처·없는 경로)와 구분해
+     * 재등록한다. 메시지에 기기 id를 싣지 않는다.
+     */
+    @ExceptionHandler(DeviceNotFoundException.class)
+    public ProblemDetail deviceNotFound() {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND,
+                "등록되지 않은 기기입니다. 기기를 다시 등록해 주세요.");
+        problem.setTitle("미등록 기기");
+        problem.setProperty("code", DeviceNotFoundException.CODE);
+        return problem;
+    }
+
     @ExceptionHandler(ScreenshotNotFoundException.class)
     public ProblemDetail screenshotNotFound(ScreenshotNotFoundException e) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, e.getMessage());

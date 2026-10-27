@@ -10,11 +10,24 @@ enum SyncIssue {
   /// 서버에 닿지 못했다(네트워크 없음, 서버 꺼짐, 시간 초과).
   offline,
 
-  /// 서버가 오류를 돌려줬다.
+  /// 서버가 오류를 돌려줬다(5xx·깨진 응답).
   server,
 
+  /// 서버가 요청을 거절했다(4xx). 서버가 아니라 앱·형식 쪽 문제다.
+  rejected,
+
+  /// 앱 안에서 오류가 났다(응답 해석·이미지 처리 등). 서버와 무관하다.
+  internal,
+
   /// 일부 캡처만 분류하지 못했다(다음 실행 때 다시 보낸다).
-  partial,
+  partial;
+
+  /// API 실패를 화면 안내로.
+  static SyncIssue of(ApiFailure failure) => switch (failure) {
+    ApiFailure.offline => offline,
+    ApiFailure.server => server,
+    ApiFailure.rejected => rejected,
+  };
 }
 
 /// 방금 분류된 캡처 한 장(첫 분석 화면 가운데 카드에 실제 썸네일 + 카테고리로 보여 준다).
@@ -135,14 +148,13 @@ class SyncStatus extends ChangeNotifier {
 
   /// 목록·요약을 받으려던 결과. 실패하면 안내를 켜고, 성공하면 연결 문제 안내를 끈다.
   void reportFetch(ApiFailure? failure) {
-    final next = switch (failure) {
-      null =>
-        (_issue == SyncIssue.offline || _issue == SyncIssue.server)
-            ? SyncIssue.none
-            : _issue,
-      ApiFailure.offline => SyncIssue.offline,
-      _ => SyncIssue.server,
-    };
+    final next = failure == null
+        ? (_issue == SyncIssue.offline ||
+                  _issue == SyncIssue.server ||
+                  _issue == SyncIssue.rejected
+              ? SyncIssue.none
+              : _issue)
+        : SyncIssue.of(failure);
     if (next != _issue) {
       _issue = next;
       notifyListeners();
@@ -163,6 +175,8 @@ class SyncStatus extends ChangeNotifier {
     SyncIssue.none => null,
     SyncIssue.offline => '서버에 연결하지 못했어요',
     SyncIssue.server => '서버가 불안정해요',
+    SyncIssue.rejected => '서버가 요청을 받지 않았어요',
+    SyncIssue.internal => '정리하다 문제가 생겼어요',
     SyncIssue.partial => '$_failedCount장은 다음에 다시 분류해요',
   };
 
@@ -171,6 +185,8 @@ class SyncStatus extends ChangeNotifier {
     SyncIssue.none => null,
     SyncIssue.offline => '서버에 연결하지 못했어요. 이미 정리된 캡처는 그대로 볼 수 있어요.',
     SyncIssue.server => '서버가 잠시 불안정해요. 조금 뒤에 다시 시도할게요.',
+    SyncIssue.rejected => '서버가 요청을 받지 않았어요. 앱을 최신으로 업데이트해 주세요.',
+    SyncIssue.internal => '정리하다 문제가 생겼어요. 다시 열면 이어서 할게요.',
     SyncIssue.partial => '$_failedCount장은 다음에 다시 분류할게요.',
   };
 }

@@ -12,6 +12,7 @@ import '../widgets/home_widgets.dart';
 import '../widgets/small_widgets.dart';
 import '../widgets/sync_banner.dart';
 import 'category_screen.dart';
+import 'tag_screen.dart';
 import 'excluded_screen.dart';
 import 'settings_screen.dart';
 import 'debug_ocr_screen.dart';
@@ -102,8 +103,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 RoundIconButton(
                   icon: LucideIcons.settings,
                   label: '설정',
-                  onTap: () =>
-                      _open(context, SettingsScreen(settings: device.settings)),
+                  onTap: () => _open(
+                    context,
+                    SettingsScreen(
+                      settings: device.settings,
+                      remote: device.remote,
+                    ),
+                  ),
                 ),
             ],
           ),
@@ -116,10 +122,7 @@ class _HomeScreenState extends State<HomeScreen> {
               interest: interest,
               onTap: () => _open(
                 context,
-                CategoryScreen(
-                  category: interest.category,
-                  initialTag: interest.tag,
-                ),
+                TagScreen(tag: interest.tag, windowDays: interest.spanDays),
               ),
             ),
             const SizedBox(height: AppSpacing.s32),

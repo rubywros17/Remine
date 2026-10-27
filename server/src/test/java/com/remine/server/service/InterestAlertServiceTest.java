@@ -60,6 +60,7 @@ class InterestAlertServiceTest {
     @Autowired DeviceRepository deviceRepository;
     @Autowired TagRepository tagRepository;
     @Autowired ScreenshotPersister persister;
+    @Autowired InterestPushService pushService;
 
     private Long deviceId;
     private String prefix; // 테스트끼리 태그가 섞이지 않게
@@ -155,5 +156,18 @@ class InterestAlertServiceTest {
         service.createWeeklyAlerts();
 
         assertThat(alerts()).isEmpty();
+    }
+
+    @Test
+    void 키_파일이_없으면_발송은_꺼지고_PENDING이_그대로다() {
+        captures("가디건", 3, THURSDAY);
+        service.createWeeklyAlerts();
+
+        pushService.sendPending();
+
+        assertThat(alerts()).singleElement().satisfies(a -> {
+            assertThat(a.getStatus()).isEqualTo(InterestAlert.Status.PENDING);
+            assertThat(a.getCategory()).isEqualTo(Category.SHOPPING);
+        });
     }
 }

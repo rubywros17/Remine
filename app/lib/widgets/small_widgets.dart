@@ -93,12 +93,18 @@ class AppChip extends StatelessWidget {
   }
 }
 
-/// 레몬 스티커(관심사 라벨·태그 스티커). 장식이라 살짝 기울인다. 눌리지 않는다.
+/// 스티커(관심사 상태·태그 스티커). 기본은 레몬. 장식이라 살짝 기울인다. 눌리지 않는다.
 class Sticker extends StatelessWidget {
-  const Sticker({super.key, required this.label, this.angle = -0.05});
+  const Sticker({
+    super.key,
+    required this.label,
+    this.angle = -0.05,
+    this.color = AppColors.lemon,
+  });
 
   final String label;
   final double angle; // 라디안
+  final Color color; // 위 글자는 항상 ink라 레몬·셀라돈만
 
   @override
   Widget build(BuildContext context) {
@@ -106,7 +112,7 @@ class Sticker extends StatelessWidget {
       angle: angle,
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: AppColors.lemon,
+          color: color,
           borderRadius: BorderRadius.circular(AppRadii.pill),
         ),
         child: Padding(

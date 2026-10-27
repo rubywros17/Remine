@@ -155,6 +155,16 @@ class FakeScreenshotRepository implements ScreenshotRepository {
                 : a.key.compareTo(b.key),
           );
 
+    final interestTags = {for (final e in repeated) e.key};
+    // 서버와 같은 기준: 같은 캡처에 함께 붙은 다른 관심사 태그.
+    List<String> linked(String tag) => [
+      for (final other in repeated.map((e) => e.key))
+        if (other != tag &&
+            byTag[tag]!.any((s) => s.tags.contains(other)) &&
+            interestTags.contains(other))
+          other,
+    ];
+
     return [
       for (final e in repeated)
         Interest(
@@ -175,6 +185,7 @@ class FakeScreenshotRepository implements ScreenshotRepository {
             for (final s in e.value.take(3))
               InterestCapture(id: s.id, localAssetId: s.localAssetId),
           ],
+          linkedTags: linked(e.key),
         ),
     ];
   }

@@ -5,6 +5,8 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
     <!-- 서버 분석 API 호출. 릴리스는 HTTPS만 쓴다(평문 허용은 디버그 빌드의 network_security_config뿐) -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- 관심사 알림(FCM). 13+는 런타임 권한이라 첫 동기화 뒤 안내 시트에서 [알림 받기]를 골랐을 때만 묻는다 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- OCR 원문이 든 로컬 DB가 Google 계정 백업으로 올라가지 않게 한다 -->
     <application
         android:allowBackup="false"
@@ -33,6 +35,10 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- FCM 알림이 들어갈 채널(MainActivity.kt가 만든다, 서버 FcmPushSender.CHANNEL_ID와 같은 이름) -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="interest_alerts" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

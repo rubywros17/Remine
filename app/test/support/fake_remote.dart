@@ -9,9 +9,11 @@ import 'package:remine/data/device/gallery_reader.dart';
 import 'package:remine/data/device/ocr_engine.dart';
 import 'package:remine/data/device/ocr_store.dart';
 import 'package:remine/data/device/ocr_temp_files.dart';
+import 'package:remine/data/device/own_capture.dart';
 import 'package:remine/data/device/settings_store.dart';
 import 'package:remine/data/remote/api_client.dart';
 import 'package:remine/data/remote/image_prep.dart';
+import 'package:remine/data/remote/push.dart';
 import 'package:remine/data/remote/remote_repository.dart';
 import 'package:remine/data/remote/remote_services.dart';
 import 'package:remine/data/remote/remote_state_store.dart';
@@ -22,11 +24,22 @@ import 'fake_device.dart';
 
 /// 보낸 요청 하나. 본문 바이트 전체를 보관해 테스트가 "무엇이 실렸는지" 검사한다.
 class SentRequest {
-  SentRequest(this.method, this.path, this.body);
+  SentRequest(
+    this.method,
+    this.path,
+    this.body, [
+    this.headers = const {},
+    this.query = const {},
+  ]);
 
   final String method;
   final String path;
+  final Map<String, String> query;
   final Uint8List body;
+  final Map<String, String> headers;
+
+  /// `X-Device-Id` 헤더(없으면 null).
+  int? get deviceId => int.tryParse(headers['X-Device-Id'] ?? '');
 
   /// 바이너리가 섞여 있어도 글자 검사를 할 수 있게 latin1로 푼 본문.
   String get text => latin1.decode(body);
@@ -68,7 +81,13 @@ class RecordingClient extends http.BaseClient {
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async {
     final body = await request.finalize().toBytes();
-    final req = SentRequest(request.method, request.url.path, body);
+    final req = SentRequest(
+      request.method,
+      request.url.path,
+      body,
+      Map.of(request.headers),
+      request.url.queryParameters,
+    );
     sent.add(req);
     final error = throwOnSend;
     if (error != null) throw error;
@@ -80,6 +99,12 @@ class RecordingClient extends http.BaseClient {
     switch ('${r.method} ${r.path}') {
       case 'POST /api/devices':
         return jsonResponse({'deviceId': 7});
+      case 'PUT /api/devices/me/fcm-token':
+      case 'DELETE /api/devices/me/fcm-token':
+      case 'POST /api/screenshots/forget':
+        return http.StreamedResponse(const Stream.empty(), 204);
+      case 'POST /api/dev/push-test':
+        return jsonResponse({'result': 'SENT'});
       case 'GET /api/config':
         return jsonResponse({
           'imageThresholdChars': 150,
@@ -205,6 +230,7 @@ class SyncRig {
     this.sync,
     this.repository,
     this.batches,
+    this.push,
   );
 
   final RecordingClient client;
@@ -220,12 +246,14 @@ class SyncRig {
 
   /// 배치가 끝날 때마다 쌓이는 호출 시점의 `status.done`.
   final List<int> batches;
+  final PushClient? push;
 
   RemoteServices get remote => RemoteServices(
     repository: repository,
     sync: sync,
     status: status,
     state: state,
+    push: push,
   );
 
   static Future<SyncRig> create({
@@ -237,6 +265,10 @@ class SyncRig {
     int photoLimit = 0,
     int? batchSize,
     List<GalleryAlbum>? albums,
+    PushClient? push,
+    void Function(String line)? log,
+    ForegroundLog? foreground,
+    bool autoSync = true,
   }) async {
     final reader = FakeGalleryReader(photos: photos, albums: albums);
     final ocr = MapOcrEngine(texts);
@@ -246,13 +278,14 @@ class SyncRig {
       ocr: ocr,
       store: InMemoryOcrStore(),
       temp: OcrTempFiles(tmp),
+      foreground: foreground,
       now: () => DateTime(2026, 10, 21, 12),
     );
     final settings = InMemorySettingsStore(consent);
     final state = InMemoryRemoteStateStore();
     final status = SyncStatus();
     final c = client ?? RecordingClient();
-    final api = RemineApi('http://localhost:8080', c);
+    final api = RemineApi('http://localhost:8080', c, log: log);
     final shrink = shrinker ?? FakeShrinker();
     final batches = <int>[];
     final sync = SyncService(
@@ -267,6 +300,9 @@ class SyncRig {
       batchSize: batchSize ?? SyncService.defaultBatchSize,
       onBatchDone: () => batches.add(status.done),
       now: () => DateTime(2026, 10, 21, 12),
+      push: push,
+      log: log,
+      autoSync: autoSync,
     );
     return SyncRig._(
       c,
@@ -280,6 +316,7 @@ class SyncRig {
       sync,
       RemoteRepository(api, state, status),
       batches,
+      push,
     );
   }
 }

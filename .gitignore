@@ -6,7 +6,8 @@
 !.env.example
 **/google-services.json
 **/GoogleService-Info.plist
-**/firebase-adminsdk*.json
+**/firebase-admin*.json
+*.env
 **/*serviceAccount*.json
 *.jks
 *.keystore

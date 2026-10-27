@@ -16,8 +16,10 @@ public record InterestResponse(int windowDays, int minCount, List<Item> items) {
     /**
      * @param dormantDays 마지막 캡처 이후 지난 일수(오늘이면 0)
      * @param recent      최근 캡처 최대 3개, 최신순
+     * @param linkedTags  같은 캡처에 함께 붙은 다른 관심사 태그(기간 안). 앱의 머릿속 지도 연결선
      */
-    public record Item(String tag, Category category, int captureCount, long dormantDays, List<Capture> recent) {
+    public record Item(String tag, Category category, int captureCount, long dormantDays, List<Capture> recent,
+                       List<String> linkedTags) {
     }
 
     public record Capture(Long id, String localAssetId) {

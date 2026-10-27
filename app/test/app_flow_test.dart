@@ -5,6 +5,7 @@ import 'package:remine/core/tokens.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
 import 'package:remine/models/category.dart';
 import 'package:remine/screens/analysis_screen.dart';
+import 'package:remine/screens/tag_screen.dart';
 import 'package:remine/widgets/home_widgets.dart';
 import 'package:remine/widgets/small_widgets.dart';
 import 'package:remine/widgets/thumb_placeholder.dart';
@@ -48,9 +49,9 @@ void main() {
       expect(find.text('캐냈어요'), findsOneWidget);
       // 관심사 카드
       expect(find.text('잊은 관심사'), findsOneWidget);
-      expect(find.text('×4'), findsOneWidget);
       expect(find.text('#니트가디건'), findsOneWidget);
-      expect(find.text('2주 동안 4번 캡처 · 9일째 잠자는 중'), findsOneWidget);
+      expect(find.text('SHOTS'), findsOneWidget);
+      expect(find.text('9일째 잠자는 중'), findsOneWidget);
       // 서랍
       expect(find.text('내 캡처 서랍'), findsOneWidget);
       expect(find.text('30 shots'), findsOneWidget);
@@ -127,6 +128,8 @@ void main() {
 
       await tester.tap(find.text('관심사'));
       await tester.pumpAndSettle();
+      await tester.tap(find.text('목록 보기')); // 들어오면 머릿속 지도부터
+      await tester.pumpAndSettle();
       expect(find.text('잊은 관심사'), findsWidgets);
       expect(find.byType(InterestCard, skipOffstage: true), findsWidgets);
 
@@ -144,6 +147,8 @@ void main() {
     ) async {
       await _pumpApp(tester);
       await tester.tap(find.text('관심사'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('목록 보기'));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byType(InterestCard, skipOffstage: true).first);
@@ -195,18 +200,14 @@ void main() {
       expect(number.style!.color, AppColors.celadonDeep);
     });
 
-    testWidgets('홈의 관심사 카드를 누르면 그 태그가 선택된 채로 열린다', (tester) async {
+    testWidgets('홈의 관심사 카드를 누르면 그 태그 모아보기 화면이 열린다', (tester) async {
       await _pumpApp(tester);
       await tester.tap(find.text('#니트가디건'));
       await tester.pumpAndSettle();
 
+      expect(find.byType(TagScreen), findsOneWidget);
       expect(_tiles, findsNWidgets(4));
-      expect(
-        tester
-            .widget<AppChip>(find.widgetWithText(AppChip, '#니트가디건'))
-            .background,
-        AppColors.lemon,
-      );
+      expect(find.textContaining('최근 2주 '), findsOneWidget);
     });
   });
 

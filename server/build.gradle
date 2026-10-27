@@ -23,6 +23,7 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
 	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+	implementation 'com.google.firebase:firebase-admin:9.11.0'
 	compileOnly 'org.projectlombok:lombok'
 	runtimeOnly 'com.h2database:h2'
 	annotationProcessor 'org.projectlombok:lombok'
@@ -45,6 +46,9 @@ tasks.named('test') {
 	environment 'REMINE_CLASSIFIER', 'fake'
 	// - 주간 관심사 집계가 테스트 도중 실제 시각에 돌지 않게 끈다("-" = cron 비활성). 테스트는 메서드를 직접 부른다.
 	systemProperty 'remine.interest.alert-cron', '-'
+	// - 관심사 알림 발송도 끄고, FCM 키 파일 경로를 비워 실제 Firebase에 붙지 않게 한다(테스트는 가짜 sender를 주입).
+	systemProperty 'remine.push.send-cron', '-'
+	systemProperty 'remine.fcm.credentials-file', ''
 }
 
 // Windows 콘솔에서 한글 로그가 깨지지 않도록 bootRun JVM의 인코딩을 UTF-8로 고정한다.

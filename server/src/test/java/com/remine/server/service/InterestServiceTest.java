@@ -21,6 +21,7 @@ import java.util.Comparator;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
@@ -127,6 +128,27 @@ class InterestServiceTest {
         assertThat(item.recent()).extracting(InterestResponse.Capture::id)
                 .containsExactly(newest.screenshotId(), second.screenshotId(), third.screenshotId());
         assertThat(item.recent().get(0).localAssetId()).isEqualTo(newest.localAssetId());
+    }
+
+    @Test
+    void 같은_캡처에_함께_붙은_관심사끼리_linkedTags로_잇는다() {
+        // 뜨개질·도안은 캡처 101·102를 공유, 코스터는 따로. 한 번뿐인 "실"은 관심사가 아니라 연결에서 빠진다.
+        givenRows(
+                on(101, 1, "뜨개질", 1), on(102, 1, "뜨개질", 2), on(103, 1, "뜨개질", 3), on(104, 1, "뜨개질", 4),
+                on(101, 2, "도안", 1), on(102, 2, "도안", 2), on(105, 2, "도안", 5),
+                on(106, 3, "코스터", 6), on(107, 3, "코스터", 7), on(108, 3, "코스터", 8),
+                on(106, 4, "실", 6));
+
+        assertThat(service.detect(1L, NOW)).extracting(InterestService.Detected::tag, InterestService.Detected::linkedTags)
+                .containsExactly(
+                        tuple("뜨개질", List.of("도안")),
+                        tuple("도안", List.of("뜨개질")),
+                        tuple("코스터", List.of()));
+    }
+
+    private InterestRow on(long screenshotId, long tagId, String tag, int daysAgo) {
+        return new InterestRow(tagId, tag, screenshotId, "asset-" + screenshotId, Category.ETC,
+                NOW.minusDays(daysAgo).minusMinutes(screenshotId));
     }
 
     @Test

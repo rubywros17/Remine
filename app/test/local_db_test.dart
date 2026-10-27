@@ -166,9 +166,17 @@ void main() {
     expect(await r2.failedCount(), 1);
     expect(await r2.cached('summary'), '{"categories":[]}');
     expect(await r2.cached('none'), isNull);
+    // 서버 초기화로 재등록할 때: 서버 쪽 기록만 지우고 사용자가 정한 것·첫 분석 완료는 남긴다.
+    final prefs = SqfliteSettingsStore(again);
+    await prefs.setImageConsent(true);
+    await prefs.setNotificationsEnabled(true);
     await r2.clear();
     expect(await r2.deviceId(), isNull);
     expect(await r2.cached('summary'), isNull);
+    expect(await r2.entry('a1'), isNull);
+    expect(await r2.firstSyncDone(), isTrue);
+    expect(await prefs.imageConsent(), isTrue);
+    expect(await prefs.notificationsEnabled(), isTrue);
     await again.close();
   });
 

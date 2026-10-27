@@ -36,6 +36,9 @@ abstract interface class RemoteStateStore {
   Future<SyncEntry?> entry(String assetId);
   Future<void> putEntry(SyncEntry entry);
 
+  /// 서버에서 지운 캡처의 전송 기록을 없앤다([RemineApi.forget] 뒤).
+  Future<void> removeEntries(Iterable<String> assetIds);
+
   /// 서버 목록에서 본 (asset id → 서버 id)를 매핑에 채운다.
   Future<void> linkServerIds(Map<String, int> idsByAsset);
   Future<int> failedCount();
@@ -43,6 +46,9 @@ abstract interface class RemoteStateStore {
   Future<String?> cached(String key);
   Future<void> putCache(String key, String json);
 
+  /// 서버가 이 기기를 잊었을 때(서버 DB 초기화): **서버 쪽 기록만** 지운다(기기 id·전송 기록·응답 캐시).
+  /// 첫 분석 완료는 남긴다 — 사용자가 한 일이 아니므로 첫 분석 화면을 다시 띄우지 않고, 재전송은 홈 배너로만 보인다.
+  /// (알림 선택·이미지 동의는 [SettingsStore]에 있어 여기서 건드리지 않는다.)
   Future<void> clear();
 }
 
@@ -114,6 +120,16 @@ class SqfliteRemoteStateStore implements RemoteStateStore {
   }
 
   @override
+  Future<void> removeEntries(Iterable<String> assetIds) async {
+    final db = await _db;
+    final batch = db.batch();
+    for (final id in assetIds) {
+      batch.delete('server_map', where: 'asset_id = ?', whereArgs: [id]);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  @override
   Future<void> linkServerIds(Map<String, int> idsByAsset) async {
     final db = await _db;
     final batch = db.batch();
@@ -159,11 +175,7 @@ class SqfliteRemoteStateStore implements RemoteStateStore {
     final db = await _db;
     await db.delete('server_map');
     await db.delete('server_cache');
-    await db.delete(
-      'setting',
-      where: 'key IN (?, ?)',
-      whereArgs: ['device_id', 'first_sync_done'],
-    );
+    await db.delete('setting', where: 'key = ?', whereArgs: ['device_id']);
   }
 }
 
@@ -197,6 +209,10 @@ class InMemoryRemoteStateStore implements RemoteStateStore {
   );
 
   @override
+  Future<void> removeEntries(Iterable<String> assetIds) async =>
+      assetIds.forEach(_entries.remove);
+
+  @override
   Future<void> linkServerIds(Map<String, int> idsByAsset) async {
     idsByAsset.forEach((asset, id) {
       final e = _entries[asset];
@@ -224,7 +240,6 @@ class InMemoryRemoteStateStore implements RemoteStateStore {
   @override
   Future<void> clear() async {
     _deviceId = null;
-    _first = false;
     _entries.clear();
     _cache.clear();
   }

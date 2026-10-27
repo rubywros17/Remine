@@ -114,29 +114,45 @@ class CategoryPill extends StatelessWidget {
   }
 }
 
-/// 잊은 관심사 카드(다크그레이). 오른쪽에는 장식용으로 기울어진 썸네일 3장이 있고 Hero로 이어진다.
+/// 관심사 카드(다크그레이). 주인공은 태그: "#뜨개질"을 크게, 그 아래 같이 캡처한 관심사(`linkedTags`)를 작게.
 ///
-/// 높이는 내용에 맞춰 자란다(최소 196). 글자가 커지거나 줄이 늘어도 넘치지 않고, 콜라주는 카드 폭에 비례하며
-/// 카드가 너무 좁으면 장식이라 숨긴다.
+/// 숫자는 세 가지로 보여 준다: 콜라주 위 원형 스티커 "19 / SHOTS", 카드 뒤 옅은 외곽선 워터마크, 왼쪽 아래 점 5칸 게이지.
+/// 상태: 마지막 캡처가 [Interest.forgottenAfterDays]일 미만이면 셀라돈 "요즘 빠진 것" + "오늘/어제/N일 전 마지막",
+/// 그 이상이면 레몬 "잊은 관심사" + 레몬 테두리 + "N일째 잠자는 중". 누르면 태그 모아보기.
 class InterestCard extends StatelessWidget {
   const InterestCard({super.key, required this.interest, required this.onTap});
 
   final Interest interest;
   final VoidCallback onTap;
 
-  static const _minHeight = 196.0;
   static const _hideCollageBelow = 280.0;
+
+  /// 게이지에서 셀라돈으로 채울 칸 수. 잊은 관심사는 레몬 1칸이라 이 값을 쓰지 않는다.
+  static int gaugeFilled(int captureCount) =>
+      AppInterestCard.gaugeSteps.where((s) => captureCount >= s).length;
+
+  /// 상태 문구: "오늘 마지막"·"어제 마지막"·"N일 전 마지막", 잊은 것은 "N일째 잠자는 중".
+  static String lastSeen(Interest i) => i.forgotten
+      ? '${i.dormantDays}일째 잠자는 중'
+      : switch (i.dormantDays) {
+          0 => '오늘 마지막',
+          1 => '어제 마지막',
+          final d => '$d일 전 마지막',
+        };
 
   @override
   Widget build(BuildContext context) {
-    final weeks = interest.spanDays ~/ 7;
-    final span = interest.spanDays % 7 == 0
-        ? '$weeks주'
-        : '${interest.spanDays}일';
+    final i = interest;
+    final span = windowLabel(i.spanDays);
+    final status = i.forgotten ? '잊은 관심사' : '요즘 빠진 것';
+    final linkedTags = i.linkedTags.take(3).toList();
+    final white70 = AppColors.white.withValues(alpha: 0.75);
+    final accent = i.forgotten ? AppColors.lemon : AppColors.celadon;
     return PressableScale(
       onTap: onTap,
       label:
-          '잊은 관심사 ${interest.tag}, $span 동안 ${interest.captureCount}번 캡처, ${interest.dormantDays}일째 잠자는 중',
+          '$status ${i.tag}, $span 동안 ${i.captureCount}번 캡처, ${lastSeen(i)}'
+          '${linkedTags.isEmpty ? '' : ', 함께 캡처한 관심사 ${linkedTags.join(', ')}'}',
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: AppColors.darkGray,
@@ -151,22 +167,43 @@ class InterestCard extends StatelessWidget {
                   : (box.maxWidth * 0.36).clamp(72.0, 140.0);
               return Stack(
                 children: [
-                  if (collageWidth > 0)
+                  Positioned(
+                    right: -6,
+                    bottom: -AppInterestCard.watermarkSize * 0.22,
+                    child: _Watermark(count: i.captureCount),
+                  ),
+                  if (collageWidth > 0) ...[
                     Positioned(
                       right: 16,
                       top: 12,
                       bottom: 12,
                       width: collageWidth,
-                      child: _Collage(captures: interest.recent),
+                      child: _Collage(captures: i.recent),
                     ),
-                  // 글자 영역: 콜라주와 겹치지 않게 오른쪽을 비우고, 높이는 내용에 맞춘다.
+                    Positioned(
+                      right:
+                          16 + collageWidth - AppInterestCard.shotsSize * 0.45,
+                      top: 6,
+                      child: _ShotsSticker(
+                        count: i.captureCount,
+                        forgotten: i.forgotten,
+                      ),
+                    ),
+                  ],
+                  // 글자 영역: 콜라주·스티커와 겹치지 않게 오른쪽을 비우고, 높이는 내용에 맞춘다.
                   ConstrainedBox(
-                    constraints: const BoxConstraints(minHeight: _minHeight),
+                    constraints: const BoxConstraints(
+                      minHeight: AppInterestCard.minHeight,
+                    ),
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(
                         20,
                         16,
-                        collageWidth > 0 ? 16 + collageWidth * 0.9 : 20,
+                        collageWidth > 0
+                            ? 16 +
+                                  collageWidth +
+                                  AppInterestCard.shotsSize * 0.6
+                            : 20,
                         16,
                       ),
                       child: Column(
@@ -176,39 +213,47 @@ class InterestCard extends StatelessWidget {
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Sticker(label: '잊은 관심사'),
+                              Sticker(label: status, color: accent),
                               const SizedBox(height: AppSpacing.s8),
-                              FittedBox(
-                                fit: BoxFit.scaleDown,
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  '×${interest.captureCount}',
-                                  style: AppText.numXL(color: AppColors.white),
+                              Text(
+                                '#${i.tag}',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppText.display.copyWith(
+                                  color: AppColors.white,
+                                  height: 1.15,
                                 ),
                               ),
+                              if (linkedTags.isNotEmpty) ...[
+                                const SizedBox(height: AppSpacing.s4),
+                                Text(
+                                  linkedTags.map((t) => '#$t').join(' · '),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppText.caption.copyWith(
+                                    color: white70,
+                                  ),
+                                ),
+                              ],
                               const SizedBox(height: AppSpacing.s12),
                             ],
                           ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                          Row(
                             children: [
-                              Text(
-                                '#${interest.tag}',
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: AppText.sectionTitle.copyWith(
-                                  color: AppColors.white,
-                                  fontSize: 20,
-                                ),
+                              _Gauge(
+                                filled: i.forgotten
+                                    ? 1
+                                    : gaugeFilled(i.captureCount),
+                                color: accent,
                               ),
-                              const SizedBox(height: AppSpacing.s4),
-                              Text(
-                                '$span 동안 ${interest.captureCount}번 캡처 · ${interest.dormantDays}일째 잠자는 중',
-                                maxLines: 3,
-                                overflow: TextOverflow.ellipsis,
-                                style: AppText.caption.copyWith(
-                                  color: AppColors.white.withValues(
-                                    alpha: 0.75,
+                              const SizedBox(width: AppSpacing.s8),
+                              Flexible(
+                                child: Text(
+                                  lastSeen(i),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: AppText.caption.copyWith(
+                                    color: white70,
                                   ),
                                 ),
                               ),
@@ -218,6 +263,22 @@ class InterestCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  // 잊은 관심사 레몬 테두리: 맨 위에 그려 콜라주가 덮지 않게 한다.
+                  if (i.forgotten)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          key: const ValueKey('forgotten-border'),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(AppRadii.card),
+                            border: Border.all(
+                              color: AppColors.lemon,
+                              width: AppInterestCard.forgottenBorder,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               );
             },
@@ -226,6 +287,103 @@ class InterestCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 카드 뒤 큰 숫자(외곽선만). 장식이라 읽지 않는다.
+class _Watermark extends StatelessWidget {
+  const _Watermark({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) => ExcludeSemantics(
+    child: Text(
+      '$count',
+      // 장식이라 글자 크기 설정과 상관없이 그대로 둔다(커지면 태그를 덮는다).
+      textScaler: TextScaler.noScaling,
+      style: AppText.numHero(size: AppInterestCard.watermarkSize).copyWith(
+        color: null,
+        foreground: Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = AppInterestCard.watermarkStroke
+          ..color = AppInterestCard.watermarkColor,
+      ),
+    ),
+  );
+}
+
+/// 콜라주 위에 비스듬히 붙은 원형 스티커 "19 / SHOTS". 흰색, 잊은 관심사는 레몬.
+class _ShotsSticker extends StatelessWidget {
+  const _ShotsSticker({required this.count, required this.forgotten});
+
+  final int count;
+  final bool forgotten;
+
+  @override
+  Widget build(BuildContext context) => ExcludeSemantics(
+    child: Transform.rotate(
+      angle: AppInterestCard.shotsTilt,
+      child: Container(
+        key: const ValueKey('shots-sticker'),
+        width: AppInterestCard.shotsSize,
+        height: AppInterestCard.shotsSize,
+        padding: const EdgeInsets.all(9),
+        decoration: BoxDecoration(
+          color: forgotten ? AppColors.lemon : AppColors.white,
+          shape: BoxShape.circle,
+          boxShadow: const [
+            BoxShadow(color: AppColors.cardShadow, blurRadius: 6),
+          ],
+        ),
+        // 원 크기는 고정이라 큰 글꼴에서도 원 안에 들어가게 줄인다.
+        child: FittedBox(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('$count', style: AppText.brand()),
+              Text(
+                'SHOTS',
+                style: AppText.numBadge().copyWith(
+                  fontSize: 8,
+                  letterSpacing: 1,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// 점 5칸 게이지. 앞에서 [filled]칸을 [color]로 채운다.
+class _Gauge extends StatelessWidget {
+  const _Gauge({required this.filled, required this.color});
+
+  final int filled;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => ExcludeSemantics(
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var k = 0; k < AppInterestCard.gaugeSteps.length; k++)
+          Padding(
+            padding: const EdgeInsets.only(right: 3),
+            child: Container(
+              key: ValueKey(k < filled ? 'gauge-on-$k' : 'gauge-off-$k'),
+              width: AppInterestCard.gaugeDot,
+              height: AppInterestCard.gaugeDot,
+              decoration: BoxDecoration(
+                color: k < filled ? color : AppInterestCard.gaugeEmpty,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+      ],
+    ),
+  );
 }
 
 /// 기울어진 썸네일 3장(장식). 회전은 장식에만 쓴다. 크기는 주어진 영역에 비례한다.
