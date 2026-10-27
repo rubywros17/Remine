@@ -46,8 +46,11 @@ public class ClassifierConfig {
                 gemini.baseUrl(), gemini.connectTimeout(), gemini.readTimeout());
         // 프롬프트는 v1 고정 (v2는 채택하지 않은 실험 옵션)
         LlmClassifier llm = new LlmClassifier(gemini.model(), gemini.minIntervalMs(), provider, mapper, PromptVersion.V1);
-        log.info("분류기: gemini model={} imageThresholdChars={} minIntervalMs={}", gemini.model(),
-                properties.llm().imageThresholdChars(), gemini.minIntervalMs());
-        return new HybridLlmClassifier(llm, properties.llm().imageThresholdChars(), meter);
+        RemineProperties.Batch batch = properties.llm().batch();
+        log.info("분류기: gemini model={} imageThresholdChars={} minIntervalMs={} batch(text={}, image={})",
+                gemini.model(), properties.llm().imageThresholdChars(), gemini.minIntervalMs(),
+                batch.textSize(), batch.imageSize());
+        return new HybridLlmClassifier(llm, properties.llm().imageThresholdChars(),
+                batch.textSize(), batch.imageSize(), meter);
     }
 }

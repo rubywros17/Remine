@@ -1,5 +1,8 @@
 package com.remine.server.classifier;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * OCR 텍스트(+선택적 이미지) → 카테고리·태그·요약. LLM 구현체로 교체할 수 있도록 분리한 경계.
  * 분류에 실패하면 ETC로 얼버무리지 않고 {@link ClassificationException}을 던진다(호출하는 쪽이 미분석으로 남긴다).
@@ -25,5 +28,29 @@ public interface Classifier {
     /** 이미지 없이 텍스트만으로 분류한다. */
     default ClassificationResult classify(String ocrText) {
         return classify(ocrText, null);
+    }
+
+    /** 분류할 캡처 한 장. jpegImage는 {@link #classify(String, byte[])}와 같다. */
+    record Input(String ocrText, byte[] jpegImage) {
+    }
+
+    /** 한 장의 결과. 성공이면 result, 실패면 error가 null이 아니다. */
+    record Classified(ClassificationResult result, ClassificationException error) {
+    }
+
+    /**
+     * 여러 장을 분류한다. 결과는 입력 순서와 같고 한 장의 실패가 나머지를 막지 않는다.
+     * 기본은 한 장씩 {@link #classify(String, byte[])}이고, LLM 구현체는 여러 장을 한 요청으로 묶는다.
+     */
+    default List<Classified> classifyAll(List<Input> inputs) {
+        List<Classified> results = new ArrayList<>();
+        for (Input input : inputs) {
+            try {
+                results.add(new Classified(classify(input.ocrText(), input.jpegImage()), null));
+            } catch (ClassificationException e) {
+                results.add(new Classified(null, e));
+            }
+        }
+        return results;
     }
 }

@@ -45,7 +45,14 @@ public record RemineProperties(
     public record Llm(
             /* OCR 글자 수(공백 제외)가 이 값 미만이고 이미지가 있으면 이미지도 함께 보낸다. */
             @Min(1) @DefaultValue("150") int imageThresholdChars,
-            @Valid @DefaultValue Gemini gemini) {
+            @Valid @DefaultValue Gemini gemini,
+            @Valid @DefaultValue Batch batch) {
+    }
+
+    /** LLM 요청 하나에 묶을 캡처 수. 1이면 장당 1요청(배치 끔). 텍스트만/이미지 포함은 따로 묶는다. */
+    public record Batch(
+            @Min(1) @DefaultValue("10") int textSize,
+            @Min(1) @DefaultValue("5") int imageSize) {
     }
 
     public record Gemini(
