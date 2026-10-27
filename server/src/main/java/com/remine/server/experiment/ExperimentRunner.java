@@ -14,6 +14,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.SpringApplication;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
@@ -84,11 +86,13 @@ class ExperimentRunner implements CommandLineRunner {
                      @Value("${experiment.compare:}") String compareOption,
                      @Value("${experiment.ocr:}") String ocrOption,
                      @Value("${experiment.mlkit-json:}") String mlkitJson,
-                     Environment environment) {
+                     Environment environment, ApplicationContext context) {
         // 키는 System.getenv가 아니라 스프링 Environment에서 읽는다: 환경변수(우선) 또는 키 파일(REMINE_ENV_FILE, 기본 ~/.remine.env)
         // (application-experiment.yaml의 spring.config.import). 값은 출력하지 않는다.
         this(dir, limit, candidatesFilter, promptOption, compareOption, ocrOption, mlkitJson,
                 (candidate, mapper) -> LlmProviders.create(candidate, mapper, environment::getProperty));
+        // @EnableScheduling의 스케줄러 스레드가 JVM을 붙잡으므로(web-application-type: none이어도) 끝나면 직접 종료한다.
+        this.onFinish = () -> System.exit(SpringApplication.exit(context));
     }
 
     ExperimentRunner(String dir, int limit, String candidatesFilter, String promptOption, String compareOption,
@@ -116,8 +120,19 @@ class ExperimentRunner implements CommandLineRunner {
     @Value("${experiment.batch:}")
     String batchOption = "";
 
+    /** 실행이 끝나면(성공·실패·예외 모두) 부른다. 스프링 실행에서는 컨텍스트를 닫고 JVM을 끝낸다. 테스트는 그대로 둔다. */
+    Runnable onFinish = () -> { };
+
     @Override
     public void run(String... args) throws IOException {
+        try {
+            runExperiment();
+        } finally {
+            onFinish.run();
+        }
+    }
+
+    private void runExperiment() throws IOException {
         if (!compareOption.isBlank()) {
             compareRuns();
             return;
