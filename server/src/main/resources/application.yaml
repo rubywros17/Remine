@@ -16,9 +16,29 @@ spring:
     # 내용 예: GEMINI_API_KEY=키값 (따옴표 없이, BOM 없는 UTF-8). 같은 이름의 환경변수가 있으면 환경변수가 우선한다.
     # 위치는 remine.env-file(환경변수 REMINE_ENV_FILE)로 바꿀 수 있다 (테스트는 존재하지 않는 경로를 지정해 사용자 파일을 읽지 않는다).
     import: "optional:file:${remine.env-file:${user.home}/.remine.env}[.properties]"
+  datasource:
+    # 로컬은 docker-compose.yml의 PostgreSQL(호스트 포트 5433). 배포는 SPRING_DATASOURCE_URL·USERNAME·PASSWORD 환경변수로 덮어쓴다.
+    # reWriteBatchedInserts: JDBC 배치 INSERT를 다중 VALUES 한 문장으로 보낸다.
+    url: jdbc:postgresql://localhost:5433/remine?reWriteBatchedInserts=true
+    username: remine
+    # 키 파일(remine.env) 또는 환경변수의 REMINE_DB_PASSWORD. docker compose도 같은 값을 읽는다.
+    password: ${REMINE_DB_PASSWORD:}
+  flyway:
+    # 스키마는 db/migration의 Flyway 스크립트만 바꾼다. 적용된 V 파일은 고치지 말고 새 버전을 추가한다.
+    locations: classpath:db/migration
   jpa:
     # 요청 내내 세션(DB 연결)을 쥐지 않는다. analyze는 LLM 호출 중 DB를 점유하지 않도록 서비스에서 트랜잭션을 나눴다.
     open-in-view: false
+    hibernate:
+      # Hibernate는 스키마를 만들지 않고 엔티티와 Flyway 스키마가 맞는지만 확인한다(안 맞으면 기동 실패).
+      ddl-auto: validate
+    properties:
+      hibernate:
+        # ID가 SEQUENCE(allocationSize 50)라 INSERT를 모아 보낼 수 있다. analyze 저장이 캡처·태그 연결 수만큼 왕복하지 않게.
+        jdbc:
+          batch_size: 50
+        order_inserts: true
+        order_updates: true
   servlet:
     multipart:
       # 분석용 이미지는 디스크에 쓰지 않는다. file-size-threshold 기본값 0B는 모든 파트를 임시 파일로 쓰므로,
@@ -26,10 +46,6 @@ spring:
       file-size-threshold: 256MB
       max-file-size: ${remine.image.max-part-bytes}B
       max-request-size: ${remine.image.max-request-bytes}B
-    show-sql: true
-    properties:
-      hibernate:
-        format_sql: true
 
 remine:
   classifier: fake        # fake(키워드 임시 구현) | gemini(실제 LLM, GEMINI_API_KEY 필요)

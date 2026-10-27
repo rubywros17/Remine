@@ -186,7 +186,9 @@ abstract class MultipartTestSupport {
 
     @BeforeEach
     void setUpTrace() {
-        deviceId = deviceRepository.save(new Device("token")).getId();
+        // 테스트 DB는 모든 컨텍스트가 공유한다. 미분석 행 수 같은 전역 집계와 DB 흔적 검사가 이 테스트의 데이터만 보도록 비운다.
+        jdbc.execute("truncate table interest_alert, screenshot_tag, tag, screenshot, device cascade");
+        deviceId =deviceRepository.save(new Device("token")).getId();
         provider.reset();
         responseBodies.clear();
         logs = new ListAppender<>();

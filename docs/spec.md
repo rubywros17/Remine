@@ -153,7 +153,7 @@
 | 앨범 접근 | `photo_manager` | |
 | 푸시 | Firebase Cloud Messaging (`firebase_messaging`) | |
 | 서버 | **Spring Boot** (Java) | 백엔드 포트폴리오 핵심 |
-| DB | 미정 (PostgreSQL 또는 MySQL) | |
+| DB | **PostgreSQL 17** + Flyway | 로컬은 `docker-compose.yml`, 스키마는 `server/src/main/resources/db/migration`(ddl-auto=validate). ID는 SEQUENCE + JDBC 배치 INSERT |
 | LLM | **`gemini-3.5-flash-lite` 확정**, temperature **1.0** | 실험(43장, 같은 프롬프트를 이틀에 걸쳐 두 번 측정)에서 텍스트만 41.9~44.2% / 텍스트+이미지 74.4% / 하이브리드 76.7~79.1%(실행 간 편차 ±1장 포함). 선택 이유(무료 한도·비용)와 한계는 `experiment/SUMMARY.md`. 운영은 **유료 등급** |
 | 분류 입력 | **하이브리드** (OCR 기준값 이상 텍스트만 / 미만 텍스트 + 축소 이미지) | 기준값은 설정(기본 150자), 이미지는 동의한 경우에만 |
 
@@ -216,11 +216,15 @@
 | `screenshot_tag` | id, screenshot_id, tag_id (unique: screenshot_id + tag_id) |
 | `interest_alert` | id, device_id, tag_id, category(집계 당시 대표 카테고리), capture_count, week_start(그 주 월요일), status(PENDING/SENT/EXPIRED), created_at, sent_at (unique: device_id + week_start). 문구는 발송 때 만든다 |
 
-### 운영 DB 전환 메모 (카테고리 수정 컬럼)
-- 지금은 H2 인메모리 + 자동 스키마 생성이라 마이그레이션이 없다(기동마다 새 스키마).
-- 운영 DB로 옮길 때: `auto_category`, `category_source` 컬럼 추가 → 분석된 기존 행은 `auto_category = category`, `category_source = 'AUTO'`로 백필 → enum 컬럼에 CHECK 제약. 백필된 `auto_category`는 전환 이전 사용자 수정이 없었다는 가정의 값이다.
+### 운영 DB 전환 (PostgreSQL, Flyway V1)
+- H2 인메모리에서 PostgreSQL로 옮기면서 스키마를 `V1__init.sql` 하나로 시작했다. H2에는 남은 데이터가 없어(인메모리) **백필·태그 병합은 하지 않았다.** V1이 처음부터 최종 형태다:
+  - `screenshot.auto_category`·`category_source` 포함, enum 컬럼(category·auto_category·category_source, interest_alert.category·status)에 CHECK
+  - `tag.normalized_name` unique(`#`·공백·대소문자 무시한 키), `tag.name`은 unique 아님
+  - FK 인덱스: PostgreSQL은 자동으로 만들지 않아 `screenshot_tag(tag_id)`를 추가했다(screenshot_id 쪽은 unique가 맡음)
 - 수정 이력은 저장하지 않는다(현재 값과 최초 AI 값만). 여러 번 고친 중간 값은 남지 않는다.
-- 태그 정규화: `tag.normalized_name` 추가 → 기존 행 백필(`#`·공백 제거, 소문자) → 키가 겹치는 태그는 하나로 합치고 `screenshot_tag`를 옮긴 뒤(같은 캡처 중복은 삭제) unique 제약. `name`의 unique는 내린다. 불용어에 해당하는 기존 태그 연결은 지운다.
+- 스키마 변경은 새 `V{n}__*.sql`로만 한다. 적용된 파일은 고치지 않는다.
+- 시각은 `timestamp`(시간대 없음)이고 기준은 Asia/Seoul이다(서버가 JVM 기본값·Clock·Hibernate JDBC 시간대를 고정). 배포 서버가 UTC여도 같다.
+- ID는 SEQUENCE(50개씩 할당)라 analyze 저장의 INSERT가 배치된다. 300장 기준 실행 SQL 916 → 29회(`ScreenshotAnalyzeQueryCountTest`).
 
 ### 실사용 정확도 측정 (F-05)
 - 분석된 캡처 = `analyzed_at`이 있는 행. `corrected` = `USER` 이면서 `category ≠ auto_category`, `confirmed` = `USER` 이면서 `category = auto_category`, `unreviewed` = `AUTO`.
@@ -315,7 +319,7 @@
 - [x] 서비스명 → Remine
 - [x] LLM 선택 → `gemini-3.5-flash-lite`, temperature 1.0 (`experiment/SUMMARY.md`)
 - [x] 분류 입력 방식 → 하이브리드 (기준값 150자, 설정)
-- [ ] DB 선택
+- [x] DB 선택 → PostgreSQL 17 + Flyway
 - [ ] F-06 기기 사진 삭제·시스템 휴지통 이동, 서버 삭제 API, 휴지통 화면 — 3주차 이후 (앱 내 휴지통만 이번에 구현)
 - [ ] 분석의 비동기·병렬화 (작업 큐 + 진행 상태 조회, 제한된 동시성). 지금은 동기 순차 호출이라 요청당 20장으로 제한한다.
 - [x] 이미지 수신 API(multipart, 메모리 전용)와 "빈 OCR + 이미지" 분류 경로

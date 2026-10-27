@@ -45,7 +45,7 @@
 | App | Flutter (Dart), photo_manager, Google ML Kit |
 | Backend | Spring Boot 4.1.1, Java 21 |
 | AI | Gemini `gemini-3.5-flash-lite` (temperature 1.0) |
-| DB | H2(임시), 운영 DB 미정 |
+| DB | PostgreSQL 17, Flyway (로컬은 Docker Compose) |
 | Push | Firebase Cloud Messaging |
 
 ## 🧭 주요 결정
@@ -60,7 +60,7 @@
 | 영역 | 상태 |
 |---|---|
 | 서버: 분류(Gemini 하이브리드), 이미지 입력, 목록·요약, 카테고리 수정 | 구현됨 |
-| 서버: 관심사 집계 · FCM 푸시 · 운영 DB | 예정 |
+| 서버: 관심사 집계 · FCM 푸시 · PostgreSQL | 구현됨 |
 | Flutter 앱 | 미착수 |
 
 ### API
@@ -87,12 +87,22 @@ experiment/  LLM 분류 실험 (요약, 설정, 집계 결과)
 
 ## ▶️ Run
 
+Docker가 필요합니다. DB 비밀번호는 레포 밖 키 파일(`REMINE_ENV_FILE`, 없으면 `~/.remine.env`)에 `REMINE_DB_PASSWORD=값`으로 둡니다.
+
 ```bash
+# 1. PostgreSQL (데이터는 볼륨에 남음, 지우려면 docker compose down -v)
+docker compose --env-file "$REMINE_ENV_FILE" up -d
+
+# 2. 서버 (기동 때 Flyway가 스키마를 맞춤)
 cd server
 ./gradlew bootRun                                       # fake 분류기 (키 불필요)
 ./gradlew bootRun --args="--remine.classifier=gemini"   # 실제 Gemini (GEMINI_API_KEY 필요)
+
+# 테스트 (Testcontainers가 PostgreSQL을 따로 띄움, Docker만 켜져 있으면 됨)
 ./gradlew test
 ```
+
+배포 때 DB 접속 정보는 `SPRING_DATASOURCE_URL` · `SPRING_DATASOURCE_USERNAME` · `SPRING_DATASOURCE_PASSWORD`로 덮어씁니다.
 
 ## 📄 Docs
 

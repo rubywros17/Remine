@@ -30,7 +30,7 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
-/** 실제 DB(H2)와 HTTP로: 14일 경계, 사용자 수정 반영, 다른 기기 분리, 응답에 OCR 원문 없음. */
+/** 실제 DB(PostgreSQL)와 HTTP로: 14일 경계, 사용자 수정 반영, 다른 기기 분리, 응답에 OCR 원문 없음. */
 @SpringBootTest
 class InterestIntegrationTest {
 

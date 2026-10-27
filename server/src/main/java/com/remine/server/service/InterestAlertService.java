@@ -1,5 +1,6 @@
 package com.remine.server.service;
 
+import com.remine.server.ServerApplication;
 import com.remine.server.classifier.RemineProperties;
 import com.remine.server.domain.device.DeviceRepository;
 import com.remine.server.domain.interest.InterestAlert;
@@ -45,7 +46,7 @@ public class InterestAlertService {
     private final Clock clock;
 
     // ponytail: 전 기기를 한 번에 순회한다. 기기 수가 늘면 페이지 단위 처리·여러 인스턴스면 분산 락(ShedLock 등).
-    @Scheduled(cron = "${remine.interest.alert-cron}", zone = "Asia/Seoul")
+    @Scheduled(cron = "${remine.interest.alert-cron}", zone = ServerApplication.ZONE)
     public void createWeeklyAlerts() {
         LocalDateTime now = LocalDateTime.now(clock);
         LocalDate weekStart = now.toLocalDate().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));

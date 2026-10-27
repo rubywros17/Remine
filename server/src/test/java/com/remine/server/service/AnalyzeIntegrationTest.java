@@ -33,7 +33,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /**
  * 분류(LLM 호출)는 DB 트랜잭션 밖에서, 저장은 분류가 모두 끝난 뒤 짧은 트랜잭션으로 한다는 것과
- * 부분 실패·재전송 규칙을 실제 DB(H2)로 검증한다. 분류기는 스크립트된 가짜라 외부 호출은 없다.
+ * 부분 실패·재전송 규칙을 실제 DB(PostgreSQL)로 검증한다. 분류기는 스크립트된 가짜라 외부 호출은 없다.
  */
 @SpringBootTest
 class AnalyzeIntegrationTest {
