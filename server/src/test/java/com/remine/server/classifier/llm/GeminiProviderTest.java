@@ -113,4 +113,18 @@ class GeminiProviderTest {
         assertThat(reply.note()).contains("PROHIBITED_CONTENT");
         assertThat(reply.inputTokens()).isEqualTo(30);
     }
+
+    @Test
+    void 여러_조각은_순서대로_parts에_들어간다() {
+        byte[] jpeg = {(byte) 0xFF, (byte) 0xD8};
+
+        JsonNode body = mapper.valueToTree(GeminiProvider.requestBody("s",
+                java.util.List.of(LlmPart.text("캡처 1"), LlmPart.text("캡처 2"), LlmPart.image(jpeg)), 1.0));
+
+        JsonNode parts = body.path("contents").path(0).path("parts");
+        assertThat(parts.size()).isEqualTo(3);
+        assertThat(parts.path(0).path("text").asString()).isEqualTo("캡처 1");
+        assertThat(parts.path(1).path("text").asString()).isEqualTo("캡처 2");
+        assertThat(parts.path(2).path("inlineData").path("mimeType").asString()).isEqualTo("image/jpeg");
+    }
 }

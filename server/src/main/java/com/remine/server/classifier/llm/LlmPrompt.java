@@ -41,7 +41,29 @@ public final class LlmPrompt {
 
     private static final String SYSTEM_V2 = buildSystem(RULES_V2);
 
+    private static final String OUTPUT_SINGLE = """
+            응답은 JSON 객체 하나만 출력한다. 설명, 마크다운, 코드블록은 쓰지 않는다.
+            {"category": "<위 7개 중 하나>", "tags": ["짧은 명사 최대 3개"], "summary": "한 문장 요약(40자 이내)"}
+            """;
+
+    private static final String OUTPUT_BATCH = """
+            여러 캡처가 "캡처 <id>" 머리말과 함께 주어진다. 캡처마다 따로 분류하고, 다른 캡처의 내용을 섞지 않는다.
+            응답은 JSON 객체 하나만 출력한다. 설명, 마크다운, 코드블록은 쓰지 않는다.
+            {"results": [{"id": "<캡처 id>", "category": "<위 7개 중 하나>", "tags": ["짧은 명사 최대 3개"], "summary": "한 문장 요약(40자 이내)"}]}
+            주어진 모든 캡처에 대해 결과를 하나씩, id를 그대로 적어 낸다.
+            """;
+
+    /**
+     * 배치 시스템 프롬프트. v1의 지시·카테고리 정의는 그대로이고 출력 형식만 id별 results 배열로 바꾼다
+     * (단건 v1과 정확도를 공정하게 비교하기 위해. LlmPromptTest가 v1 본문 포함을 검사한다).
+     */
+    public static final String SYSTEM_BATCH = buildSystem(List.of(), OUTPUT_BATCH);
+
     private static String buildSystem(List<String> rules) {
+        return buildSystem(rules, OUTPUT_SINGLE);
+    }
+
+    private static String buildSystem(List<String> rules, String output) {
         String definitions = DEFINITIONS.entrySet().stream()
                 .map(e -> "- " + e.getKey() + ": " + e.getValue())
                 .collect(Collectors.joining("\n"));
@@ -51,9 +73,7 @@ public final class LlmPrompt {
                 너는 스마트폰 스크린샷의 OCR 텍스트를 분류하는 분류기다.
                 category는 아래 7개 중 정확히 하나만 고른다.
                 %s
-                %s응답은 JSON 객체 하나만 출력한다. 설명, 마크다운, 코드블록은 쓰지 않는다.
-                {"category": "<위 7개 중 하나>", "tags": ["짧은 명사 최대 3개"], "summary": "한 문장 요약(40자 이내)"}
-                """.formatted(definitions, ruleBlock);
+                %s%s""".formatted(definitions, ruleBlock, output);
     }
 
     /** 버전별 시스템 프롬프트. v1은 비교 기준이라 바뀌면 안 된다(PromptVersionTest의 스냅샷). */
@@ -89,13 +109,84 @@ public final class LlmPrompt {
         return user(ocrText) + "\n\n위 텍스트는 첨부한 스크린샷 이미지의 OCR 결과다. 이미지도 함께 참고해 분류하라.";
     }
 
+    /** 배치 입력 한 장. jpegImage가 null이면 텍스트만. */
+    public record BatchItem(String ocrText, byte[] jpegImage) {
+    }
+
+    /**
+     * 배치 user 조각: 캡처마다 "캡처 {순번}" + OCR 텍스트, 이미지가 있으면 바로 뒤에 그 이미지.
+     * id는 1부터의 순번이다(기기의 asset id 같은 식별자는 모델에 보내지 않는다).
+     */
+    public static List<LlmPart> batchParts(List<BatchItem> items) {
+        List<LlmPart> parts = new ArrayList<>();
+        for (int i = 0; i < items.size(); i++) {
+            BatchItem item = items.get(i);
+            String header = "캡처 " + (i + 1) + "\n";
+            if (item.jpegImage() == null) {
+                parts.add(LlmPart.text(header + user(item.ocrText())));
+            } else {
+                parts.add(LlmPart.text(header + user(item.ocrText())
+                        + "\n\n위 텍스트는 바로 뒤 이미지(캡처 " + (i + 1) + ")의 OCR 결과다. 이미지도 함께 참고해 분류하라."));
+                parts.add(LlmPart.image(item.jpegImage()));
+            }
+        }
+        return parts;
+    }
+
+    /**
+     * 배치 응답 → 순번별 결과(size개). 없거나, 중복되거나, 해석할 수 없는 id 자리는 null이다(그 장만 단건 재시도 대상).
+     * ok=false면 응답 전체가 JSON이 아니거나 results 배열이 없다(전원 null).
+     */
+    public record BatchParsed(List<ClassificationResult> results, boolean ok) {
+    }
+
+    public static BatchParsed parseBatch(JsonMapper mapper, String raw, int size) {
+        List<ClassificationResult> results = new ArrayList<>(Collections.nCopies(size, null));
+        JsonNode array;
+        try {
+            array = mapper.readTree(extractJsonObject(raw)).path("results");
+        } catch (RuntimeException e) {
+            return new BatchParsed(results, false);
+        }
+        if (!array.isArray()) {
+            return new BatchParsed(results, false);
+        }
+        boolean[] duplicated = new boolean[size];
+        for (JsonNode node : array) {
+            int index;
+            try {
+                index = Integer.parseInt(node.path("id").asString("").replace("캡처", "").trim()) - 1;
+            } catch (NumberFormatException e) {
+                continue;
+            }
+            if (index < 0 || index >= size) {
+                continue;
+            }
+            Parsed parsed = parseNode(node);
+            if (results.get(index) != null || duplicated[index]) {
+                duplicated[index] = true;
+                results.set(index, null);
+            } else if (parsed.ok()) {
+                results.set(index, parsed.result());
+            }
+        }
+        return new BatchParsed(results, true);
+    }
+
     /** ok=false면 JSON이 아니거나 카테고리가 7개 밖이다. 이 경우 결과는 ETC로 둔다. */
     public record Parsed(ClassificationResult result, boolean ok) {
     }
 
     public static Parsed parse(JsonMapper mapper, String raw) {
         try {
-            JsonNode node = mapper.readTree(extractJsonObject(raw));
+            return parseNode(mapper.readTree(extractJsonObject(raw)));
+        } catch (RuntimeException e) {
+            return new Parsed(new ClassificationResult(Category.ETC, List.of(), ""), false);
+        }
+    }
+
+    private static Parsed parseNode(JsonNode node) {
+        try {
             Category category = Category.valueOf(node.path("category").asString("").trim().toUpperCase());
             List<String> tags = new ArrayList<>();
             node.path("tags").forEach(tag -> tags.add(tag.asString("").trim()));

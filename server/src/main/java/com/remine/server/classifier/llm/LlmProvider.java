@@ -1,5 +1,7 @@
 package com.remine.server.classifier.llm;
 
+import java.util.List;
+
 /** 제공사별 HTTP 호출만 담당한다. 프롬프트·파싱은 모든 후보가 공통으로 쓴다. */
 public interface LlmProvider {
 
@@ -11,5 +13,10 @@ public interface LlmProvider {
      */
     default LlmReply call(String model, String systemPrompt, String userText, byte[] jpegImage) {
         throw new UnsupportedOperationException("이 제공사는 이미지 입력을 지원하지 않습니다");
+    }
+
+    /** 여러 조각(텍스트·이미지)을 한 user 메시지로 보내는 호출. 배치 분류가 쓴다. 지원하지 않는 제공사는 예외를 던진다. */
+    default LlmReply call(String model, String systemPrompt, List<LlmPart> parts) {
+        throw new UnsupportedOperationException("이 제공사는 여러 조각 입력을 지원하지 않습니다");
     }
 }
