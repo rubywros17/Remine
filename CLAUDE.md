@@ -16,9 +16,8 @@ docs/     기획·설계 문서
 
 ## 스택
 - 앱: Flutter (Dart), photo_manager, google_mlkit_text_recognition, firebase_messaging
-- 서버: Spring Boot 4.1.1 / Java 21 / H2(임시)
+- 서버: Spring Boot 4.1.1 / Java 21 / PostgreSQL 17 + Flyway
 - LLM: gemini-3.5-flash-lite (확정, temperature 1.0, 운영은 유료 등급) — 근거는 `experiment/SUMMARY.md`
-- DB(운영): 미정 → 정해지면 이 파일 갱신
 
 ## 핵심 원칙
 - **민감한 캡처는 기기를 떠나지 않고, 분석용 이미지는 동의한 경우에만 보내며 서버에 저장하지 않는다.** 앱에서 OCR 후 텍스트와 메타데이터를 전송하고, OCR 글자 수가 기준값(설정, 기본 150자) 미만일 때만 축소 이미지를 동봉한다. 강한 민감 정보에 걸린 캡처는 텍스트·이미지 모두 보내지 않고, 전화번호는 [전화번호]로 가린 뒤 텍스트만 보낸다.
@@ -47,13 +46,18 @@ flutter run -d <id> --dart-define=DATA=device --dart-define=API_BASE=http://loca
 flutter analyze
 flutter test
 
-# 서버
+# 서버 (DB 먼저: 레포 루트에서. 데이터는 볼륨에 남고 down -v만 지운다)
+docker compose --env-file "$REMINE_ENV_FILE" up -d
 cd server
 ./gradlew bootRun                                  # 기본: fake 분류기 (키 불필요)
 ./gradlew bootRun --args="--remine.classifier=gemini"   # 실제 Gemini 분류 (GEMINI_API_KEY 필요)
 ./gradlew bootRun --args="--spring.profiles.active=dev"  # 개발용 API 열기(POST /api/dev/push-test, 기본은 404)
 ./gradlew test
 ```
+- DB: 로컬은 `docker-compose.yml`의 PostgreSQL 17.6, 호스트 포트 **5433**(이 PC의 Windows용 PostgreSQL이 5432 사용). 비밀번호는 키 파일의 `REMINE_DB_PASSWORD`(compose와 서버가 같은 값). 배포는 `SPRING_DATASOURCE_URL/USERNAME/PASSWORD`로 덮어쓴다.
+- 스키마는 Flyway(`server/src/main/resources/db/migration`)만 바꾼다. ddl-auto=validate라 엔티티와 안 맞으면 기동 실패. 적용된 `V{n}` 파일은 고치지 말고 새 버전을 추가한다. ID는 SEQUENCE(allocationSize 50) + JDBC 배치.
+- 시간대는 `ServerApplication.ZONE`(Asia/Seoul) 한 곳: JVM 기본값·Clock·`@Scheduled`·Hibernate JDBC 시간대.
+- 테스트는 **Docker 필요**: build.gradle이 DB를 Testcontainers(`jdbc:tc:postgresql:17.6`)로 바꾸고, 컨테이너 하나를 모든 Spring 컨텍스트가 공유한다(컨텍스트별 풀 2개, max_connections 초과 방지). 테스트 데이터는 기기별로 만들고, 전역 집계를 보는 클래스만 테스트마다 truncate한다(`MultipartTestSupport`).
 - Gemini 키는 환경변수 `GEMINI_API_KEY` 또는 키 파일(`GEMINI_API_KEY=키값`, 따옴표 없이)에 둔다. 키가 없으면 기동이 안내와 함께 실패한다.
 - 키 파일 위치: 환경변수 `REMINE_ENV_FILE`(이 PC: `E:\dev\secrets\remine\remine.env`), 없으면 `~/.remine.env`. `.properties`로 읽히므로 값의 경로는 `/`로 쓴다(`\`는 이스케이프).
 - Firebase 서비스 계정 키 경로: `remine.fcm.credentials-file`(키 파일에 `remine.fcm.credentials-file=E:/dev/secrets/remine/firebase-admin.json`). 없으면 **푸시만 꺼지고**(기동 때 경고 1번) 나머지는 정상.
