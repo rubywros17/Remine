@@ -160,6 +160,7 @@ cd server
 - **운영 프로필(prod)** 은 actuator `health`만 공개하고(상세 없음) `/api/dev/*`는 404입니다. Caddy도 `/api/*`와 `/actuator/health`만 서버로 넘깁니다.
 - **1GB 인스턴스에 맞췄습니다.** JVM 힙은 컨테이너 한도(600MB)의 60%, Serial GC, 스왑 2GB. 이미지 빌드는 러너(x86)에서 Gradle을 네이티브로 돌리고 실행 단계만 arm64라 QEMU 에뮬레이션이 없습니다.
 - **비용:** EC2 약 $7.6 + 퍼블릭 IPv4 약 $3.7 + EBS 20GB 약 $1.8 = 월 약 $13 (6개월 약 $79).
+- **APK는 공개하지 않습니다.** 서버가 Gemini 무료 등급(입력이 학습에 쓰일 수 있음)이라, 공개 배포 전에 유료 등급 전환 또는 초대 기기 제한이 필요합니다. 지금은 시연 영상과 이 README로 대신합니다.
 - **백업:** 매일 04:00 `pg_dump`(7일 보관, `deploy/backup.sh`).
 - **이사:** 상태는 `compose.yaml` + `.env`·`secrets/` + DB 덤프뿐이라 Docker가 되는 다른 VM(Lightsail, Oracle ARM)으로 그대로 옮길 수 있습니다.
 
