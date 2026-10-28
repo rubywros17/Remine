@@ -48,6 +48,45 @@
 | DB | PostgreSQL 17, Flyway (로컬은 Docker Compose) |
 | Push | Firebase Cloud Messaging |
 
+## 📊 Key Numbers
+
+| 지표 | 결과 | 조건 |
+|---|---|---|
+| 첫 분석 시간 | **약 20분 → 4.6분** (1,197초 → 279초) | 갤럭시 실기기, 최근 300장 중 서버 분석 265장 |
+| LLM 호출 수 | **265 → 53회 (−80%)** | 같은 265장 |
+| 장당 LLM 비용 | $0.00047 → **약 $0.0004 (−9%)** | Gemini 유료 단가 환산(개발은 무료 등급) |
+| 분류 정확도 | **79.1% (34/43)** | 직접 라벨링한 표본 43장 |
+| analyze 저장 SQL | **916 → 29회** | 300장, ID `IDENTITY` → `SEQUENCE` + JDBC 배치 |
+
+- **배치 효과는 속도와 호출 수입니다.** 여러 장을 한 LLM 요청에 담아(텍스트 10장, 이미지 5장) 호출 수와 호출 간격 대기가 줄었습니다. 비용은 −9%에 그칩니다: 공통 프롬프트를 나눠 써 입력 토큰은 26% 줄지만 출력 토큰이 44% 늘고, 출력 단가가 입력의 8배 이상입니다.
+- **배치로 정확도가 떨어지지 않는지** 같은 43장으로 확인했습니다: 단건 기준선 33/43, 배치 35·34/43, 요약 형식을 바꾼 프롬프트 v3 + 배치 34/43.
+
+<details>
+<summary>측정 조건 · 재현 방법</summary>
+
+- **전**: 앱 요청당 5장 + 서버 배치 끔(장당 1호출). **후**: 앱 요청당 20장 + 서버 배치(텍스트 10 · 이미지 5). 둘 다 프롬프트 v3, 호출 간격 `min-interval-ms` 4500, 앱 데이터 삭제(새 기기 등록) 후 첫 동기화.
+- 265장 = 갤러리 최근 300장 − 앱 자기 캡처 30장 − 기기 안에서 끝난 캡처(민감 정보·앱 기반) 5장. 전/후 모두 서버가 265장을 받았고 실패 0건.
+- 시간은 서버의 첫 analyze 요청 시작 ~ 마지막 요청 끝(요청 사이 앱의 기기 내 OCR 포함). 가장 긴 요청은 20장 기준 21.8초(앱 타임아웃 2분).
+- 비용은 Gemini 응답 `usageMetadata` 토큰 × 단가(`GeminiPricing`, gemini-3.5-flash-lite 유료 Standard, 2026-10-27 확인).
+- 정확도 표본은 Tesseract OCR 근사(앱은 ML Kit)이고 1인 라벨링 43장입니다. 실사용 정확도는 `GET /api/categories/accuracy`(사용자 수정률)로 따로 잽니다.
+
+```bash
+# 서버 (dev 프로필이면 GET/DELETE /api/dev/metrics가 열린다)
+./gradlew bootRun --args="--spring.profiles.active=dev --remine.classifier=gemini --remine.llm.batch.text-size=1 --remine.llm.batch.image-size=1"  # 전
+./gradlew bootRun --args="--spring.profiles.active=dev --remine.classifier=gemini"                                                               # 후
+curl -X DELETE localhost:8080/api/dev/metrics            # 측정 전 초기화
+
+# 앱 (새 기기로 첫 동기화, 디버그 화면 [지금 동기화])
+adb shell pm clear com.remine.remine
+flutter run -d <id> --dart-define=DATA=device --dart-define=API_BASE=http://localhost:8080 \
+  --dart-define=AUTO_SYNC=false --dart-define=SYNC_BATCH_SIZE=5   # 전만 SYNC_BATCH_SIZE=5, 후는 빼면 20장
+curl localhost:8080/api/dev/metrics                      # 요청 수·호출 수·토큰·비용·시간
+
+# 정확도 (43장 라벨 표본, 결과 파일은 커밋하지 않음)
+./gradlew bootRun --args="--spring.profiles.active=experiment --experiment.prompt=v3 --experiment.batch=10,5"
+```
+</details>
+
 ## 🧭 주요 결정
 
 - **모델과 입력 방식은 실험으로 정했습니다.** 본인 스크린샷 43장으로 비교한 결과, 텍스트만 41.9~44.2%, 텍스트+이미지 74.4%, 하이브리드(OCR 150자 기준) 76.7~79.1%였습니다. 하이브리드는 150자 이상 캡처(약 23%)에 이미지를 보내지 않아 전송량과 개인정보 노출도 줄입니다. 근거와 한계는 [experiment/SUMMARY.md](experiment/SUMMARY.md)에 있습니다.

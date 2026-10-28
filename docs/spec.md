@@ -74,6 +74,8 @@
     - **은행·증권·메신저 앱 캡처**: 서버로 보내지 않고 기기에서 앱 기준으로 바로 분류한다(메신저 → `CHAT`, 은행·증권 → `ETC`).
     - **Remine 자기 화면 캡처**: 분류 대상이 아니라 OCR·전송·목록에서 모두 뺀다. 갤럭시는 우리 앱 화면 캡처 파일명에 앱 이름을 붙이지 않아서, "파일명에 앱 이름이 없음 + 촬영 시각이 앱이 앞에 있던 구간(resumed~paused, 앞뒤 5초) 안"이면 자기 캡처로 본다. 구간은 기기에만 최근 90일 보관한다. 구간 기록이 생기기 전 캡처는 설치 ~ 이 규칙이 들어간 업데이트 시각을 한 번 정해 그 기간의 이름 없는 캡처만 빼고, 이미 서버에 보낸 것은 `POST /api/screenshots/forget`으로 지운다.
 - LLM(`gemini-3.5-flash-lite`, temperature 1.0)이 카테고리·태그·한 줄 요약을 생성한다. 근거와 한계는 `experiment/SUMMARY.md`.
+  - 요약은 핵심 대상 + 내용의 20자 안팎 명사구다(마침표·"-다" 금지, "화면/캡처/스마트폰" 금지). 운영 프롬프트 v3 = v1 카테고리 정의 + 이 요약 형식.
+  - 서버는 요청 안의 캡처를 텍스트만 10장, 이미지 포함 5장씩 한 LLM 요청으로 묶는다(`remine.llm.batch.*`, 1이면 장당 1요청). 응답에서 빠지거나 해석 못 한 장만 단건으로 다시 보내고, 호출 자체가 실패하면 묶음 전체를 실패로 둔다(앱이 다시 보낸다).
 - 기본 카테고리 (고정). 코드 값(enum) → 앱 표시 라벨:
 
   | 코드 값 | 앱 표시 라벨 | 비고 |
@@ -242,6 +244,7 @@
 | POST | `/api/devices` | 기기 등록 `{fcmToken}` (토큰은 없어도 됨 → 푸시만 안 감) |
 | PUT | `/api/devices/me/fcm-token` | FCM 토큰 갱신 `{fcmToken}`(빈 값 400) → 204. 알림을 켰을 때·토큰이 바뀔 때. 미등록 기기 404 |
 | DELETE | `/api/devices/me/fcm-token` | 알림 끄기 → 토큰 삭제, 204(이미 없어도 204). 미등록 기기 404 |
+| GET / DELETE | `/api/dev/metrics` | **dev 프로필 전용**(그 외 404). 서버 기동(또는 DELETE) 이후 누적 측정값 `{requests, llmCalls, llmItems, inputTokens, outputTokens, costUsd, costPerItemUsd, serverElapsedMs, maxRequestMs, wallElapsedMs}`. 비용은 유료 단가 환산. DELETE는 0으로 초기화(204) |
 | POST | `/api/dev/push-test?delaySeconds=0~10` | **dev 프로필 전용**(그 외 404). 서버가 delaySeconds 기다렸다(10 초과 400) 이 기기에 관심사 알림 1건을 보낸다(FCM notification 제목·본문 + 안드로이드 채널 `interest_alerts`·우선순위 HIGH)(지금 1순위 관심사, 없으면 예시 "신발"). `interest_alert`는 건드리지 않는다. 200 `{result: SENT/INVALID_TOKEN/FAILED}`, 토큰 없음 409, 서버 푸시 꺼짐 503 |
 | GET | `/api/config` | 분석 설정 조회(헤더 불필요). `{imageThresholdChars:150, maxBatchSize:20, imageMaxBytes:1048576, imageMaxLongSide:1024, imageContentType:"image/jpeg", maxRequestBytes:12582912, classifyIntervalMs:0}` — 모두 서버 설정(`remine.*`)에서 읽는다. `classifyIntervalMs`는 장당 분류 최소 간격(gemini면 `min-interval-ms`, 가짜 분류기는 0)이며 앱이 남은 시간을 처음부터 예상하는 데 쓴다 |
 | POST | `/api/screenshots/analyze` | OCR 텍스트 배치(최대 20장, 초과 시 400) 전송 → 분류 결과 반환 `{analyzed, skipped, failed}`. 일부 분류가 실패해도 200이며 실패한 캡처는 `failed`(`localAssetId`, `reason`)에 담기고 미분석으로 남는다(같은 요청을 다시 보내면 재분석). 요청 형식은 둘 중 하나: ① `application/json` — 기존 본문(이미지 없음), ② `multipart/form-data` — 아래 |

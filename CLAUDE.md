@@ -43,6 +43,7 @@ adb reverse tcp:8080 tcp:8080
 flutter run -d <id> --dart-define=DATA=device --dart-define=API_BASE=http://localhost:8080
 #   첫 확인은 소량으로: --dart-define=SYNC_LIMIT=15  (디버그 전용, 최신 N장만 서버로 전송)
 #   자동 동기화 끄기: --dart-define=AUTO_SYNC=false  (디버그 전용, 디버그 화면 [지금 동기화]로 수동 실행)
+#   요청 크기 바꾸기: --dart-define=SYNC_BATCH_SIZE=5  (디버그 전용, 기본 20 = 서버 상한. 배치 전/후 측정용)
 flutter analyze
 flutter test
 
@@ -51,7 +52,7 @@ docker compose --env-file "$REMINE_ENV_FILE" up -d
 cd server
 ./gradlew bootRun                                  # 기본: fake 분류기 (키 불필요)
 ./gradlew bootRun --args="--remine.classifier=gemini"   # 실제 Gemini 분류 (GEMINI_API_KEY 필요)
-./gradlew bootRun --args="--spring.profiles.active=dev"  # 개발용 API 열기(POST /api/dev/push-test, 기본은 404)
+./gradlew bootRun --args="--spring.profiles.active=dev"  # 개발용 API 열기(POST /api/dev/push-test, GET·DELETE /api/dev/metrics, 기본은 404)
 ./gradlew test
 ```
 - DB: 로컬은 `docker-compose.yml`의 PostgreSQL 17.6, 호스트 포트 **5433**(이 PC의 Windows용 PostgreSQL이 5432 사용). 비밀번호는 키 파일의 `REMINE_DB_PASSWORD`(compose와 서버가 같은 값). 배포는 `SPRING_DATASOURCE_URL/USERNAME/PASSWORD`로 덮어쓴다.
@@ -66,6 +67,8 @@ cd server
 - 테스트는 키 파일(`REMINE_ENV_FILE`·`~/.remine.env`)·키·`REMINE_CLASSIFIER`를 읽지 않고(build.gradle에서 중립화) 실제 API를 부르지 않는다.
 - 관심사(`remine.interest.*`): 14일·3회, 주간 집계 cron(`alert-cron`, 테스트에서는 build.gradle이 `-`로 끔), 쿨다운 28일. 태그 불용어는 `remine.tags.stopwords` 한 곳. "지금"은 `Clock` 빈에서만 읽는다(테스트는 고정 시계).
 - analyze는 요청당 최대 20장(`remine.analyze.max-batch-size`). 설정은 `server/src/main/resources/application.yaml`의 `remine.*`.
+- LLM 배치(`remine.llm.batch.text-size` 10 · `image-size` 5): 요청 안의 캡처를 묶어 한 번에 분류, 빠진 장만 단건 재시도. 1이면 장당 1요청. 운영 프롬프트는 v3(`PromptVersion`), v1은 스냅샷으로 고정된 실험 기준이라 고치지 말고 새 버전을 만든다.
+- 측정: dev 프로필의 `/api/dev/metrics`(토큰·비용·시간, 단가는 `GeminiPricing`). 배치 정확도 비교는 `--spring.profiles.active=experiment --experiment.prompt=v3 --experiment.batch=10,5`(결과는 `experiment/compare.local.*`, 커밋 안 됨).
 - 이미지 입력(`remine.image.*`): 장당 `max-bytes`(1MB), `max-long-side`(1024), `max-pixels`(25,000,000), 요청 `max-request-bytes`(12MB)·파트 `max-part-bytes`(5MB). multipart는 **메모리 전용**(`spring.servlet.multipart.file-size-threshold`를 낮추지 말 것 — 기본 0B는 이미지를 임시 파일로 씀). 앱은 `GET /api/config`로 값을 받는다. 형식은 `docs/spec.md` API 절.
 
 - 서버 주소는 `--dart-define=API_BASE`. 릴리스는 `https://`만 받고, 평문 HTTP(localhost)는 `app/android/app/src/debug`의 network security config로 디버그 빌드에서만 열려 있다.
