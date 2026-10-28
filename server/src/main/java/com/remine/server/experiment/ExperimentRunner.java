@@ -116,6 +116,7 @@ class ExperimentRunner implements CommandLineRunner {
      * --experiment.batch=텍스트장수,이미지장수 (예: 10,5). 지정하면 운영과 같은 하이브리드(OCR 150자 미만이면 이미지)를
      * 그 크기로 묶어 classifyBatch로 분류하고 compare.local.batch-*.md(커밋 안 됨)에만 쓴다. 1,1이면 같은 경로의 단건 기준선이다.
      * results.*.md·runs/는 건드리지 않는다. 후보는 candidates.json의 텍스트 후보(--experiment.candidates로 고를 수 있음) 중 첫째.
+     * 프롬프트는 --experiment.prompt(기본 v1). 결과 머리말에 요약 형식 위반 수({@link #summaryViolation})를 적는다.
      */
     @Value("${experiment.batch:}")
     String batchOption = "";
@@ -288,6 +289,13 @@ class ExperimentRunner implements CommandLineRunner {
     }
 
     private void runBatch() throws IOException {
+        PromptVersion promptVersion;
+        try {
+            promptVersion = PromptVersion.parse(promptOption);
+        } catch (IllegalArgumentException e) {
+            log.error(e.getMessage());
+            return;
+        }
         int textSize;
         int imageSize;
         try {
@@ -331,7 +339,8 @@ class ExperimentRunner implements CommandLineRunner {
             (Sample.countChars(labeled.get(i).ocrText()) < threshold ? imageIdx : textIdx).add(i);
         }
         LlmClassifier classifier = new LlmClassifier(candidate.model(), candidate.minIntervalMs(), provider.get(),
-                mapper, PromptVersion.V1);
+                mapper, promptVersion);
+        int[] summaries = {0, 0, 0}; // [요약 수, 형식 위반 수, 글자 수 합]
         Sample[] samples = new Sample[labeled.size()];
         int[] calls = {0, 0}; // [전체 호출, 단건 재시도]
         long[] tokens = {0, 0};
@@ -357,6 +366,12 @@ class ExperimentRunner implements CommandLineRunner {
                 for (int k = 0; k < chunk.size(); k++) {
                     Labeled item = labeled.get(chunk.get(k));
                     LlmOutcome outcome = batch.outcomes().get(k);
+                    if (outcome.status() == LlmOutcome.Status.OK) {
+                        String summary = outcome.result().summary();
+                        summaries[0]++;
+                        summaries[1] += summaryViolation(summary) ? 1 : 0;
+                        summaries[2] += Sample.countChars(summary);
+                    }
                     samples[chunk.get(k)] = new Sample(item.filename(), item.expected(), item.alt(),
                             outcome.result().category(), outcome.status(), true, outcome.usage(), outcome.raw(),
                             Sample.countChars(item.ocrText()));
@@ -365,19 +380,22 @@ class ExperimentRunner implements CommandLineRunner {
             }
         }
 
-        Candidate label = new Candidate(candidate.name() + " 하이브리드 배치 " + textSize + "/" + imageSize,
+        Candidate label = new Candidate(candidate.name() + " 하이브리드 배치 " + textSize + "/" + imageSize
+                + " " + promptVersion.label(),
                 candidate.provider(), candidate.model(), candidate.inputPerMTok(), candidate.outputPerMTok(),
                 candidate.temperature(), candidate.minIntervalMs(), candidate.input());
         List<Sample> sampleList = List.of(samples);
         ExperimentStats.Report report = ExperimentStats.summarize(label, sampleList);
         LocalDateTime now = LocalDateTime.now();
-        String header = "> 배치 비교 실행(커밋 안 됨). 묶음 텍스트 " + textSize + "장 · 이미지 " + imageSize + "장, 기준값 "
-                + threshold + "자.\n> LLM 호출 " + calls[0] + "회(그중 단건 재시도 " + calls[1] + "회), 토큰 합계 입력 "
+        String header = "> 배치 비교 실행(커밋 안 됨). 프롬프트 " + promptVersion.label() + ", 묶음 텍스트 " + textSize
+                + "장 · 이미지 " + imageSize + "장, 기준값 " + threshold + "자.\n> 요약 형식 위반 " + summaries[1] + "/"
+                + summaries[0] + ", 요약 평균 " + (summaries[0] == 0 ? 0 : summaries[2] / summaries[0])
+                + "자(공백 제외).\n> LLM 호출 " + calls[0] + "회(그중 단건 재시도 " + calls[1] + "회), 토큰 합계 입력 "
                 + tokens[0] + " / 출력 " + tokens[1] + ", 비용 $" + String.format("%.4f",
                 candidate.costUsd(tokens[0], tokens[1])) + ". 장당 응답 시간은 배치 호출 시간이다.\n\n";
-        Path out = dir.resolve("compare.local.batch-" + textSize + "-" + imageSize + "."
+        Path out = dir.resolve("compare.local.batch-" + promptVersion.label() + "-" + textSize + "-" + imageSize + "."
                 + now.format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")) + ".md");
-        Files.writeString(out, header + ResultsMarkdown.render(PromptVersion.V1, LocalDate.now(), labeled.size(), 0,
+        Files.writeString(out, header + ResultsMarkdown.render(promptVersion, LocalDate.now(), labeled.size(), 0,
                 List.of(report), List.of()), StandardCharsets.UTF_8);
         StringBuilder errors = new StringBuilder("# 오답 상세 (개인 데이터, 커밋 금지)\n");
         appendErrors(errors, label, sampleList);
@@ -385,6 +403,17 @@ class ExperimentRunner implements CommandLineRunner {
         Files.writeString(errorsFile, errors.toString(), StandardCharsets.UTF_8);
         log.info("배치 비교 완료: {} (호출 {}회, 단건 재시도 {}회), 오답 상세: {}", out.getFileName(), calls[0], calls[1],
                 errorsFile.getFileName());
+    }
+
+    /**
+     * v3 요약 형식 위반: 마침표로 끝남, "다"로 끝남("-다"·"-입니다"), 화면·캡처·스마트폰 포함, 공백 제외 30자 초과.
+     * 20자 "안팎"이라 짧은 쪽은 보지 않는다. 빈 요약은 위반이다.
+     */
+    static boolean summaryViolation(String summary) {
+        String s = summary == null ? "" : summary.strip();
+        return s.isEmpty() || s.endsWith(".") || s.endsWith("다")
+                || s.contains("화면") || s.contains("캡처") || s.contains("스마트폰")
+                || Sample.countChars(s) > 30;
     }
 
     /** ML Kit 실행을 같은 프롬프트의 최신 Tesseract 실행(runs/)과 비교해 요약을 쓴다. 텍스트·이미지 후보 쌍이 있어야 한다. */

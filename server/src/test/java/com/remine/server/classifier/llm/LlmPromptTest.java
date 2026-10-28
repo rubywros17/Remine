@@ -120,8 +120,8 @@ class LlmPromptTest {
     void 배치_시스템_프롬프트는_v1_정의를_그대로_쓰고_출력_형식만_다르다() {
         String v1Body = LlmPrompt.SYSTEM.substring(0, LlmPrompt.SYSTEM.indexOf("응답은 JSON"));
 
-        assertThat(LlmPrompt.SYSTEM_BATCH).startsWith(v1Body);
-        assertThat(LlmPrompt.SYSTEM_BATCH).contains("\"results\"").contains("\"id\"");
+        assertThat(LlmPrompt.batchSystem(PromptVersion.V1)).startsWith(v1Body);
+        assertThat(LlmPrompt.batchSystem(PromptVersion.V1)).contains("\"results\"").contains("\"id\"");
     }
 
     @Test

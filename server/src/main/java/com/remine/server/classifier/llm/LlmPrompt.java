@@ -39,28 +39,39 @@ public final class LlmPrompt {
     /** v1 시스템 프롬프트 (규칙 없음). 처음 실험에서 쓴 문구이며 바뀌면 안 된다. */
     public static final String SYSTEM = buildSystem(List.of());
 
-    private static final String SYSTEM_V2 = buildSystem(RULES_V2);
-
+    // 출력 형식. 첫 %s는 summary 칸의 설명, 둘째 %s는 summary 규칙 줄(v3만, 없으면 빈 문자열).
     private static final String OUTPUT_SINGLE = """
             응답은 JSON 객체 하나만 출력한다. 설명, 마크다운, 코드블록은 쓰지 않는다.
-            {"category": "<위 7개 중 하나>", "tags": ["짧은 명사 최대 3개"], "summary": "한 문장 요약(40자 이내)"}
-            """;
+            {"category": "<위 7개 중 하나>", "tags": ["짧은 명사 최대 3개"], "summary": "%s"}
+            %s""";
 
     private static final String OUTPUT_BATCH = """
             여러 캡처가 "캡처 <id>" 머리말과 함께 주어진다. 캡처마다 따로 분류하고, 다른 캡처의 내용을 섞지 않는다.
             응답은 JSON 객체 하나만 출력한다. 설명, 마크다운, 코드블록은 쓰지 않는다.
-            {"results": [{"id": "<캡처 id>", "category": "<위 7개 중 하나>", "tags": ["짧은 명사 최대 3개"], "summary": "한 문장 요약(40자 이내)"}]}
+            {"results": [{"id": "<캡처 id>", "category": "<위 7개 중 하나>", "tags": ["짧은 명사 최대 3개"], "summary": "%s"}]}
             주어진 모든 캡처에 대해 결과를 하나씩, id를 그대로 적어 낸다.
-            """;
+            %s""";
 
-    /**
-     * 배치 시스템 프롬프트. v1의 지시·카테고리 정의는 그대로이고 출력 형식만 id별 results 배열로 바꾼다
-     * (단건 v1과 정확도를 공정하게 비교하기 위해. LlmPromptTest가 v1 본문 포함을 검사한다).
-     */
-    public static final String SYSTEM_BATCH = buildSystem(List.of(), OUTPUT_BATCH);
+    private static final String SUMMARY_V1 = "한 문장 요약(40자 이내)";
+
+    /** v3 요약 형식: 목록·상세에서 제목처럼 읽히는 짧은 명사구. 카테고리 정의·지시는 v1과 같다. */
+    static final String SUMMARY_V3 = "핵심 대상 + 내용의 명사구(20자 안팎)";
+    static final String SUMMARY_RULE_V3 = "summary는 마침표 없이 명사구로 끝낸다(\"-다\", \"-입니다\" 금지). "
+            + "\"화면\", \"캡처\", \"스마트폰\"이라는 말은 쓰지 않는다. "
+            + "예: \"신예은 인스타 스토리 셀카\", \"IntentResolver 앱 권한 정보\"\n";
+
+    private static final String SYSTEM_V2 = buildSystem(RULES_V2);
+
+    private static final String SYSTEM_V3 = buildSystem(List.of(), output(OUTPUT_SINGLE, PromptVersion.V3));
 
     private static String buildSystem(List<String> rules) {
-        return buildSystem(rules, OUTPUT_SINGLE);
+        return buildSystem(rules, output(OUTPUT_SINGLE, PromptVersion.V1));
+    }
+
+    private static String output(String template, PromptVersion version) {
+        return version == PromptVersion.V3
+                ? template.formatted(SUMMARY_V3, SUMMARY_RULE_V3)
+                : template.formatted(SUMMARY_V1, "");
     }
 
     private static String buildSystem(List<String> rules, String output) {
@@ -81,7 +92,16 @@ public final class LlmPrompt {
         return switch (version) {
             case V1 -> SYSTEM;
             case V2 -> SYSTEM_V2;
+            case V3 -> SYSTEM_V3;
         };
+    }
+
+    /**
+     * 배치 시스템 프롬프트. 같은 버전의 단건 프롬프트와 지시·카테고리 정의·규칙·요약 형식이 같고
+     * 출력만 id별 results 배열이다(단건과 정확도를 공정하게 비교하기 위해).
+     */
+    public static String batchSystem(PromptVersion version) {
+        return buildSystem(version == PromptVersion.V2 ? RULES_V2 : List.of(), output(OUTPUT_BATCH, version));
     }
 
     private static Map<Category, String> definitions() {

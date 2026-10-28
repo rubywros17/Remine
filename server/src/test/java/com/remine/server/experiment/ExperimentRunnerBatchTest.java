@@ -59,7 +59,7 @@ class ExperimentRunnerBatchTest {
 
         assertThat(batchSizes).containsExactly(2); // 2장 배치 + 남은 1장은 단건
         List<String> names = listNames(dir);
-        assertThat(names).anyMatch(n -> n.startsWith("compare.local.batch-2-5."))
+        assertThat(names).anyMatch(n -> n.startsWith("compare.local.batch-v1-2-5."))
                 .noneMatch(n -> n.startsWith("results"))
                 .doesNotContain("runs");
         String report = Files.readString(dir.resolve(names.stream()
@@ -71,5 +71,16 @@ class ExperimentRunnerBatchTest {
         try (Stream<Path> files = Files.list(dir)) {
             return files.map(p -> p.getFileName().toString()).toList();
         }
+    }
+
+    @Test
+    void 요약_형식_위반을_판정한다() {
+        assertThat(ExperimentRunner.summaryViolation("신예은 인스타 스토리 셀카")).isFalse();
+        assertThat(ExperimentRunner.summaryViolation("IntentResolver 앱 권한 정보")).isFalse();
+        assertThat(ExperimentRunner.summaryViolation("카페 메뉴를 보여 주는 화면")).isTrue();
+        assertThat(ExperimentRunner.summaryViolation("니트 가디건 할인 정보입니다")).isTrue();
+        assertThat(ExperimentRunner.summaryViolation("니트 가디건 할인 정보.")).isTrue();
+        assertThat(ExperimentRunner.summaryViolation("가".repeat(31))).isTrue();
+        assertThat(ExperimentRunner.summaryViolation("")).isTrue();
     }
 }

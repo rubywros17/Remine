@@ -48,4 +48,23 @@ class PromptVersionTest {
         assertThat(LlmPrompt.system(PromptVersion.V1)).isEqualTo(expected);
         assertThat(LlmPrompt.system(PromptVersion.V1)).isEqualTo(LlmPrompt.SYSTEM);
     }
+
+    @Test
+    void v3는_v1과_정의_지시가_같고_요약_형식만_다르다() {
+        String v1 = LlmPrompt.system(PromptVersion.V1);
+        String v3 = LlmPrompt.system(PromptVersion.V3);
+        String common = v1.substring(0, v1.indexOf("{\"category\""));
+
+        assertThat(v3).startsWith(common);
+        assertThat(v3).contains(LlmPrompt.SUMMARY_V3).contains(LlmPrompt.SUMMARY_RULE_V3).doesNotContain("40자 이내");
+        assertThat(v3.replace(LlmPrompt.SUMMARY_V3, "한 문장 요약(40자 이내)").replace(LlmPrompt.SUMMARY_RULE_V3, ""))
+                .isEqualTo(v1);
+        assertThat(PromptVersion.parse("v3")).isEqualTo(PromptVersion.V3);
+    }
+
+    @Test
+    void 배치_프롬프트도_버전의_요약_형식을_따른다() {
+        assertThat(LlmPrompt.batchSystem(PromptVersion.V3)).contains(LlmPrompt.SUMMARY_RULE_V3).contains("\"results\"");
+        assertThat(LlmPrompt.batchSystem(PromptVersion.V1)).contains("40자 이내").doesNotContain(LlmPrompt.SUMMARY_RULE_V3);
+    }
 }

@@ -44,8 +44,8 @@ public class ClassifierConfig {
         JsonMapper mapper = JsonMapper.builder().build();
         GeminiProvider provider = new GeminiProvider(key.trim(), gemini.temperature(), mapper,
                 gemini.baseUrl(), gemini.connectTimeout(), gemini.readTimeout());
-        // 프롬프트는 v1 고정 (v2는 채택하지 않은 실험 옵션)
-        LlmClassifier llm = new LlmClassifier(gemini.model(), gemini.minIntervalMs(), provider, mapper, PromptVersion.V1);
+        // 운영 프롬프트는 v3(v1 정의 + 명사구 요약). v1은 실험 비교 기준, v2는 채택하지 않은 실험 옵션.
+        LlmClassifier llm = new LlmClassifier(gemini.model(), gemini.minIntervalMs(), provider, mapper, PromptVersion.V3);
         RemineProperties.Batch batch = properties.llm().batch();
         log.info("분류기: gemini model={} imageThresholdChars={} minIntervalMs={} batch(text={}, image={})",
                 gemini.model(), properties.llm().imageThresholdChars(), gemini.minIntervalMs(),

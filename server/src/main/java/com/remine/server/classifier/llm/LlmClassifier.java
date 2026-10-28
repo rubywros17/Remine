@@ -31,6 +31,7 @@ public class LlmClassifier {
     private final LlmProvider provider;
     private final JsonMapper mapper;
     private final String systemPrompt;
+    private final String batchSystemPrompt;
     private final LongConsumer sleepMillis;
     private final CallPacer pacer;
     private final LongSupplier nanoClock;
@@ -47,6 +48,7 @@ public class LlmClassifier {
         this.provider = provider;
         this.mapper = mapper;
         this.systemPrompt = LlmPrompt.system(promptVersion);
+        this.batchSystemPrompt = LlmPrompt.batchSystem(promptVersion);
         this.sleepMillis = sleepMillis;
         this.nanoClock = nanoClock;
         this.pacer = new CallPacer(minIntervalMs, nanoClock, sleepMillis);
@@ -95,7 +97,7 @@ public class LlmClassifier {
     }
 
     /**
-     * 여러 장을 한 요청으로 분류한다({@link LlmPrompt#SYSTEM_BATCH}, 캡처는 순번으로만 식별).
+     * 여러 장을 한 요청으로 분류한다({@link LlmPrompt#batchSystem}, 캡처는 순번으로만 식별).
      * <ul>
      *   <li>응답에서 빠졌거나 해석할 수 없는 장 → 그 장만 {@link #classifyWithUsage}로 단건 재시도</li>
      *   <li>응답 전체가 JSON이 아님 → 전원 단건 재시도</li>
@@ -109,7 +111,7 @@ public class LlmClassifier {
             return new BatchOutcome(List.of(single), List.of(new CallUsage(1, single.usage())));
         }
         List<LlmPart> parts = LlmPrompt.batchParts(items);
-        Call call = callWithRetry(() -> provider.call(model, LlmPrompt.SYSTEM_BATCH, parts));
+        Call call = callWithRetry(() -> provider.call(model, batchSystemPrompt, parts));
         List<CallUsage> calls = new ArrayList<>();
         calls.add(new CallUsage(items.size(), call.usage()));
         if (call.reply() == null) {
