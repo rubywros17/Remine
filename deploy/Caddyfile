@@ -1,0 +1,18 @@
+# HTTPS 리버스 프록시. 인증서는 Caddy가 Let's Encrypt에서 자동으로 받고 갱신한다(80·443 포트 필요).
+{$REMINE_DOMAIN} {
+	encode gzip
+
+	# 서버 상한(요청 12MB)보다 조금 크게. 그 이상은 서버까지 보내지 않는다.
+	request_body {
+		max_size 13MB
+	}
+
+	# 앱이 쓰는 /api와 배포 확인용 /actuator/health만 넘긴다. 나머지는 서버에 닿지 않고 404.
+	@app path /api/* /actuator/health
+	handle @app {
+		reverse_proxy server:8080
+	}
+	handle {
+		respond 404
+	}
+}
