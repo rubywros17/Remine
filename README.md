@@ -47,6 +47,7 @@
 | AI | Gemini `gemini-3.5-flash-lite` (temperature 1.0) |
 | DB | PostgreSQL 17, Flyway (로컬은 Docker Compose) |
 | Push | Firebase Cloud Messaging |
+| Infra | AWS EC2(서울, t4g.micro arm64) · Docker Compose · Caddy(HTTPS) · GitHub Actions · GHCR |
 
 ## 📊 Key Numbers
 
@@ -121,6 +122,7 @@ curl localhost:8080/api/dev/metrics                      # 요청 수·호출 �
 ```
 app/         Flutter 앱 (Android 우선, 예정)
 server/      Spring Boot 서버
+deploy/      운영 서버 구성 (compose · Caddyfile · bootstrap · 백업)
 docs/        기획 · 설계 문서
 experiment/  LLM 분류 실험 (요약, 설정, 집계 결과)
 ```
@@ -143,6 +145,25 @@ cd server
 ```
 
 배포 때 DB 접속 정보는 `SPRING_DATASOURCE_URL` · `SPRING_DATASOURCE_USERNAME` · `SPRING_DATASOURCE_PASSWORD`로 덮어씁니다.
+
+## 🚀 Deploy
+
+```
+[GitHub Actions]  main push
+  ./gradlew test → arm64 이미지 빌드 → GHCR push → SSH로 EC2에서 pull · 재시작 → https 헬스 체크
+
+[EC2 t4g.micro, Docker Compose]
+  Caddy (443, Let's Encrypt 자동) ──▶ server (prod 프로필) ──▶ postgres 17.6 (볼륨, 포트 비공개)
+```
+
+- **비밀값은 EC2에만 있습니다.** Gemini 키·DB 비밀번호·Firebase 키는 `/opt/remine/.env`·`secrets/`에만 두고, 레포·이미지·Actions 로그에는 없습니다. GitHub Secrets에는 SSH 접속 정보만 있습니다.
+- **운영 프로필(prod)** 은 actuator `health`만 공개하고(상세 없음) `/api/dev/*`는 404입니다. Caddy도 `/api/*`와 `/actuator/health`만 서버로 넘깁니다.
+- **1GB 인스턴스에 맞췄습니다.** JVM 힙은 컨테이너 한도(600MB)의 60%, Serial GC, 스왑 2GB. 이미지 빌드는 러너(x86)에서 Gradle을 네이티브로 돌리고 실행 단계만 arm64라 QEMU 에뮬레이션이 없습니다.
+- **비용:** EC2 약 $7.6 + 퍼블릭 IPv4 약 $3.7 + EBS 20GB 약 $1.8 = 월 약 $13 (6개월 약 $79).
+- **백업:** 매일 04:00 `pg_dump`(7일 보관, `deploy/backup.sh`).
+- **이사:** 상태는 `compose.yaml` + `.env`·`secrets/` + DB 덤프뿐이라 Docker가 되는 다른 VM(Lightsail, Oracle ARM)으로 그대로 옮길 수 있습니다.
+
+첫 준비는 `deploy/bootstrap.sh`(Docker·스왑·fail2ban·SSH 비밀번호 로그인 끄기·백업 cron)입니다.
 
 ## 📄 Docs
 
