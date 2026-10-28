@@ -1,0 +1,6 @@
+# 이미지 빌드에 필요한 것: gradlew·gradle/·build.gradle·settings.gradle·gradle.properties·src/
+build/
+.gradle/
+bin/
+HELP.md
+*.env
