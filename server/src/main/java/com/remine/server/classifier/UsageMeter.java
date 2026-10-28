@@ -18,6 +18,7 @@ public class UsageMeter {
     private long inputTokens;
     private long outputTokens;
     private long serverElapsedMs;
+    private long maxRequestMs;
     private long firstStartNanos;
     private long lastEndNanos;
 
@@ -35,24 +36,30 @@ public class UsageMeter {
             firstStartNanos = startNanos;
         }
         requests++;
-        serverElapsedMs += (endNanos - startNanos) / 1_000_000;
+        long elapsedMs = (endNanos - startNanos) / 1_000_000;
+        serverElapsedMs += elapsedMs;
+        maxRequestMs = Math.max(maxRequestMs, elapsedMs);
         lastEndNanos = endNanos;
     }
 
     public synchronized Snapshot snapshot() {
         double cost = GeminiPricing.costUsd(inputTokens, outputTokens);
         return new Snapshot(requests, llmCalls, llmItems, inputTokens, outputTokens, cost,
-                llmItems == 0 ? null : cost / llmItems, serverElapsedMs,
+                llmItems == 0 ? null : cost / llmItems, serverElapsedMs, maxRequestMs,
                 requests == 0 ? 0 : (lastEndNanos - firstStartNanos) / 1_000_000);
     }
 
     public synchronized void reset() {
-        requests = llmCalls = llmItems = inputTokens = outputTokens = serverElapsedMs = 0;
+        requests = llmCalls = llmItems = inputTokens = outputTokens = serverElapsedMs = maxRequestMs = 0;
         firstStartNanos = lastEndNanos = 0;
     }
 
-    /** costPerItemUsd는 LLM으로 분류한 캡처가 없으면 null. 비용은 {@link GeminiPricing} 단가로 계산한다. */
+    /**
+     * costPerItemUsd는 LLM으로 분류한 캡처가 없으면 null. 비용은 {@link GeminiPricing} 단가로 계산한다.
+     * maxRequestMs는 가장 오래 걸린 analyze 요청 하나의 처리 시간(앱의 요청 타임아웃 2분과 비교하는 용도).
+     */
     public record Snapshot(long requests, long llmCalls, long llmItems, long inputTokens, long outputTokens,
-                           double costUsd, Double costPerItemUsd, long serverElapsedMs, long wallElapsedMs) {
+                           double costUsd, Double costPerItemUsd, long serverElapsedMs, long maxRequestMs,
+                           long wallElapsedMs) {
     }
 }

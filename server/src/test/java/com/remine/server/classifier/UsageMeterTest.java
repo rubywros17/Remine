@@ -27,6 +27,7 @@ class UsageMeterTest {
         assertThat(s.costPerItemUsd()).isCloseTo(0.56, within(1e-9));
         assertThat(s.requests()).isEqualTo(2);
         assertThat(s.serverElapsedMs()).isEqualTo(800);   // 300 + 500
+        assertThat(s.maxRequestMs()).isEqualTo(500);
         assertThat(s.wallElapsedMs()).isEqualTo(1_400);   // 첫 시작 100 ~ 마지막 끝 1500
     }
 
@@ -43,5 +44,6 @@ class UsageMeterTest {
         assertThat(s.costUsd()).isZero();
         assertThat(s.costPerItemUsd()).isNull();
         assertThat(s.wallElapsedMs()).isZero();
+        assertThat(s.maxRequestMs()).isZero();
     }
 }
