@@ -84,9 +84,15 @@ cd server
 
 ## 작업 방식
 - 필요한 파일·섹션만 읽고, spec.md 전체는 범위 확인이 필요할 때만 읽는다.
-- 작업 완료 보고는 변경 파일 목록 + 핵심 결정 이유 3줄 이내.
+- 보고·계획·안내는 모두 한국어. 보고는 10줄 이내.
+- 작업 완료 보고는 변경 파일 목록 + 핵심 결정 이유.
 - 큰 기능은 구현 전에 만들 파일·구조를 먼저 보여주고 확인받는다.
 - 완료 조건: ./gradlew test 통과.
 - Git: 기능 단위 브랜치(feat/...), 작업 단위로 커밋 나누기.
+- PR 본문·커밋에 Claude 서명 줄을 넣지 않는다.
+- 실제 Gemini를 부르는 실행은 장수·예상 비용을 먼저 묻는다.
+- git push, rm, git reset, 브랜치 삭제처럼 되돌리기 어려운 명령은 실행 전에 확인받는다.
+- 키·비밀번호·토큰 값은 출력하지 않는다. 키 파일 위치: E:\dev\secrets\remine\ (레포 밖).
+- 커밋 금지: experiment의 images·ocr·labels.csv·runs*·compare.local*, errors.local*.md, 다른 앱 design-refs.
 
-테스트 규칙: 작업 중에는 바뀐 파일과 관련된 테스트만(flutter test test/파일.dart, ./gradlew test --tests ...) + flutter analyze. 전체 테스트는 PR 올리기 전에 한 번만, --timeout 2m.
+테스트 규칙: 작업 중에는 바뀐 파일과 관련된 테스트만(flutter test test/파일.dart, ./gradlew test --tests ...) + flutter analyze. 전체 테스트는 PR 전 1회, 약 3분이라 명령 대기 시간 5분.
