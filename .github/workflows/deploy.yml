@@ -1,0 +1,88 @@
+# 서버 CI/CD: 테스트 → arm64 이미지 빌드·GHCR push → EC2에서 pull·재시작 → 헬스 체크.
+# PR은 테스트만. 앱 비밀값(Gemini·DB·Firebase)은 여기 없고 EC2의 /opt/remine/.env·secrets/에만 있다.
+# 필요한 설정 — Secrets: EC2_HOST, EC2_USER, EC2_SSH_KEY(배포 전용 키), EC2_KNOWN_HOSTS / Variables: REMINE_DOMAIN
+name: server
+
+on:
+  push:
+    branches: [main]
+    paths: [server/**, deploy/**, .github/workflows/deploy.yml]
+  pull_request:
+    paths: [server/**, deploy/**, .github/workflows/deploy.yml]
+  workflow_dispatch:
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/remine-server
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      # Testcontainers가 러너의 Docker로 PostgreSQL 17.6을 띄운다.
+      - run: ./gradlew test
+        working-directory: server
+
+  build:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # 실행 단계에 RUN이 없어 QEMU 없이 arm64 이미지를 만든다(Dockerfile 주석).
+      - uses: docker/build-push-action@v6
+        with:
+          context: server
+          platforms: linux/arm64
+          push: true
+          tags: ${{ env.IMAGE }}:${{ github.sha }},${{ env.IMAGE }}:latest
+          labels: org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    concurrency: deploy   # 배포는 한 번에 하나씩
+    steps:
+      - uses: actions/checkout@v4
+      - name: SSH 준비
+        # 비밀값은 스크립트에 직접 넣지 않고 환경변수로 넘긴다(Actions 로그에는 *** 로 가려진다).
+        env:
+          SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.EC2_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: 구성 파일 복사
+        run: scp deploy/compose.yaml deploy/Caddyfile deploy/backup.sh "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}:/opt/remine/"
+      - name: 새 이미지로 재시작
+        run: |
+          ssh "${{ secrets.EC2_USER }}@${{ secrets.EC2_HOST }}" bash -s <<'REMOTE'
+          set -euo pipefail
+          cd /opt/remine
+          chmod +x backup.sh
+          # 수동으로 compose를 실행해도 같은 버전이 뜨도록 .env의 태그를 바꿔 둔다.
+          sed -i "s/^IMAGE_TAG=.*/IMAGE_TAG=${{ github.sha }}/" .env
+          docker compose pull server
+          docker compose up -d
+          docker image prune -f > /dev/null
+          REMOTE
+      - name: 헬스 체크
+        run: curl -fsS --retry 30 --retry-delay 5 --retry-all-errors "https://${{ vars.REMINE_DOMAIN }}/actuator/health"
