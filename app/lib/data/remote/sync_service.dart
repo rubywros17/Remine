@@ -55,10 +55,11 @@ class SyncService {
   /// 디버그용 장수 제한(`--dart-define=SYNC_LIMIT=15`). 0이면 제한 없음. 실기기 첫 확인을 소량으로 하려는 용도다.
   final int photoLimit;
 
-  /// 앱이 한 번에 보내는 장수. 서버 상한(`maxBatchSize`, 20)보다 작게 잡아 묶음마다 숫자가 자주 오르게 한다.
-  /// 서버 상한이 이보다 작으면 서버 상한을 따른다.
+  /// 앱이 한 번에 보내는 장수. 기본은 서버 상한(`maxBatchSize`, 20)과 같다: 서버가 요청 안의 캡처를
+  /// 여러 장씩 한 LLM 호출로 묶으므로(텍스트 10·이미지 5장) 많이 담을수록 호출이 준다(20장 ≈ 6호출, 2분 타임아웃 안쪽).
+  /// 서버 상한이 이보다 작으면 서버 상한을 따른다. 디버그에서는 `--dart-define=SYNC_BATCH_SIZE`로 바꿀 수 있다.
   final int batchSize;
-  static const defaultBatchSize = 5;
+  static const defaultBatchSize = 20;
 
   /// 배치 하나가 끝날 때마다(홈이 새로 불러오게).
   void Function()? onBatchDone;

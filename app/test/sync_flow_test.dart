@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:remine/data/device/gallery_reader.dart';
 import 'package:remine/data/remote/remote_state_store.dart';
+import 'package:remine/data/remote/sync_service.dart';
 import 'package:remine/data/remote/sync_status.dart';
 import 'package:remine/models/category.dart';
 
@@ -32,8 +33,12 @@ List<int> idsIn(SentRequest r) =>
         .toList();
 
 void main() {
-  test('앱은 5장씩 나눠 보내고(서버 상한 20보다 작게) 배치마다 숫자를 올리고 홈을 갱신한다', () async {
-    final rig = await rigOf(12);
+  test('묶음을 5장으로 줄이면(SYNC_BATCH_SIZE=5) 5장씩 보내고 배치마다 숫자를 올리고 홈을 갱신한다', () async {
+    final rig = await SyncRig.create(
+      photos: fakePhotos(12),
+      texts: {for (var i = 0; i < 12; i++) 'p$i': _long},
+      batchSize: 5,
+    );
     await rig.sync.run();
 
     final calls = rig.client.analyzeCalls.toList();
@@ -45,11 +50,11 @@ void main() {
     expect(rig.status.issue, SyncIssue.none);
   });
 
-  test('45장도 같은 방식이고, 앱 묶음을 서버 상한(20)까지 키우면 20·20·5장이다', () async {
+  test('기본 묶음은 서버 상한(20)과 같아 45장은 20·20·5장이다', () async {
+    expect(SyncService.defaultBatchSize, 20);
     final rig = await SyncRig.create(
       photos: fakePhotos(45),
       texts: {for (var i = 0; i < 45; i++) 'p$i': _long},
-      batchSize: 20,
     );
     await rig.sync.run();
 

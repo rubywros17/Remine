@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -113,5 +114,58 @@ class LlmPromptTest {
         String user = LlmPrompt.user("가".repeat(10_000));
 
         assertThat(user.length()).isLessThan(3100);
+    }
+
+    @Test
+    void 배치_시스템_프롬프트는_v1_정의를_그대로_쓰고_출력_형식만_다르다() {
+        String v1Body = LlmPrompt.SYSTEM.substring(0, LlmPrompt.SYSTEM.indexOf("응답은 JSON"));
+
+        assertThat(LlmPrompt.batchSystem(PromptVersion.V1)).startsWith(v1Body);
+        assertThat(LlmPrompt.batchSystem(PromptVersion.V1)).contains("\"results\"").contains("\"id\"");
+    }
+
+    @Test
+    void 배치_조각은_순번_머리말을_달고_이미지는_자기_텍스트_바로_뒤에_온다() {
+        byte[] jpeg = {1, 2};
+
+        List<LlmPart> parts = LlmPrompt.batchParts(List.of(
+                new LlmPrompt.BatchItem("첫째", null), new LlmPrompt.BatchItem("둘째", jpeg)));
+
+        assertThat(parts).hasSize(3);
+        assertThat(parts.get(0).text()).startsWith("캡처 1\n").contains("첫째");
+        assertThat(parts.get(1).text()).startsWith("캡처 2\n").contains("둘째").contains("이미지");
+        assertThat(parts.get(2).jpegImage()).isSameAs(jpeg);
+    }
+
+    @Test
+    void 배치_응답을_순번별로_매칭하고_누락_중복_오류는_null() {
+        String raw = """
+                ```json
+                {"results": [
+                  {"id": "2", "category": "PLACE", "tags": ["카페"], "summary": "카페"},
+                  {"id": "1", "category": "shopping", "tags": [], "summary": "옷"},
+                  {"id": "3", "category": "MOVIE", "tags": [], "summary": "?"},
+                  {"id": "4", "category": "INFO", "tags": [], "summary": "a"},
+                  {"id": "4", "category": "INFO", "tags": [], "summary": "b"},
+                  {"id": "9", "category": "INFO", "tags": [], "summary": "범위 밖"}
+                ]}
+                ```""";
+
+        LlmPrompt.BatchParsed parsed = LlmPrompt.parseBatch(mapper, raw, 5);
+
+        assertThat(parsed.ok()).isTrue();
+        assertThat(parsed.results().get(0).category()).isEqualTo(Category.SHOPPING);
+        assertThat(parsed.results().get(1).category()).isEqualTo(Category.PLACE);
+        assertThat(parsed.results().get(2)).isNull(); // 카테고리 오류
+        assertThat(parsed.results().get(3)).isNull(); // 중복
+        assertThat(parsed.results().get(4)).isNull(); // 누락
+    }
+
+    @Test
+    void 배치_응답이_JSON이_아니거나_results가_없으면_ok_false() {
+        assertThat(LlmPrompt.parseBatch(mapper, "죄송합니다", 2).ok()).isFalse();
+        LlmPrompt.BatchParsed noArray = LlmPrompt.parseBatch(mapper, "{\"category\":\"ETC\"}", 2);
+        assertThat(noArray.ok()).isFalse();
+        assertThat(noArray.results()).containsExactly(null, null);
     }
 }

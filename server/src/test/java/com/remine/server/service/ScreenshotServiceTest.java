@@ -5,6 +5,7 @@ import com.remine.server.classifier.ClassificationException.Reason;
 import com.remine.server.classifier.ClassificationResult;
 import com.remine.server.classifier.Classifier;
 import com.remine.server.classifier.RemineProperties;
+import com.remine.server.classifier.UsageMeter;
 import com.remine.server.domain.device.DeviceRepository;
 import com.remine.server.domain.screenshot.Category;
 import com.remine.server.domain.screenshot.ScreenshotRepository;
@@ -35,6 +36,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -56,7 +58,7 @@ class ScreenshotServiceTest {
     private static RemineProperties properties(int maxBatchSize) {
         return new RemineProperties(RemineProperties.ClassifierType.FAKE,
                 new RemineProperties.Llm(150, new RemineProperties.Gemini("m", 1.0, "http://localhost:1",
-                        Duration.ofSeconds(1), Duration.ofSeconds(1), 0)),
+                        Duration.ofSeconds(1), Duration.ofSeconds(1), 0), new RemineProperties.Batch(10, 5)),
                 new RemineProperties.Analyze(maxBatchSize),
                 new RemineProperties.Image(1048576, 1024, 25_000_000L, 12582912, 5242880),
                 new RemineProperties.Tags(List.of("장바구니", "쇼핑")),
@@ -66,12 +68,15 @@ class ScreenshotServiceTest {
     private static ScreenshotService service(RemineProperties properties, DeviceRepository devices,
                                              ScreenshotRepository screenshots, Classifier classifier,
                                              ScreenshotPersister persister) {
-        return new ScreenshotService(devices, screenshots, classifier, persister, properties, new TagCleaner(properties));
+        return new ScreenshotService(devices, screenshots, classifier, persister, properties, new TagCleaner(properties),
+                new UsageMeter());
     }
 
     @BeforeEach
     void setUp() {
         service = service(properties(20), deviceRepository, screenshotRepository, classifier, persister);
+        // 서비스는 classifyAll로 넘긴다. 기본 구현(한 장씩 classify)을 그대로 타게 해서 classify 스텁으로 검증한다.
+        lenient().when(classifier.classifyAll(any())).thenCallRealMethod();
     }
 
     private void givenDevice() {

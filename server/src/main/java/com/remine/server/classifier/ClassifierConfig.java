@@ -24,17 +24,17 @@ public class ClassifierConfig {
     private static final Logger log = LoggerFactory.getLogger(ClassifierConfig.class);
 
     @Bean
-    public Classifier classifier(RemineProperties properties, Environment environment) {
+    public Classifier classifier(RemineProperties properties, Environment environment, UsageMeter meter) {
         return switch (properties.classifier()) {
             case FAKE -> {
                 log.info("분류기: fake (키워드 기반 임시 구현)");
                 yield new FakeClassifier();
             }
-            case GEMINI -> geminiClassifier(properties, environment);
+            case GEMINI -> geminiClassifier(properties, environment, meter);
         };
     }
 
-    private Classifier geminiClassifier(RemineProperties properties, Environment environment) {
+    private Classifier geminiClassifier(RemineProperties properties, Environment environment, UsageMeter meter) {
         String key = environment.getProperty(GeminiProvider.API_KEY_PROPERTY);
         if (key == null || key.isBlank()) {
             // 키 값·길이는 어디에도 출력하지 않는다. 기동 실패 화면은 MissingApiKeyFailureAnalyzer가 정리한다.
@@ -44,10 +44,13 @@ public class ClassifierConfig {
         JsonMapper mapper = JsonMapper.builder().build();
         GeminiProvider provider = new GeminiProvider(key.trim(), gemini.temperature(), mapper,
                 gemini.baseUrl(), gemini.connectTimeout(), gemini.readTimeout());
-        // 프롬프트는 v1 고정 (v2는 채택하지 않은 실험 옵션)
-        LlmClassifier llm = new LlmClassifier(gemini.model(), gemini.minIntervalMs(), provider, mapper, PromptVersion.V1);
-        log.info("분류기: gemini model={} imageThresholdChars={} minIntervalMs={}", gemini.model(),
-                properties.llm().imageThresholdChars(), gemini.minIntervalMs());
-        return new HybridLlmClassifier(llm, properties.llm().imageThresholdChars());
+        // 운영 프롬프트는 v3(v1 정의 + 명사구 요약). v1은 실험 비교 기준, v2는 채택하지 않은 실험 옵션.
+        LlmClassifier llm = new LlmClassifier(gemini.model(), gemini.minIntervalMs(), provider, mapper, PromptVersion.V3);
+        RemineProperties.Batch batch = properties.llm().batch();
+        log.info("분류기: gemini model={} imageThresholdChars={} minIntervalMs={} batch(text={}, image={})",
+                gemini.model(), properties.llm().imageThresholdChars(), gemini.minIntervalMs(),
+                batch.textSize(), batch.imageSize());
+        return new HybridLlmClassifier(llm, properties.llm().imageThresholdChars(),
+                batch.textSize(), batch.imageSize(), meter);
     }
 }

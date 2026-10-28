@@ -13,11 +13,13 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** 테스트 알림 엔드포인트는 dev 프로필에서만 열린다. */
+/** 개발용 엔드포인트(테스트 알림, 측정값)는 dev 프로필에서만 열린다. */
 class DevPushEndpointTest {
 
     @Nested
@@ -31,6 +33,7 @@ class DevPushEndpointTest {
         void 경로가_없어_404() throws Exception {
             Long id = deviceRepository.save(new Device("token")).getId();
             mvc.perform(post("/api/dev/push-test").header("X-Device-Id", id)).andExpect(status().isNotFound());
+            mvc.perform(get("/api/dev/metrics")).andExpect(status().isNotFound());
         }
     }
 
@@ -73,6 +76,15 @@ class DevPushEndpointTest {
             Long id = deviceRepository.save(new Device(null)).getId();
             mvc.perform(post("/api/dev/push-test").header("X-Device-Id", id)).andExpect(status().isConflict());
             mvc.perform(post("/api/dev/push-test").header("X-Device-Id", 999_999)).andExpect(status().isNotFound());
+        }
+
+        @Test
+        void 측정값을_보고_초기화한다() throws Exception {
+            mvc.perform(delete("/api/dev/metrics")).andExpect(status().isNoContent());
+            mvc.perform(get("/api/dev/metrics"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.requests").value(0))
+                    .andExpect(jsonPath("$.costUsd").value(0.0));
         }
     }
 }

@@ -1,14 +1,17 @@
 package com.remine.server.service;
 
 import com.remine.server.domain.device.DeviceRepository;
+import com.remine.server.domain.screenshot.AccuracyRow;
 import com.remine.server.domain.screenshot.Category;
 import com.remine.server.domain.screenshot.CategoryCountRow;
+import com.remine.server.domain.screenshot.CategorySource;
 import com.remine.server.domain.screenshot.CategoryTagCountRow;
 import com.remine.server.domain.screenshot.Screenshot;
 import com.remine.server.domain.screenshot.ScreenshotRepository;
 import com.remine.server.domain.screenshot.ScreenshotTagRepository;
 import com.remine.server.domain.screenshot.ScreenshotTagRow;
 import com.remine.server.domain.tag.Tag;
+import com.remine.server.dto.CategoryAccuracyResponse;
 import com.remine.server.dto.CategorySummaryResponse;
 import com.remine.server.dto.ScreenshotPageResponse;
 import com.remine.server.dto.ScreenshotResponse;
@@ -95,6 +98,51 @@ public class ScreenshotQueryService {
                     recent.getOrDefault(category, List.of())));
         }
         return new CategorySummaryResponse(items);
+    }
+
+    /**
+     * 실사용 정확도(F-05). corrected = USER이면서 값이 다름, confirmed = USER이면서 같음(앱의 "응, X 맞아"),
+     * unreviewed = AUTO. 집계 쿼리 1번이고 나머지는 메모리에서 센다(행 수 ≤ 7×7×2).
+     */
+    public CategoryAccuracyResponse accuracy(Long deviceId) {
+        requireDevice(deviceId);
+
+        long analyzed = 0, corrected = 0, confirmed = 0;
+        Map<Category, long[]> byAuto = new EnumMap<>(Category.class); // [analyzed, corrected, confirmed]
+        List<CategoryAccuracyResponse.Confusion> confusions = new ArrayList<>();
+        for (AccuracyRow row : screenshotRepository.countForAccuracy(deviceId)) {
+            long[] counts = byAuto.computeIfAbsent(row.autoCategory(), c -> new long[3]);
+            analyzed += row.count();
+            counts[0] += row.count();
+            if (row.source() != CategorySource.USER) {
+                continue;
+            }
+            if (row.category() == row.autoCategory()) {
+                confirmed += row.count();
+                counts[2] += row.count();
+            } else {
+                corrected += row.count();
+                counts[1] += row.count();
+                confusions.add(new CategoryAccuracyResponse.Confusion(row.autoCategory(), row.category(), row.count()));
+            }
+        }
+        confusions.sort(Comparator.comparingLong(CategoryAccuracyResponse.Confusion::count).reversed()
+                .thenComparing(CategoryAccuracyResponse.Confusion::from)
+                .thenComparing(CategoryAccuracyResponse.Confusion::to));
+
+        List<CategoryAccuracyResponse.ByCategory> categories = new ArrayList<>();
+        for (Category category : Category.values()) {
+            long[] counts = byAuto.getOrDefault(category, new long[3]);
+            categories.add(new CategoryAccuracyResponse.ByCategory(category, counts[0], counts[1], counts[2]));
+        }
+        Double correctionRate = ratio(corrected, analyzed);
+        return new CategoryAccuracyResponse(analyzed, corrected, confirmed, analyzed - corrected - confirmed,
+                correctionRate, correctionRate == null ? null : 1 - correctionRate,
+                ratio(confirmed, confirmed + corrected), categories, confusions);
+    }
+
+    private static Double ratio(long numerator, long denominator) {
+        return denominator == 0 ? null : (double) numerator / denominator;
     }
 
     private void requireDevice(Long deviceId) {

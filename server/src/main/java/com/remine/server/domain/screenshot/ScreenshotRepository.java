@@ -57,6 +57,16 @@ public interface ScreenshotRepository extends JpaRepository<Screenshot, Long> {
             """)
     List<CategoryCountRow> countByCategory(@Param("deviceId") Long deviceId);
 
+    /** 정확도 집계(F-05): 분석된 캡처를 (auto_category, category, category_source)로 묶어 쿼리 1번. */
+    @Query("""
+            select new com.remine.server.domain.screenshot.AccuracyRow(
+                       s.autoCategory, s.category, s.categorySource, count(s))
+            from Screenshot s
+            where s.device.id = :deviceId and s.analyzedAt is not null
+            group by s.autoCategory, s.category, s.categorySource
+            """)
+    List<AccuracyRow> countForAccuracy(@Param("deviceId") Long deviceId);
+
     /**
      * 카테고리별 최신 limit개의 localAssetId. 행: [category(String), localAssetId(String)]
      * window 함수(row_number)로 카테고리 수와 무관하게 쿼리 1번. (PostgreSQL / MySQL 8 공통 문법)

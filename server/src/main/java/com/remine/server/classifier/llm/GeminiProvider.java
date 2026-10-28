@@ -55,6 +55,12 @@ public class GeminiProvider extends JsonHttpProvider {
                 requestBody(systemPrompt, userText, temperature, jpegImage)));
     }
 
+    @Override
+    public LlmReply call(String model, String systemPrompt, List<LlmPart> parts) {
+        return parse(post(endpointTemplate.formatted(model), Map.of("x-goog-api-key", apiKey),
+                requestBody(systemPrompt, parts, temperature)));
+    }
+
     /** generationConfig.temperature는 후보별 설정값(기본 0)이다. 분류 결과의 재현성을 위해 항상 보낸다. */
     static Map<String, Object> requestBody(String systemPrompt, String userText, double temperature) {
         return requestBody(systemPrompt, userText, temperature, null);
@@ -66,12 +72,23 @@ public class GeminiProvider extends JsonHttpProvider {
      */
     static Map<String, Object> requestBody(String systemPrompt, String userText, double temperature,
                                            byte[] jpegImage) {
-        List<Object> parts = new ArrayList<>();
-        parts.add(Map.of("text", userText));
+        List<LlmPart> parts = new ArrayList<>();
+        parts.add(LlmPart.text(userText));
         if (jpegImage != null) {
-            parts.add(Map.of("inlineData", Map.of(
-                    "mimeType", "image/jpeg",
-                    "data", Base64.getEncoder().encodeToString(jpegImage))));
+            parts.add(LlmPart.image(jpegImage));
+        }
+        return requestBody(systemPrompt, parts, temperature);
+    }
+
+    /** 조각을 순서대로 같은 user 메시지의 parts에 넣는다(배치는 캡처마다 텍스트 → 그 이미지 순). */
+    static Map<String, Object> requestBody(String systemPrompt, List<LlmPart> userParts, double temperature) {
+        List<Object> parts = new ArrayList<>();
+        for (LlmPart part : userParts) {
+            parts.add(part.text() != null
+                    ? Map.of("text", part.text())
+                    : Map.of("inlineData", Map.of(
+                            "mimeType", "image/jpeg",
+                            "data", Base64.getEncoder().encodeToString(part.jpegImage()))));
         }
         return Map.of(
                 "systemInstruction", Map.of("parts", List.of(Map.of("text", systemPrompt))),

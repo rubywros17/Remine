@@ -7,6 +7,7 @@ import ch.qos.logback.classic.spi.ThrowableProxyUtil;
 import ch.qos.logback.core.read.ListAppender;
 import com.remine.server.classifier.ClassificationException;
 import com.remine.server.classifier.RemineProperties;
+import com.remine.server.classifier.UsageMeter;
 import com.remine.server.classifier.llm.HybridLlmClassifier;
 import com.remine.server.classifier.llm.LlmClassifier;
 import com.remine.server.classifier.llm.LlmProvider;
@@ -117,14 +118,14 @@ class AnalyzeLogRedactionTest {
         when(screenshotRepository.findAnalyzedLocalAssetIds(any(), any())).thenReturn(Set.of());
         RemineProperties properties = new RemineProperties(RemineProperties.ClassifierType.GEMINI,
                 new RemineProperties.Llm(150, new RemineProperties.Gemini("m", 1.0, "http://localhost:1",
-                        Duration.ofSeconds(1), Duration.ofSeconds(1), 0)),
+                        Duration.ofSeconds(1), Duration.ofSeconds(1), 0), new RemineProperties.Batch(10, 5)),
                 new RemineProperties.Analyze(20),
                 new RemineProperties.Image(1048576, 1024, 25_000_000L, 12582912, 5242880),
                 new RemineProperties.Tags(List.of()),
                 new RemineProperties.Interest(14, 3, 28));
         HybridLlmClassifier classifier = hybridWithFakeProvider();
         ScreenshotService service = new ScreenshotService(deviceRepository, screenshotRepository, classifier, persister,
-                properties, new TagCleaner(properties));
+                properties, new TagCleaner(properties), new UsageMeter());
         LocalDateTime now = LocalDateTime.of(2026, 10, 19, 12, 0);
 
         AnalyzeResponse response = service.analyze(1L, new AnalyzeRequest(List.of(

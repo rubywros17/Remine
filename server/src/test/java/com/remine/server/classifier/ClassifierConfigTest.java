@@ -17,7 +17,8 @@ class ClassifierConfigTest {
                 context.getEnvironment().getPropertySources().remove("systemEnvironment");
                 context.getEnvironment().getPropertySources().remove("systemProperties");
             })
-            .withUserConfiguration(ClassifierConfig.class);
+            .withUserConfiguration(ClassifierConfig.class)
+            .withBean(UsageMeter.class);
 
     @Test
     void 설정이_없으면_fake가_기본이다() {

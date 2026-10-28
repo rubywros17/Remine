@@ -5,6 +5,7 @@ import com.remine.server.classifier.ClassificationResult;
 import com.remine.server.classifier.Classifier;
 import com.remine.server.classifier.ImageDecision;
 import com.remine.server.classifier.RemineProperties;
+import com.remine.server.classifier.UsageMeter;
 import com.remine.server.domain.device.DeviceRepository;
 import com.remine.server.domain.screenshot.Category;
 import com.remine.server.domain.screenshot.ScreenshotRepository;
@@ -46,6 +47,7 @@ public class ScreenshotService {
     private final ScreenshotPersister persister;
     private final RemineProperties properties;
     private final TagCleaner tagCleaner;
+    private final UsageMeter meter;
 
     /** 이미지 없는 요청(JSON). */
     public AnalyzeResponse analyze(Long deviceId, AnalyzeRequest request) {
@@ -77,7 +79,10 @@ public class ScreenshotService {
         List<Outcome> outcomes = new ArrayList<>();
         ImageStats stats = new ImageStats(images.size());
 
-        // 1) 분류: 트랜잭션 밖에서 캡처마다 호출한다. 한 건이 실패해도 나머지는 계속 진행한다.
+        // 1) 이미지 준비: 쓸 이미지만 검증·축소한다. 이미지 문제는 그 캡처만 미분석으로 남긴다(앱이 reason에 따라 다시 보낸다).
+        //    글자도 이미지도 없는 캡처는 LLM 없이 '기타'다(spec 11장).
+        List<AnalyzeRequest.Item> toClassify = new ArrayList<>();
+        List<Classifier.Input> inputs = new ArrayList<>();
         for (AnalyzeRequest.Item item : request.screenshots()) {
             byte[] image = images.get(item.localAssetId());
             if (!seen.add(item.localAssetId())) {
@@ -87,30 +92,49 @@ public class ScreenshotService {
                 }
                 continue;
             }
+            byte[] usable;
             try {
-                byte[] usable = prepareImage(item, image, stats);
-                ClassificationResult result = classify(item.ocrText(), usable);
-                outcomes.add(new Outcome(item, result));
-                analyzed.add(new AnalyzeResponse.Result(
-                        item.localAssetId(), result.category(), result.tags(), result.summary()));
-            } catch (ClassificationException e) {
-                outcomes.add(new Outcome(item, null));
-                failed.add(new AnalyzeResponse.Failure(item.localAssetId(), toReason(e)));
+                usable = prepareImage(item, image, stats);
             } catch (ImageRejectedException e) {
-                // 이미지 문제는 그 캡처만 미분석으로 남긴다 (앱이 reason에 따라 다시 보낸다)
                 outcomes.add(new Outcome(item, null));
                 failed.add(new AnalyzeResponse.Failure(item.localAssetId(), e.reason));
+                continue;
+            }
+            boolean blank = item.ocrText() == null || item.ocrText().isBlank();
+            if (blank && usable == null) {
+                succeed(item, new ClassificationResult(Category.ETC, List.of(), ""), outcomes, analyzed);
+                continue;
+            }
+            toClassify.add(item);
+            inputs.add(new Classifier.Input(blank ? "" : item.ocrText(), usable));
+        }
+
+        // 2) 분류: 트랜잭션 밖에서 한 번에 넘긴다(LLM 분류기는 여러 장을 한 요청으로 묶는다). 한 건이 실패해도 나머지는 계속 진행한다.
+        //    태그는 여기서 정리해 응답과 저장이 같은 태그를 쓴다.
+        List<Classifier.Classified> classified = inputs.isEmpty() ? List.of() : classifier.classifyAll(inputs);
+        for (int i = 0; i < toClassify.size(); i++) {
+            AnalyzeRequest.Item item = toClassify.get(i);
+            Classifier.Classified c = classified.get(i);
+            if (c.error() != null) {
+                outcomes.add(new Outcome(item, null));
+                failed.add(new AnalyzeResponse.Failure(item.localAssetId(), toReason(c.error())));
+            } else {
+                ClassificationResult raw = c.result();
+                succeed(item, new ClassificationResult(raw.category(), tagCleaner.clean(raw.tags()), raw.summary()),
+                        outcomes, analyzed);
             }
         }
 
-        // 2) 저장: 짧은 트랜잭션 하나 (저장할 것이 없으면 호출하지 않는다)
+        // 3) 저장: 짧은 트랜잭션 하나 (저장할 것이 없으면 호출하지 않는다)
         if (!outcomes.isEmpty()) {
             persister.saveAll(deviceId, outcomes);
         }
 
+        long endedNanos = System.nanoTime();
+        meter.recordRequest(startedNanos, endedNanos);
         log.info("analyze deviceId={} requested={} analyzed={} skipped={} failed={} elapsedMs={}",
                 deviceId, requested, analyzed.size(), skipped.size(), failed.size(),
-                (System.nanoTime() - startedNanos) / 1_000_000);
+                (endedNanos - startedNanos) / 1_000_000);
         if (stats.received > 0) {
             // 이미지 관련 로그는 건수·바이트 수·사유 코드만. 이미지 내용은 남기지 않는다.
             log.info("analyze images received={} used={} rejected={} ignored={} bytesIn={} bytesUsed={}",
@@ -149,16 +173,10 @@ public class ScreenshotService {
         }
     }
 
-    // 글자도 이미지도 없는 스크린샷은 LLM 호출 없이 '기타'로 처리한다. (spec 11장)
-    // 글자는 없지만 쓸 수 있는 이미지가 있으면 분류기로 보낸다.
-    // 태그는 여기서 정리해 응답과 저장이 같은 태그를 쓴다.
-    private ClassificationResult classify(String ocrText, byte[] image) {
-        boolean blank = ocrText == null || ocrText.isBlank();
-        if (blank && image == null) {
-            return new ClassificationResult(Category.ETC, List.of(), "");
-        }
-        ClassificationResult raw = classifier.classify(blank ? "" : ocrText, image);
-        return new ClassificationResult(raw.category(), tagCleaner.clean(raw.tags()), raw.summary());
+    private static void succeed(AnalyzeRequest.Item item, ClassificationResult result, List<Outcome> outcomes,
+                                List<AnalyzeResponse.Result> analyzed) {
+        outcomes.add(new Outcome(item, result));
+        analyzed.add(new AnalyzeResponse.Result(item.localAssetId(), result.category(), result.tags(), result.summary()));
     }
 
     /** 이미지 때문에 이 캡처만 실패 처리한다. 메시지·원인 없이 사유 코드만 담는다. */

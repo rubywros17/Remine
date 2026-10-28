@@ -31,6 +31,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 
 /**
@@ -97,6 +98,32 @@ class CategoryEditIntegrationTest {
         Screenshot reloaded = screenshotRepository.findById(s.getId()).orElseThrow();
         assertThat(reloaded.getCategory()).isEqualTo(Category.PLACE);
         assertThat(reloaded.getAutoCategory()).isEqualTo(Category.SHOPPING);
+    }
+
+    @Test
+    void 정확도_API는_이_기기의_수정과_확인만_센다() throws Exception {
+        Screenshot fixed = analyze(deviceId, "a1", "니트 가디건 구매 39,000원"); // SHOPPING
+        Screenshot kept = analyze(deviceId, "a2", "장바구니 할인");              // SHOPPING
+        analyze(deviceId, "a3", "맛집 영업시간");                               // PLACE, 미검토
+        patchCategory(deviceId, fixed.getId(), "{\"category\":\"INFO\"}");
+        patchCategory(deviceId, kept.getId(), "{\"category\":\"SHOPPING\"}");
+        Screenshot others = analyze(otherDeviceId, "x1", "구매");
+        patchCategory(otherDeviceId, others.getId(), "{\"category\":\"ETC\"}");
+
+        MockHttpServletResponse response = mockMvc.perform(
+                get("/api/categories/accuracy").header("X-Device-Id", deviceId)).andReturn().getResponse();
+
+        assertThat(response.getStatus()).isEqualTo(200);
+        JsonNode body = json(response);
+        assertThat(body.path("analyzed").asLong()).isEqualTo(3);
+        assertThat(body.path("corrected").asLong()).isEqualTo(1);
+        assertThat(body.path("confirmed").asLong()).isEqualTo(1);
+        assertThat(body.path("unreviewed").asLong()).isEqualTo(1);
+        assertThat(body.path("reviewedAccuracy").asDouble()).isEqualTo(0.5);
+        assertThat(body.path("confusions")).hasSize(1);
+        assertThat(body.path("confusions").get(0).path("to").asString()).isEqualTo("INFO");
+        assertThat(mockMvc.perform(get("/api/categories/accuracy").header("X-Device-Id", 987654321L))
+                .andReturn().getResponse().getStatus()).isEqualTo(404);
     }
 
     @Test

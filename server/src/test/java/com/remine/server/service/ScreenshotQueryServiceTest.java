@@ -1,13 +1,16 @@
 package com.remine.server.service;
 
 import com.remine.server.domain.device.DeviceRepository;
+import com.remine.server.domain.screenshot.AccuracyRow;
 import com.remine.server.domain.screenshot.Category;
 import com.remine.server.domain.screenshot.CategoryCountRow;
+import com.remine.server.domain.screenshot.CategorySource;
 import com.remine.server.domain.screenshot.CategoryTagCountRow;
 import com.remine.server.domain.screenshot.Screenshot;
 import com.remine.server.domain.screenshot.ScreenshotRepository;
 import com.remine.server.domain.screenshot.ScreenshotTagRepository;
 import com.remine.server.domain.screenshot.ScreenshotTagRow;
+import com.remine.server.dto.CategoryAccuracyResponse;
 import com.remine.server.dto.CategorySummaryResponse;
 import com.remine.server.dto.ScreenshotPageResponse;
 import com.remine.server.exception.DeviceNotFoundException;
@@ -148,6 +151,57 @@ class ScreenshotQueryServiceTest {
         when(deviceRepository.existsById(9L)).thenReturn(false);
 
         assertThatThrownBy(() -> service.summary(9L)).isInstanceOf(DeviceNotFoundException.class);
+    }
+
+    @Test
+    void 정확도는_수정_확인_미검토를_나눠_센다() {
+        when(deviceRepository.existsById(1L)).thenReturn(true);
+        when(screenshotRepository.countForAccuracy(1L)).thenReturn(List.of(
+                new AccuracyRow(Category.SHOPPING, Category.SHOPPING, CategorySource.AUTO, 5),
+                new AccuracyRow(Category.SHOPPING, Category.SHOPPING, CategorySource.USER, 2), // 확인
+                new AccuracyRow(Category.SHOPPING, Category.INFO, CategorySource.USER, 1),     // 수정
+                new AccuracyRow(Category.INFO, Category.PLACE, CategorySource.USER, 2)));      // 수정
+
+        CategoryAccuracyResponse r = service.accuracy(1L);
+
+        assertThat(r.analyzed()).isEqualTo(10);
+        assertThat(r.corrected()).isEqualTo(3);
+        assertThat(r.confirmed()).isEqualTo(2);
+        assertThat(r.unreviewed()).isEqualTo(5);
+        assertThat(r.correctionRate()).isEqualTo(0.3);
+        assertThat(r.accuracyUpperBound()).isEqualTo(0.7);
+        assertThat(r.reviewedAccuracy()).isEqualTo(0.4);
+        assertThat(r.byAutoCategory()).hasSize(7);
+        assertThat(r.byAutoCategory().get(Category.SHOPPING.ordinal()))
+                .isEqualTo(new CategoryAccuracyResponse.ByCategory(Category.SHOPPING, 8, 1, 2));
+        assertThat(r.byAutoCategory().get(Category.CHAT.ordinal()))
+                .isEqualTo(new CategoryAccuracyResponse.ByCategory(Category.CHAT, 0, 0, 0));
+        assertThat(r.confusions()).containsExactly( // 건수 내림차순
+                new CategoryAccuracyResponse.Confusion(Category.INFO, Category.PLACE, 2),
+                new CategoryAccuracyResponse.Confusion(Category.SHOPPING, Category.INFO, 1));
+    }
+
+    @Test
+    void 분모가_0이면_비율은_null() {
+        when(deviceRepository.existsById(1L)).thenReturn(true);
+        when(screenshotRepository.countForAccuracy(1L)).thenReturn(List.of(
+                new AccuracyRow(Category.ETC, Category.ETC, CategorySource.AUTO, 3)));
+
+        CategoryAccuracyResponse r = service.accuracy(1L);
+
+        assertThat(r.correctionRate()).isEqualTo(0.0);
+        assertThat(r.reviewedAccuracy()).isNull(); // 검토한 캡처가 없다
+        when(screenshotRepository.countForAccuracy(1L)).thenReturn(List.of());
+        CategoryAccuracyResponse empty = service.accuracy(1L);
+        assertThat(empty.correctionRate()).isNull();
+        assertThat(empty.accuracyUpperBound()).isNull();
+    }
+
+    @Test
+    void 정확도도_미등록_기기는_예외() {
+        when(deviceRepository.existsById(9L)).thenReturn(false);
+
+        assertThatThrownBy(() -> service.accuracy(9L)).isInstanceOf(DeviceNotFoundException.class);
     }
 
     private Screenshot screenshot(Long id, String assetId) {
