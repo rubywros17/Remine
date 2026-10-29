@@ -60,7 +60,8 @@ chmod 700 /opt/remine/secrets
 
 # 백업 cron: 매일 04:00 (중복 등록 방지)
 line='0 4 * * * /opt/remine/backup.sh >> /opt/remine/backups/backup.log 2>&1'
-( crontab -l 2>/dev/null | grep -vF '/opt/remine/backup.sh'; echo "$line" ) | crontab -
+# 첫 실행엔 crontab이 비어 grep이 1을 돌려주므로 || true (set -e·pipefail에 걸려 멈추지 않게)
+( crontab -l 2>/dev/null | grep -vF '/opt/remine/backup.sh' || true; echo "$line" ) | crontab -
 
 cat <<'NEXT'
 완료. 다음:
