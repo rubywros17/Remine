@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 스크린샷 분석. <b>트랜잭션을 걸지 않는다</b>: 분류(느린 외부 LLM 호출)를 모두 끝낸 뒤
@@ -48,6 +49,10 @@ public class ScreenshotService {
     private final RemineProperties properties;
     private final TagCleaner tagCleaner;
     private final UsageMeter meter;
+    private final Set<InProgressKey> inProgress = ConcurrentHashMap.newKeySet();
+
+    private record InProgressKey(Long deviceId, String localAssetId) {
+    }
 
     /** 이미지 없는 요청(JSON). */
     public AnalyzeResponse analyze(Long deviceId, AnalyzeRequest request) {
@@ -70,6 +75,30 @@ public class ScreenshotService {
         }
 
         List<String> assetIds = request.screenshots().stream().map(AnalyzeRequest.Item::localAssetId).toList();
+        // 같은 캡처를 다른 요청이 분석 중이면(앱이 타임아웃 뒤 다시 보낸 경우) 중복 분석하지 않고 IN_PROGRESS로 돌려준다.
+        // 선점은 원자적으로, 해제는 예외가 나도 반드시 한다(영구 IN_PROGRESS 방지).
+        // ponytail: 서버 1대 전제의 메모리 Set. 여러 대로 늘리면 DB 상태(ANALYZING 행)로 옮긴다.
+        List<InProgressKey> claimed = new ArrayList<>();
+        Set<String> busy = new HashSet<>();
+        try {
+            for (String assetId : new HashSet<>(assetIds)) {
+                InProgressKey key = new InProgressKey(deviceId, assetId);
+                if (inProgress.add(key)) {
+                    claimed.add(key);
+                } else {
+                    busy.add(assetId);
+                }
+            }
+            return analyzeClaimed(deviceId, request, images, assetIds, busy, startedNanos);
+        } finally {
+            claimed.forEach(inProgress::remove);
+        }
+    }
+
+    /** 선점한 뒤의 본문. 분석 완료 여부는 선점 뒤에 조회해야 방금 끝난 요청과 겹쳐 다시 분석하지 않는다. */
+    private AnalyzeResponse analyzeClaimed(Long deviceId, AnalyzeRequest request, Map<String, byte[]> images,
+                                           List<String> assetIds, Set<String> busy, long startedNanos) {
+        int requested = request.screenshots().size();
         // 분석이 끝난 것 + 같은 요청 안에서 중복으로 들어온 것은 건너뛴다. 분석에 실패해 남은 행은 다시 분석한다.
         Set<String> seen = new HashSet<>(screenshotRepository.findAnalyzedLocalAssetIds(deviceId, assetIds));
 
@@ -89,6 +118,13 @@ public class ScreenshotService {
                 skipped.add(item.localAssetId());
                 if (image != null) {
                     stats.ignore("ALREADY_ANALYZED");
+                }
+                continue;
+            }
+            if (busy.contains(item.localAssetId())) {
+                failed.add(new AnalyzeResponse.Failure(item.localAssetId(), AnalyzeResponse.Reason.IN_PROGRESS));
+                if (image != null) {
+                    stats.ignore("IN_PROGRESS");
                 }
                 continue;
             }
