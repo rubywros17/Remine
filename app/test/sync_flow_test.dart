@@ -129,18 +129,20 @@ void main() {
     expect(rig.status.issue, SyncIssue.none);
   });
 
-  test('IN_PROGRESS(서버가 분석 중)는 실패로 세지 않고 다음 실행 때 다시 보낸다', () async {
-    final rig = await rigOf(3);
-    rig.client.failWith['p1'] = 'IN_PROGRESS';
-    await rig.sync.run();
-    expect(rig.client.analyzeCalls, hasLength(1)); // 같은 실행 안에서 곧바로 다시 보내지 않는다
-    expect(rig.status.failedCount, 0);
-    expect(rig.status.issue, SyncIssue.none);
+  for (final reason in ['IN_PROGRESS', 'DEADLINE_EXCEEDED']) {
+    test('$reason은 실패로 세지 않고 다음 실행 때 다시 보낸다', () async {
+      final rig = await rigOf(3);
+      rig.client.failWith['p1'] = reason;
+      await rig.sync.run();
+      expect(rig.client.analyzeCalls, hasLength(1)); // 같은 실행 안에서 곧바로 다시 보내지 않는다
+      expect(rig.status.failedCount, 0);
+      expect(rig.status.issue, SyncIssue.none);
 
-    rig.client.failWith.clear();
-    await rig.sync.run();
-    expect(idsIn(rig.client.analyzeCalls.last), [1]);
-  });
+      rig.client.failWith.clear();
+      await rig.sync.run();
+      expect(idsIn(rig.client.analyzeCalls.last), [1]);
+    });
+  }
 
   test('IMAGE_TOO_LARGE는 더 줄여서, IMAGE_INVALID는 이미지 없이 다시 보낸다', () async {
     var round = 0;

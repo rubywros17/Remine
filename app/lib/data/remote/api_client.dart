@@ -93,6 +93,7 @@ enum FailReason {
   llmCallFailed('LLM_CALL_FAILED'),
   llmInvalidResponse('LLM_INVALID_RESPONSE'),
   inProgress('IN_PROGRESS'),
+  deadlineExceeded('DEADLINE_EXCEEDED'),
   other('');
 
   const FailReason(this.code);
