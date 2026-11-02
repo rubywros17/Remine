@@ -92,6 +92,7 @@ enum FailReason {
   imageInvalid('IMAGE_INVALID'),
   llmCallFailed('LLM_CALL_FAILED'),
   llmInvalidResponse('LLM_INVALID_RESPONSE'),
+  inProgress('IN_PROGRESS'),
   other('');
 
   const FailReason(this.code);
@@ -131,7 +132,9 @@ class RemineApi {
   RemineApi(
     this.baseUrl,
     this._client, {
-    this.timeout = const Duration(minutes: 2), // 장당 LLM 호출이 있어 20장 배치는 오래 걸린다
+    // 20장 배치는 LLM 호출이 여러 번이고, Gemini가 느린 날은 호출당 30~50초까지 걸린다(실기기 로그).
+    // 너무 짧으면 서버가 아직 처리 중인데 같은 묶음을 다시 보낸다.
+    this.timeout = const Duration(minutes: 5),
     this.log,
   });
 

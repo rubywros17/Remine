@@ -421,6 +421,10 @@ class SyncService {
             }
           case FailReason.imageInvalid:
             await _dropImage(photo, out, send); // 같은 이미지를 다시 보내지 않는다
+          case FailReason.inProgress:
+            // 앞서 보낸 요청을 서버가 아직 분석 중이다. 실패가 아니니 기록하지 않고 이번엔 빼 둔다.
+            // 기록이 없으면 다음 실행에서 다시 보내고, 그때 끝나 있으면 서버가 skipped로 돌려준다.
+            send.remove(f.assetId);
           case FailReason.llmCallFailed:
           case FailReason.llmInvalidResponse:
           case FailReason.other:
