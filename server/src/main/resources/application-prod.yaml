@@ -1,0 +1,29 @@
+# 운영(EC2) 프로필. SPRING_PROFILES_ACTIVE=prod로 켠다. 비밀값은 여기 두지 않고 서버의 env 파일(deploy/.env.example)에서 받는다.
+# dev 엔드포인트(/api/dev/*)는 @Profile("dev")라 이 프로필에서는 등록되지 않는다(404).
+logging:
+  level:
+    # 누가 DEBUG를 켜도 본문(OCR 원문)이 섞일 수 있는 로그가 나오지 않게 운영은 INFO로 고정한다.
+    root: INFO
+    com.remine: INFO
+
+server:
+  # Caddy(리버스 프록시) 뒤라 X-Forwarded-* 헤더로 원래 스킴·호스트를 본다.
+  forward-headers-strategy: framework
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # 상태 확인만 공개한다(배포 후 헬스 체크). env·metrics 등은 404.
+        include: health
+  endpoint:
+    health:
+      # DB 상태 같은 내부 정보는 응답에 넣지 않는다.
+      show-details: never
+
+remine:
+  classifier: gemini
+  llm:
+    gemini:
+      # Gemini 무료 등급(결제 미연결) 그대로라 RPM 15 간격을 유지한다.
+      min-interval-ms: 4500

@@ -17,7 +17,7 @@ docs/     기획·설계 문서
 ## 스택
 - 앱: Flutter (Dart), photo_manager, google_mlkit_text_recognition, firebase_messaging
 - 서버: Spring Boot 4.1.1 / Java 21 / PostgreSQL 17 + Flyway
-- LLM: gemini-3.5-flash-lite (확정, temperature 1.0, 운영은 유료 등급) — 근거는 `experiment/SUMMARY.md`
+- LLM: gemini-3.5-flash-lite (확정, temperature 1.0, 지금은 무료 등급·결제 미연결 → 호출 간격 4.5초 유지) — 근거는 `experiment/SUMMARY.md`
 
 ## 핵심 원칙
 - **민감한 캡처는 기기를 떠나지 않고, 분석용 이미지는 동의한 경우에만 보내며 서버에 저장하지 않는다.** 앱에서 OCR 후 텍스트와 메타데이터를 전송하고, OCR 글자 수가 기준값(설정, 기본 150자) 미만일 때만 축소 이미지를 동봉한다. 강한 민감 정보에 걸린 캡처는 텍스트·이미지 모두 보내지 않고, 전화번호는 [전화번호]로 가린 뒤 텍스트만 보낸다.
@@ -71,6 +71,10 @@ cd server
 - 측정: dev 프로필의 `/api/dev/metrics`(토큰·비용·시간, 단가는 `GeminiPricing`). 배치 정확도 비교는 `--spring.profiles.active=experiment --experiment.prompt=v3 --experiment.batch=10,5`(결과는 `experiment/compare.local.*`, 커밋 안 됨).
 - 이미지 입력(`remine.image.*`): 장당 `max-bytes`(1MB), `max-long-side`(1024), `max-pixels`(25,000,000), 요청 `max-request-bytes`(12MB)·파트 `max-part-bytes`(5MB). multipart는 **메모리 전용**(`spring.servlet.multipart.file-size-threshold`를 낮추지 말 것 — 기본 0B는 이미지를 임시 파일로 씀). 앱은 `GET /api/config`로 값을 받는다. 형식은 `docs/spec.md` API 절.
 
+- 배포: `deploy/`(compose·Caddyfile·bootstrap·backup) + `.github/workflows/deploy.yml`(main push → test → GHCR arm64 → EC2 재시작). 운영은 `prod` 프로필(`application-prod.yaml`: actuator health만, dev API 404, 로그 INFO 고정).
+- 운영 비밀값은 EC2 `/opt/remine/.env`·`secrets/`에만. GitHub Secrets에는 SSH 정보(`EC2_HOST`·`EC2_USER`·`EC2_SSH_KEY`·`EC2_KNOWN_HOSTS`)만, 도메인은 Variables `REMINE_DOMAIN`.
+- 배포 구성을 PC에서 시험할 때는 `docker compose -p remine-deploytest`로(로컬 개발 DB `remine-postgres-1`과 이름이 겹치지 않게). 서버 이미지 확인: `docker buildx build --platform linux/arm64 server`.
+- 릴리스 APK: `REMINE_KEY_PROPERTIES=E:/dev/secrets/remine/key.properties flutter build apk --release --dart-define=DATA=device --dart-define=API_BASE=https://도메인`. 키 설정이 없으면 debug 키로 서명되니 배포용으로 쓰지 말 것.
 - 서버 주소는 `--dart-define=API_BASE`. 릴리스는 `https://`만 받고, 평문 HTTP(localhost)는 `app/android/app/src/debug`의 network security config로 디버그 빌드에서만 열려 있다.
 - 서버로 보낼 것은 `app/lib/data/remote/sync_plan.dart`의 `planFor` 한 곳에서만 정한다. 파일명·앱 이름은 보내지 않는다(asset id·촬영 시각·텍스트·동의한 축소 이미지뿐). 전송 금지 테스트(`test/sync_send_guard_test.dart`)가 요청 본문 바이트를 검사한다.
 
@@ -84,9 +88,15 @@ cd server
 
 ## 작업 방식
 - 필요한 파일·섹션만 읽고, spec.md 전체는 범위 확인이 필요할 때만 읽는다.
-- 작업 완료 보고는 변경 파일 목록 + 핵심 결정 이유 3줄 이내.
+- 보고·계획·안내는 모두 한국어. 보고는 10줄 이내.
+- 작업 완료 보고는 변경 파일 목록 + 핵심 결정 이유.
 - 큰 기능은 구현 전에 만들 파일·구조를 먼저 보여주고 확인받는다.
 - 완료 조건: ./gradlew test 통과.
 - Git: 기능 단위 브랜치(feat/...), 작업 단위로 커밋 나누기.
+- PR 본문·커밋에 Claude 서명 줄을 넣지 않는다.
+- 실제 Gemini를 부르는 실행은 장수·예상 비용을 먼저 묻는다.
+- git push, rm, git reset, 브랜치 삭제처럼 되돌리기 어려운 명령은 실행 전에 확인받는다.
+- 키·비밀번호·토큰 값은 출력하지 않는다. 키 파일 위치: E:\dev\secrets\remine\ (레포 밖).
+- 커밋 금지: experiment의 images·ocr·labels.csv·runs*·compare.local*, errors.local*.md, 다른 앱 design-refs.
 
-테스트 규칙: 작업 중에는 바뀐 파일과 관련된 테스트만(flutter test test/파일.dart, ./gradlew test --tests ...) + flutter analyze. 전체 테스트는 PR 올리기 전에 한 번만, --timeout 2m.
+테스트 규칙: 작업 중에는 바뀐 파일과 관련된 테스트만(flutter test test/파일.dart, ./gradlew test --tests ...) + flutter analyze. 전체 테스트는 PR 전 1회, 약 3분이라 명령 대기 시간 5분.

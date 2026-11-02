@@ -1,0 +1,79 @@
+# 운영 서버(EC2) 구성. 이 파일·Caddyfile·backup.sh는 GitHub Actions가 /opt/remine에 복사한다.
+# 비밀값은 같은 폴더의 .env(chmod 600, .env.example 참고)와 secrets/firebase-admin.json에만 있고 레포·이미지에 없다.
+#   cd /opt/remine && docker compose up -d      (.env는 compose가 자동으로 읽는다)
+# PC에서 시험할 때는 반드시 다른 프로젝트 이름으로(로컬 개발 DB 컨테이너 remine-postgres-1과 겹치지 않게):
+#   docker compose -p remine-deploytest up -d   (볼륨도 remine-deploytest_pgdata로 따로 생긴다)
+name: remine
+
+x-logging: &logging
+  # 디스크(20GB)가 로그로 차지 않게 컨테이너마다 10MB × 3개까지만 남긴다.
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "3"
+
+services:
+  postgres:
+    image: postgres:17.6   # 로컬(docker-compose.yml)·테스트와 같은 버전
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: remine
+      POSTGRES_USER: remine
+      # 볼륨이 처음 만들어질 때만 적용된다. 나중에 바꾸려면 DB 안에서 ALTER USER도 해야 한다.
+      POSTGRES_PASSWORD: ${REMINE_DB_PASSWORD:?.env에 REMINE_DB_PASSWORD가 필요합니다}
+    # 1GB 인스턴스용 축소 설정. 서버 커넥션 풀(Hikari 기본 10)보다 넉넉하게.
+    command: postgres -c shared_buffers=64MB -c max_connections=30
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # 포트는 열지 않는다. server 컨테이너만 내부 네트워크로 접속한다.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U remine -d remine"]
+      interval: 5s
+      retries: 10
+    mem_limit: 200m
+    logging: *logging
+
+  server:
+    image: ghcr.io/${GHCR_OWNER:?.env에 GHCR_OWNER가 필요합니다}/remine-server:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      # 컨테이너 안에서는 localhost:5433(로컬 개발용)이 아니라 compose 서비스 이름으로 접속한다.
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/remine?reWriteBatchedInserts=true
+      SPRING_DATASOURCE_USERNAME: remine
+      SPRING_DATASOURCE_PASSWORD: ${REMINE_DB_PASSWORD}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?.env에 GEMINI_API_KEY가 필요합니다}
+      # remine.fcm.credentials-file. 파일이 없으면 푸시만 꺼지고 나머지는 동작한다.
+      REMINE_FCM_CREDENTIALSFILE: /run/secrets/firebase-admin.json
+    volumes:
+      # 컨테이너 사용자(uid 10001)가 읽을 수 있게 호스트에서 chown 10001 + chmod 400 (bootstrap.sh 안내)
+      - ./secrets/firebase-admin.json:/run/secrets/firebase-admin.json:ro
+    # JVM 힙은 이 한도의 60%(Dockerfile MaxRAMPercentage)
+    mem_limit: 600m
+    logging: *logging
+
+  caddy:
+    image: caddy:2.10
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "80:80"     # 인증서 발급(HTTP-01)과 https 리다이렉트
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      REMINE_DOMAIN: "${REMINE_DOMAIN:?.env에 REMINE_DOMAIN(예 이름.duckdns.org)이 필요합니다}"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data       # 인증서. 지우면 다시 발급받는다(발급 횟수 제한 주의)
+      - caddy_config:/config
+    mem_limit: 100m
+    logging: *logging
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

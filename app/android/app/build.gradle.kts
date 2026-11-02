@@ -1,8 +1,19 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("com.google.gms.google-services")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// 릴리스 서명 키 설정. 키(keystore)와 비밀번호는 레포 밖에 둔다.
+// 환경변수 REMINE_KEY_PROPERTIES(예: E:/dev/secrets/remine/key.properties)가 가리키는 파일, 없으면 android/key.properties(.gitignore).
+// 파일 내용: storeFile=키 경로, storePassword=, keyAlias=, keyPassword=
+// 파일이 없으면 지금처럼 debug 키로 서명한다(로컬 `flutter run --release`용, 배포용 APK로 쓰지 말 것).
+val keyPropertiesFile = System.getenv("REMINE_KEY_PROPERTIES")?.let { file(it) } ?: rootProject.file("key.properties")
+val keyProperties = Properties().apply {
+    if (keyPropertiesFile.exists()) keyPropertiesFile.inputStream().use { load(it) }
 }
 
 android {
@@ -30,11 +41,25 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (keyPropertiesFile.exists()) {
+            create("release") {
+                storeFile = file(keyProperties.getProperty("storeFile"))
+                storePassword = keyProperties.getProperty("storePassword")
+                keyAlias = keyProperties.getProperty("keyAlias")
+                keyPassword = keyProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (keyPropertiesFile.exists()) {
+                signingConfigs.getByName("release")
+            } else {
+                logger.warn("릴리스 서명 키 설정이 없어 debug 키로 서명합니다(REMINE_KEY_PROPERTIES).")
+                signingConfigs.getByName("debug")
+            }
             // R8(코드 축소) 규칙: ML Kit 다른 문자 체계 클래스 경고 무시
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
