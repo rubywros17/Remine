@@ -267,6 +267,7 @@
 | `IMAGE_INVALID` | **이미지 없이** 재전송. 같은 이미지를 반복 전송하지 않는다 |
 | `LLM_CALL_FAILED` / `LLM_INVALID_RESPONSE` | 같은 요청을 나중에 다시 전송 |
 | `IN_PROGRESS` | 같은 기기의 앞선 요청이 그 캡처를 분석 중(앱 타임아웃 뒤 재전송 등). 실패로 세지 않고 이번 실행에서 빼며, 다음 실행에서 다시 보낸다(그때 끝나 있으면 `skipped`) |
+| `DEADLINE_EXCEEDED` | 요청 마감(`remine.analyze.deadline`, 4분 — 앱 타임아웃 5분보다 짧게)이 지나 서버가 분류를 시작하지 않음. `IN_PROGRESS`와 같이 처리 |
 
 | PATCH | `/api/screenshots/{id}/category` | 사용자가 카테고리 수정. 본문 `{"category":"PLACE"}` → 200 `{id, category, autoCategory, categorySource}`. `category_source`가 USER로 바뀌고(같은 값이어도) 이후 재분석이 덮어쓰지 않음. 오류는 아래 표 |
 
