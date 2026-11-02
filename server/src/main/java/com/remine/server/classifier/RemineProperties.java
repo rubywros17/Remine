@@ -82,6 +82,8 @@ public record RemineProperties(
 
     public record Analyze(
             /* analyze 요청 하나에 담을 수 있는 최대 캡처 수. 초과하면 400. */
-            @Min(1) @DefaultValue("20") int maxBatchSize) {
+            @Min(1) @DefaultValue("20") int maxBatchSize,
+            /* 요청 마감. 지나면 새 LLM 호출을 시작하지 않고 남은 캡처는 DEADLINE_EXCEEDED. 앱 타임아웃(5분)보다 짧게. */
+            @DefaultValue("4m") Duration deadline) {
     }
 }

@@ -1,5 +1,6 @@
 package com.remine.server.classifier.llm;
 
+import com.remine.server.classifier.ClassificationException;
 import com.remine.server.classifier.ClassificationResult;
 import com.remine.server.classifier.Classifier;
 import com.remine.server.classifier.ImageDecision;
@@ -169,5 +170,23 @@ class LlmBatchTest {
         assertThat(results.get(1).result()).isEqualTo(new ClassificationResult(Category.PLACE, List.of("카페"), "s"));
         assertThat(meter.snapshot().llmCalls()).isEqualTo(3);
         assertThat(meter.snapshot().llmItems()).isEqualTo(5);
+    }
+
+    @Test
+    void 하이브리드는_마감이_지나면_다음_묶음을_호출하지_않고_DEADLINE_EXCEEDED로_돌려준다() {
+        FakeProvider provider = new FakeProvider(allPlaceExcept());
+        HybridLlmClassifier hybrid = new HybridLlmClassifier(llm(provider), 150, 2, 2, new UsageMeter());
+        String longText = "가".repeat(150);
+        List<Classifier.Input> inputs = List.of(new Classifier.Input(longText, null), new Classifier.Input(longText, null),
+                new Classifier.Input(longText, null), new Classifier.Input(longText, null));
+        int[] checks = {0};
+
+        // 첫 묶음 시작 전에는 마감 전, 그다음부터는 지남
+        List<Classifier.Classified> results = hybrid.classifyAll(inputs, () -> checks[0]++ > 0);
+
+        assertThat(provider.batchCalls).hasSize(1);
+        assertThat(results.subList(0, 2)).allMatch(r -> r.error() == null);
+        assertThat(results.subList(2, 4)).allMatch(r -> r.error() != null
+                && r.error().reason() == ClassificationException.Reason.DEADLINE_EXCEEDED);
     }
 }

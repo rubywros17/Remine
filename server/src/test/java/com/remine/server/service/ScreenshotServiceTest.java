@@ -63,10 +63,14 @@ class ScreenshotServiceTest {
     private ScreenshotService service;
 
     private static RemineProperties properties(int maxBatchSize) {
+        return properties(maxBatchSize, Duration.ofMinutes(4));
+    }
+
+    private static RemineProperties properties(int maxBatchSize, Duration deadline) {
         return new RemineProperties(RemineProperties.ClassifierType.FAKE,
                 new RemineProperties.Llm(150, new RemineProperties.Gemini("m", 1.0, "http://localhost:1",
                         Duration.ofSeconds(1), Duration.ofSeconds(1), 0), new RemineProperties.Batch(10, 5)),
-                new RemineProperties.Analyze(maxBatchSize),
+                new RemineProperties.Analyze(maxBatchSize, deadline),
                 new RemineProperties.Image(1048576, 1024, 25_000_000L, 12582912, 5242880),
                 new RemineProperties.Tags(List.of("장바구니", "쇼핑")),
                 new RemineProperties.Interest(14, 3, 28));
@@ -83,7 +87,7 @@ class ScreenshotServiceTest {
     void setUp() {
         service = service(properties(20), deviceRepository, screenshotRepository, classifier, persister);
         // 서비스는 classifyAll로 넘긴다. 기본 구현(한 장씩 classify)을 그대로 타게 해서 classify 스텁으로 검증한다.
-        lenient().when(classifier.classifyAll(any())).thenCallRealMethod();
+        lenient().when(classifier.classifyAll(any(), any())).thenCallRealMethod();
     }
 
     private void givenDevice() {
@@ -430,6 +434,27 @@ class ScreenshotServiceTest {
         } finally {
             pool.shutdownNow();
         }
+    }
+
+    @Test
+    void 요청_마감이_지나면_새_호출을_시작하지_않고_남은_캡처는_DEADLINE_EXCEEDED다() {
+        // 마감 0 → 첫 호출 전에 이미 지났다. 이미 분석된 것·글자 없는 것은 LLM이 필요 없어 그대로 처리한다.
+        service = service(properties(20, Duration.ZERO), deviceRepository, screenshotRepository, classifier, persister);
+        givenDevice();
+        when(screenshotRepository.findAnalyzedLocalAssetIds(any(), any())).thenReturn(Set.of("done"));
+
+        AnalyzeResponse response = service.analyze(1L, request(
+                new Item("done", NOW, null, "이미 분석"),
+                new Item("blank", NOW, null, ""),
+                new Item("a1", NOW, null, "글1"),
+                new Item("a2", NOW, null, "글2")));
+
+        assertThat(response.skipped()).containsExactly("done");
+        assertThat(response.analyzed()).extracting(AnalyzeResponse.Result::localAssetId).containsExactly("blank");
+        assertThat(response.failed()).containsExactly(
+                new AnalyzeResponse.Failure("a1", AnalyzeResponse.Reason.DEADLINE_EXCEEDED),
+                new AnalyzeResponse.Failure("a2", AnalyzeResponse.Reason.DEADLINE_EXCEEDED));
+        verify(classifier, never()).classify(anyString(), any());
     }
 
     private static java.awt.image.BufferedImage decode(byte[] jpeg) {

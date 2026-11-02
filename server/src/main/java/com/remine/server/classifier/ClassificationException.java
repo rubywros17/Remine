@@ -9,7 +9,13 @@ public class ClassificationException extends RuntimeException {
         /** 호출 자체가 실패했다(통신 오류, 4xx/5xx, 쿼터 소진). */
         CALL_FAILED,
         /** 응답을 받았지만 카테고리·JSON을 해석할 수 없다. */
-        INVALID_RESPONSE
+        INVALID_RESPONSE,
+        /** 요청 마감이 지나 호출을 시작하지 않았다. */
+        DEADLINE_EXCEEDED
+    }
+
+    public static ClassificationException deadlineExceeded() {
+        return new ClassificationException(Reason.DEADLINE_EXCEEDED, "요청 마감이 지나 호출하지 않음");
     }
 
     private final Reason reason;

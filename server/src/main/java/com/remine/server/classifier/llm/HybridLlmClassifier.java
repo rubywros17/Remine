@@ -12,6 +12,7 @@ import org.slf4j.LoggerFactory;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 /**
  * 운영 분류기: OCR 텍스트가 충분하면 텍스트만, 짧으면(기준값 미만) 이미지가 있을 때 이미지도 함께 보낸다.
@@ -89,7 +90,7 @@ public class HybridLlmClassifier implements Classifier {
      * 이미지 사용 판단은 {@link #classify}와 같다(마스킹·기준값 이상이면 이미지를 버린다).
      */
     @Override
-    public List<Classified> classifyAll(List<Input> inputs) {
+    public List<Classified> classifyAll(List<Input> inputs, BooleanSupplier expired) {
         List<Integer> textIdx = new ArrayList<>();
         List<Integer> imageIdx = new ArrayList<>();
         for (int i = 0; i < inputs.size(); i++) {
@@ -98,15 +99,20 @@ public class HybridLlmClassifier implements Classifier {
             (hasImage && imageDecision(input.ocrText()) == ImageDecision.USE ? imageIdx : textIdx).add(i);
         }
         Classified[] results = new Classified[inputs.size()];
-        runBatches(inputs, textIdx, textBatchSize, false, results);
-        runBatches(inputs, imageIdx, imageBatchSize, true, results);
+        runBatches(inputs, textIdx, textBatchSize, false, results, expired);
+        runBatches(inputs, imageIdx, imageBatchSize, true, results, expired);
         return Arrays.asList(results);
     }
 
     private void runBatches(List<Input> inputs, List<Integer> indexes, int size, boolean useImage,
-                            Classified[] results) {
+                            Classified[] results, BooleanSupplier expired) {
         for (int from = 0; from < indexes.size(); from += size) {
             List<Integer> chunk = indexes.subList(from, Math.min(from + size, indexes.size()));
+            if (expired.getAsBoolean()) {
+                chunk.forEach(i -> results[i] = new Classified(null, ClassificationException.deadlineExceeded()));
+                log.info("배치 분류 건너뜀 items={} image={} reason=DEADLINE_EXCEEDED", chunk.size(), useImage);
+                continue;
+            }
             List<LlmPrompt.BatchItem> items = chunk.stream()
                     .map(i -> new LlmPrompt.BatchItem(inputs.get(i).ocrText(), useImage ? inputs.get(i).jpegImage() : null))
                     .toList();

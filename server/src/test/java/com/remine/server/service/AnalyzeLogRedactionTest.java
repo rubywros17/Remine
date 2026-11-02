@@ -119,7 +119,7 @@ class AnalyzeLogRedactionTest {
         RemineProperties properties = new RemineProperties(RemineProperties.ClassifierType.GEMINI,
                 new RemineProperties.Llm(150, new RemineProperties.Gemini("m", 1.0, "http://localhost:1",
                         Duration.ofSeconds(1), Duration.ofSeconds(1), 0), new RemineProperties.Batch(10, 5)),
-                new RemineProperties.Analyze(20),
+                new RemineProperties.Analyze(20, Duration.ofMinutes(4)),
                 new RemineProperties.Image(1048576, 1024, 25_000_000L, 12582912, 5242880),
                 new RemineProperties.Tags(List.of()),
                 new RemineProperties.Interest(14, 3, 28));

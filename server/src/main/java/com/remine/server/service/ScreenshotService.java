@@ -147,7 +147,10 @@ public class ScreenshotService {
 
         // 2) 분류: 트랜잭션 밖에서 한 번에 넘긴다(LLM 분류기는 여러 장을 한 요청으로 묶는다). 한 건이 실패해도 나머지는 계속 진행한다.
         //    태그는 여기서 정리해 응답과 저장이 같은 태그를 쓴다.
-        List<Classifier.Classified> classified = inputs.isEmpty() ? List.of() : classifier.classifyAll(inputs);
+        //    마감(remine.analyze.deadline)이 지나면 새 호출을 시작하지 않는다. 앱 타임아웃보다 먼저 응답해 재전송 중복을 막는다.
+        long deadlineNanos = startedNanos + properties.analyze().deadline().toNanos();
+        List<Classifier.Classified> classified = inputs.isEmpty() ? List.of()
+                : classifier.classifyAll(inputs, () -> System.nanoTime() - deadlineNanos >= 0);
         for (int i = 0; i < toClassify.size(); i++) {
             AnalyzeRequest.Item item = toClassify.get(i);
             Classifier.Classified c = classified.get(i);
@@ -244,8 +247,10 @@ public class ScreenshotService {
     }
 
     private static AnalyzeResponse.Reason toReason(ClassificationException e) {
-        return e.reason() == ClassificationException.Reason.INVALID_RESPONSE
-                ? AnalyzeResponse.Reason.LLM_INVALID_RESPONSE
-                : AnalyzeResponse.Reason.LLM_CALL_FAILED;
+        return switch (e.reason()) {
+            case INVALID_RESPONSE -> AnalyzeResponse.Reason.LLM_INVALID_RESPONSE;
+            case DEADLINE_EXCEEDED -> AnalyzeResponse.Reason.DEADLINE_EXCEEDED;
+            case CALL_FAILED -> AnalyzeResponse.Reason.LLM_CALL_FAILED;
+        };
     }
 }
