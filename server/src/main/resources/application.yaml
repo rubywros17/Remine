@@ -52,6 +52,9 @@ remine:
   analyze:
     # analyze 요청 하나에 담을 수 있는 최대 캡처 수. 초과하면 400. (호출이 순차라 장수만큼 요청이 길어진다)
     max-batch-size: 20
+    # 요청 마감: 지나면 새 LLM 호출을 시작하지 않고 남은 캡처는 DEADLINE_EXCEEDED(앱이 다음 실행에 다시 보냄).
+    # 앱 타임아웃(5분)보다 짧게 둔다. 이미 시작한 호출(read-timeout 60s·재시도)은 끝까지 기다린다.
+    deadline: 4m
   image:
     max-bytes: 1048576           # 장당 1MB 초과 → 그 캡처만 IMAGE_TOO_LARGE
     max-long-side: 1024          # 서버가 이보다 긴 변은 축소

@@ -28,6 +28,11 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -36,7 +41,9 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -56,10 +63,14 @@ class ScreenshotServiceTest {
     private ScreenshotService service;
 
     private static RemineProperties properties(int maxBatchSize) {
+        return properties(maxBatchSize, Duration.ofMinutes(4));
+    }
+
+    private static RemineProperties properties(int maxBatchSize, Duration deadline) {
         return new RemineProperties(RemineProperties.ClassifierType.FAKE,
                 new RemineProperties.Llm(150, new RemineProperties.Gemini("m", 1.0, "http://localhost:1",
                         Duration.ofSeconds(1), Duration.ofSeconds(1), 0), new RemineProperties.Batch(10, 5)),
-                new RemineProperties.Analyze(maxBatchSize),
+                new RemineProperties.Analyze(maxBatchSize, deadline),
                 new RemineProperties.Image(1048576, 1024, 25_000_000L, 12582912, 5242880),
                 new RemineProperties.Tags(List.of("장바구니", "쇼핑")),
                 new RemineProperties.Interest(14, 3, 28));
@@ -76,7 +87,7 @@ class ScreenshotServiceTest {
     void setUp() {
         service = service(properties(20), deviceRepository, screenshotRepository, classifier, persister);
         // 서비스는 classifyAll로 넘긴다. 기본 구현(한 장씩 classify)을 그대로 타게 해서 classify 스텁으로 검증한다.
-        lenient().when(classifier.classifyAll(any())).thenCallRealMethod();
+        lenient().when(classifier.classifyAll(any(), any())).thenCallRealMethod();
     }
 
     private void givenDevice() {
@@ -350,6 +361,100 @@ class ScreenshotServiceTest {
 
         assertThat(response.skipped()).containsExactly("a1");
         verify(classifier, never()).imageDecision(any());
+    }
+
+    @Test
+    void 같은_캡처를_다른_요청이_분석_중이면_한_번만_분석하고_나머지는_IN_PROGRESS다() throws Exception {
+        givenDevice();
+        when(screenshotRepository.findAnalyzedLocalAssetIds(any(), any())).thenReturn(Set.of());
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        when(classifier.classify("글", null)).thenAnswer(inv -> {
+            entered.countDown();
+            release.await(5, TimeUnit.SECONDS); // 첫 요청이 분류 중인 상태로 붙잡아 둔다
+            return new ClassificationResult(Category.ETC, List.of(), "");
+        });
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try {
+            Future<AnalyzeResponse> first = pool.submit(() -> service.analyze(1L, request(new Item("a1", NOW, null, "글"))));
+            assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+
+            AnalyzeResponse second = service.analyze(1L, request(new Item("a1", NOW, null, "글")));
+            release.countDown();
+
+            assertThat(second.failed()).containsExactly(
+                    new AnalyzeResponse.Failure("a1", AnalyzeResponse.Reason.IN_PROGRESS));
+            assertThat(second.analyzed()).isEmpty();
+            assertThat(first.get(5, TimeUnit.SECONDS).analyzed()).hasSize(1);
+            verify(classifier, times(1)).classify("글", null);
+            verify(persister, times(1)).saveAll(eq(1L), any()); // 두 번째 요청은 저장할 것이 없다
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void 분석_중_예외가_나도_선점을_풀어_다음_요청은_다시_분석한다() {
+        givenDevice();
+        when(screenshotRepository.findAnalyzedLocalAssetIds(any(), any())).thenReturn(Set.of());
+        when(classifier.classify("글", null)).thenReturn(new ClassificationResult(Category.ETC, List.of(), ""));
+        doThrow(new IllegalStateException("저장 실패")).doNothing().when(persister).saveAll(eq(1L), any());
+
+        assertThatThrownBy(() -> service.analyze(1L, request(new Item("a1", NOW, null, "글"))))
+                .isInstanceOf(IllegalStateException.class);
+        AnalyzeResponse retry = service.analyze(1L, request(new Item("a1", NOW, null, "글")));
+
+        assertThat(retry.failed()).isEmpty();
+        assertThat(retry.analyzed()).hasSize(1);
+    }
+
+    @Test
+    void 다른_기기의_같은_localAssetId는_막지_않는다() throws Exception {
+        when(deviceRepository.existsById(any())).thenReturn(true);
+        when(screenshotRepository.findAnalyzedLocalAssetIds(any(), any())).thenReturn(Set.of());
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        when(classifier.classify("글", null)).thenAnswer(inv -> {
+            if (entered.getCount() > 0) {
+                entered.countDown();
+                release.await(5, TimeUnit.SECONDS);
+            }
+            return new ClassificationResult(Category.ETC, List.of(), "");
+        });
+        ExecutorService pool = Executors.newSingleThreadExecutor();
+        try {
+            Future<AnalyzeResponse> first = pool.submit(() -> service.analyze(1L, request(new Item("a1", NOW, null, "글"))));
+            assertThat(entered.await(5, TimeUnit.SECONDS)).isTrue();
+
+            AnalyzeResponse other = service.analyze(2L, request(new Item("a1", NOW, null, "글")));
+            release.countDown();
+
+            assertThat(other.analyzed()).hasSize(1);
+            assertThat(first.get(5, TimeUnit.SECONDS).analyzed()).hasSize(1);
+        } finally {
+            pool.shutdownNow();
+        }
+    }
+
+    @Test
+    void 요청_마감이_지나면_새_호출을_시작하지_않고_남은_캡처는_DEADLINE_EXCEEDED다() {
+        // 마감 0 → 첫 호출 전에 이미 지났다. 이미 분석된 것·글자 없는 것은 LLM이 필요 없어 그대로 처리한다.
+        service = service(properties(20, Duration.ZERO), deviceRepository, screenshotRepository, classifier, persister);
+        givenDevice();
+        when(screenshotRepository.findAnalyzedLocalAssetIds(any(), any())).thenReturn(Set.of("done"));
+
+        AnalyzeResponse response = service.analyze(1L, request(
+                new Item("done", NOW, null, "이미 분석"),
+                new Item("blank", NOW, null, ""),
+                new Item("a1", NOW, null, "글1"),
+                new Item("a2", NOW, null, "글2")));
+
+        assertThat(response.skipped()).containsExactly("done");
+        assertThat(response.analyzed()).extracting(AnalyzeResponse.Result::localAssetId).containsExactly("blank");
+        assertThat(response.failed()).containsExactly(
+                new AnalyzeResponse.Failure("a1", AnalyzeResponse.Reason.DEADLINE_EXCEEDED),
+                new AnalyzeResponse.Failure("a2", AnalyzeResponse.Reason.DEADLINE_EXCEEDED));
+        verify(classifier, never()).classify(anyString(), any());
     }
 
     private static java.awt.image.BufferedImage decode(byte[] jpeg) {

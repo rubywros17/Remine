@@ -2,6 +2,7 @@ package com.remine.server.classifier;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 
 /**
  * OCR 텍스트(+선택적 이미지) → 카테고리·태그·요약. LLM 구현체로 교체할 수 있도록 분리한 경계.
@@ -43,8 +44,20 @@ public interface Classifier {
      * 기본은 한 장씩 {@link #classify(String, byte[])}이고, LLM 구현체는 여러 장을 한 요청으로 묶는다.
      */
     default List<Classified> classifyAll(List<Input> inputs) {
+        return classifyAll(inputs, () -> false);
+    }
+
+    /**
+     * {@link #classifyAll(List)}에 마감을 더했다. 새 호출을 시작하기 전에 expired를 보고, 지났으면 남은 장은
+     * 호출하지 않고 {@link ClassificationException.Reason#DEADLINE_EXCEEDED}로 돌려준다(이미 시작한 호출은 끝까지 기다린다).
+     */
+    default List<Classified> classifyAll(List<Input> inputs, BooleanSupplier expired) {
         List<Classified> results = new ArrayList<>();
         for (Input input : inputs) {
+            if (expired.getAsBoolean()) {
+                results.add(new Classified(null, ClassificationException.deadlineExceeded()));
+                continue;
+            }
             try {
                 results.add(new Classified(classify(input.ocrText(), input.jpegImage()), null));
             } catch (ClassificationException e) {

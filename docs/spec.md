@@ -266,6 +266,8 @@
 | `IMAGE_TOO_LARGE` | 이미지를 **더 줄여서**(긴 변·JPEG 품질) 재전송. `/api/config`의 `imageMaxBytes`를 지킨다 |
 | `IMAGE_INVALID` | **이미지 없이** 재전송. 같은 이미지를 반복 전송하지 않는다 |
 | `LLM_CALL_FAILED` / `LLM_INVALID_RESPONSE` | 같은 요청을 나중에 다시 전송 |
+| `IN_PROGRESS` | 같은 기기의 앞선 요청이 그 캡처를 분석 중(앱 타임아웃 뒤 재전송 등). 실패로 세지 않고 이번 실행에서 빼며, 다음 실행에서 다시 보낸다(그때 끝나 있으면 `skipped`) |
+| `DEADLINE_EXCEEDED` | 요청 마감(`remine.analyze.deadline`, 4분 — 앱 타임아웃 5분보다 짧게)이 지나 서버가 분류를 시작하지 않음. `IN_PROGRESS`와 같이 처리 |
 
 | PATCH | `/api/screenshots/{id}/category` | 사용자가 카테고리 수정. 본문 `{"category":"PLACE"}` → 200 `{id, category, autoCategory, categorySource}`. `category_source`가 USER로 바뀌고(같은 값이어도) 이후 재분석이 덮어쓰지 않음. 오류는 아래 표 |
 
@@ -325,7 +327,7 @@
 - [x] 분류 입력 방식 → 하이브리드 (기준값 150자, 설정)
 - [x] DB 선택 → PostgreSQL 17 + Flyway
 - [ ] F-06 기기 사진 삭제·시스템 휴지통 이동, 서버 삭제 API, 휴지통 화면 — 3주차 이후 (앱 내 휴지통만 이번에 구현)
-- [ ] 분석의 비동기·병렬화 (작업 큐 + 진행 상태 조회, 제한된 동시성). 지금은 동기 순차 호출이라 요청당 20장으로 제한한다.
+- [ ] 분석의 비동기·병렬화 (작업 큐 + 진행 상태 조회, 제한된 동시성). 지금은 동기 순차 호출이라 요청당 20장으로 제한한다. 근본 해결 대상: Gemini가 느린 날(호출당 30~50초) 요청이 앱 타임아웃을 넘으면 앱이 같은 묶음을 다시 보낸다 — 지금은 `IN_PROGRESS`(메모리 선점, 서버 1대 전제)로 중복 분석만 막는다.
 - [x] 이미지 수신 API(multipart, 메모리 전용)와 "빈 OCR + 이미지" 분류 경로
 - [x] 사용자 카테고리 수정(F-05): `auto_category` + `category_source(AUTO/USER)`, 같은 값 수정 = USER
 - [x] 실사용 정확도 조회 API(`GET /api/categories/accuracy`) — 5주차 Key Numbers

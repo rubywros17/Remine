@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 스크린샷 분석. <b>트랜잭션을 걸지 않는다</b>: 분류(느린 외부 LLM 호출)를 모두 끝낸 뒤
@@ -48,6 +49,10 @@ public class ScreenshotService {
     private final RemineProperties properties;
     private final TagCleaner tagCleaner;
     private final UsageMeter meter;
+    private final Set<InProgressKey> inProgress = ConcurrentHashMap.newKeySet();
+
+    private record InProgressKey(Long deviceId, String localAssetId) {
+    }
 
     /** 이미지 없는 요청(JSON). */
     public AnalyzeResponse analyze(Long deviceId, AnalyzeRequest request) {
@@ -70,6 +75,30 @@ public class ScreenshotService {
         }
 
         List<String> assetIds = request.screenshots().stream().map(AnalyzeRequest.Item::localAssetId).toList();
+        // 같은 캡처를 다른 요청이 분석 중이면(앱이 타임아웃 뒤 다시 보낸 경우) 중복 분석하지 않고 IN_PROGRESS로 돌려준다.
+        // 선점은 원자적으로, 해제는 예외가 나도 반드시 한다(영구 IN_PROGRESS 방지).
+        // ponytail: 서버 1대 전제의 메모리 Set. 여러 대로 늘리면 DB 상태(ANALYZING 행)로 옮긴다.
+        List<InProgressKey> claimed = new ArrayList<>();
+        Set<String> busy = new HashSet<>();
+        try {
+            for (String assetId : new HashSet<>(assetIds)) {
+                InProgressKey key = new InProgressKey(deviceId, assetId);
+                if (inProgress.add(key)) {
+                    claimed.add(key);
+                } else {
+                    busy.add(assetId);
+                }
+            }
+            return analyzeClaimed(deviceId, request, images, assetIds, busy, startedNanos);
+        } finally {
+            claimed.forEach(inProgress::remove);
+        }
+    }
+
+    /** 선점한 뒤의 본문. 분석 완료 여부는 선점 뒤에 조회해야 방금 끝난 요청과 겹쳐 다시 분석하지 않는다. */
+    private AnalyzeResponse analyzeClaimed(Long deviceId, AnalyzeRequest request, Map<String, byte[]> images,
+                                           List<String> assetIds, Set<String> busy, long startedNanos) {
+        int requested = request.screenshots().size();
         // 분석이 끝난 것 + 같은 요청 안에서 중복으로 들어온 것은 건너뛴다. 분석에 실패해 남은 행은 다시 분석한다.
         Set<String> seen = new HashSet<>(screenshotRepository.findAnalyzedLocalAssetIds(deviceId, assetIds));
 
@@ -92,6 +121,13 @@ public class ScreenshotService {
                 }
                 continue;
             }
+            if (busy.contains(item.localAssetId())) {
+                failed.add(new AnalyzeResponse.Failure(item.localAssetId(), AnalyzeResponse.Reason.IN_PROGRESS));
+                if (image != null) {
+                    stats.ignore("IN_PROGRESS");
+                }
+                continue;
+            }
             byte[] usable;
             try {
                 usable = prepareImage(item, image, stats);
@@ -111,7 +147,10 @@ public class ScreenshotService {
 
         // 2) 분류: 트랜잭션 밖에서 한 번에 넘긴다(LLM 분류기는 여러 장을 한 요청으로 묶는다). 한 건이 실패해도 나머지는 계속 진행한다.
         //    태그는 여기서 정리해 응답과 저장이 같은 태그를 쓴다.
-        List<Classifier.Classified> classified = inputs.isEmpty() ? List.of() : classifier.classifyAll(inputs);
+        //    마감(remine.analyze.deadline)이 지나면 새 호출을 시작하지 않는다. 앱 타임아웃보다 먼저 응답해 재전송 중복을 막는다.
+        long deadlineNanos = startedNanos + properties.analyze().deadline().toNanos();
+        List<Classifier.Classified> classified = inputs.isEmpty() ? List.of()
+                : classifier.classifyAll(inputs, () -> System.nanoTime() - deadlineNanos >= 0);
         for (int i = 0; i < toClassify.size(); i++) {
             AnalyzeRequest.Item item = toClassify.get(i);
             Classifier.Classified c = classified.get(i);
@@ -208,8 +247,10 @@ public class ScreenshotService {
     }
 
     private static AnalyzeResponse.Reason toReason(ClassificationException e) {
-        return e.reason() == ClassificationException.Reason.INVALID_RESPONSE
-                ? AnalyzeResponse.Reason.LLM_INVALID_RESPONSE
-                : AnalyzeResponse.Reason.LLM_CALL_FAILED;
+        return switch (e.reason()) {
+            case INVALID_RESPONSE -> AnalyzeResponse.Reason.LLM_INVALID_RESPONSE;
+            case DEADLINE_EXCEEDED -> AnalyzeResponse.Reason.DEADLINE_EXCEEDED;
+            case CALL_FAILED -> AnalyzeResponse.Reason.LLM_CALL_FAILED;
+        };
     }
 }
