@@ -351,10 +351,17 @@ const insightPhrases = {
     _ => ('steady', counts.where((c) => c > 0).length),
   };
   final phrases = insightPhrases[key]!;
-  final candidates = [
+  // "하루 1장씩"은 한창이었다고 하기 어색해서 2장 이상일 때만
+  final usable = [
     for (var i = 0; i < phrases.length; i++)
-      if (phrases.length == 1 || (key, i) != avoid) i,
+      if (n >= 2 || !phrases[i].contains('{n}장씩')) i,
   ];
+  final candidates = usable.length > 1
+      ? [
+          for (final i in usable)
+            if ((key, i) != avoid) i,
+        ]
+      : usable;
   final index = candidates[pick % candidates.length];
   return (
     id: (key, index),

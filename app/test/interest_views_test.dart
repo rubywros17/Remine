@@ -219,6 +219,25 @@ void main() {
         ]);
       });
 
+      test('"하루 N장씩" 문구는 가장 많던 날이 2장 이상일 때만', () {
+        Set<String?> lines(List<int> c) => {
+          for (final pick in [0, 1, 2, 3, 4, 5])
+            tagInsight('뜨개질', c, _now, pick: pick)?.text,
+        };
+        final one = lines(days({9: 1, 7: 1}));
+        expect(one, hasLength(2));
+        expect(one.where((t) => t!.contains('장씩')), isEmpty);
+        expect(
+          lines(days({9: 2, 7: 1})),
+          contains('한창일 땐 하루 2장씩 캡처했는데, 잊고 있었나요?'),
+        );
+        // 쓸 수 있는 문구가 2개뿐이어도 직전 문구는 피한다
+        expect(
+          tagInsight('뜨개질', days({9: 1, 7: 1}), _now, avoid: ('quiet', 0))?.id,
+          ('quiet', 2),
+        );
+      });
+
       test('쉬는 중: 마지막 캡처가 3~6일 전', () {
         final c = days({8: 2, 4: 1});
         expectFrom('pause', tagInsight('뜨개질', c, _now), [
