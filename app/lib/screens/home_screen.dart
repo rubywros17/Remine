@@ -76,7 +76,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final summary = _summary;
     if (summary == null) return const SizedBox.shrink();
     final store = RemineScope.of(context);
-    final largest = summary.largest;
+    final sorted = summary.sortedForHome;
     final interest = _interest;
     final device = DeviceScope.maybeOf(context);
 
@@ -153,30 +153,33 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           const SizedBox(height: AppSpacing.s16),
+          CategoryRatioBar(items: sorted),
+          const SizedBox(height: AppSpacing.s16),
           Wrap(
             spacing: AppSpacing.s8,
             runSpacing: AppSpacing.s8,
             children: [
-              for (final item in summary.sortedForHome)
+              for (final item in sorted)
                 CategoryPill(
                   item: item,
-                  filled: item.category == largest,
                   onTap: () =>
                       _open(context, CategoryScreen(category: item.category)),
                 ),
-              if (device != null)
-                ExcludedPill(
-                  count: _excludedCount,
-                  onTap: () => _open(
-                    context,
-                    ExcludedScreen(
-                      verdicts: device.capture.verdicts,
-                      reader: device.reader,
-                    ),
-                  ),
-                ),
             ],
           ),
+          if (device != null && _excludedCount > 0) ...[
+            const SizedBox(height: AppSpacing.s8),
+            ExcludedLink(
+              count: _excludedCount,
+              onTap: () => _open(
+                context,
+                ExcludedScreen(
+                  verdicts: device.capture.verdicts,
+                  reader: device.reader,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

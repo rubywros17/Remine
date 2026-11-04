@@ -1,52 +1,42 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../core/helpers.dart';
 import '../core/tokens.dart';
+import '../models/category.dart';
 import '../models/category_summary.dart';
 import '../models/interest.dart';
 import 'pressable_scale.dart';
 import 'capture_thumb.dart';
 import 'small_widgets.dart';
 
-/// 홈의 "분석 제외" 알약: 기기에서만 분류한 숨김 캡처 개수. 연한 테두리로 카테고리 알약과 구분한다.
-class ExcludedPill extends StatelessWidget {
-  const ExcludedPill({super.key, required this.count, required this.onTap});
+/// 홈 칩 아래 작은 글자 링크 "분석 제외 N장 →": 기기에서만 분류한 숨김 캡처 개수. 0장이면 부르는 쪽에서 숨긴다.
+class ExcludedLink extends StatelessWidget {
+  const ExcludedLink({super.key, required this.count, required this.onTap});
 
   final int count;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return PressableScale(
-      onTap: onTap,
-      label: '분석 제외 $count장',
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 48),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppRadii.pill),
-            border: Border.all(color: AppColors.border, width: 1.2),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(LucideIcons.lock, size: 18, color: AppColors.inkSub),
-                const SizedBox(width: AppSpacing.s8),
-                Flexible(
-                  child: Text(
-                    '분석 제외 $count',
-                    style: AppText.label.copyWith(
-                      fontSize: 15,
-                      color: AppColors.inkSub,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: PressableScale(
+        onTap: onTap,
+        label: '분석 제외 $count장',
+        // 글자는 작아도 누르는 영역은 높이 48 이상.
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 48),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            widthFactor: 1,
+            child: Text(
+              '분석 제외 $count장 →',
+              style: AppText.caption.copyWith(color: AppColors.inkSub),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ),
@@ -55,17 +45,112 @@ class ExcludedPill extends StatelessWidget {
   }
 }
 
-/// 홈의 카테고리 알약: 아이콘 · 이름 · 개수 배지. 가장 많은 카테고리([filled])만 셀라돈으로 채운다.
+/// 비율 막대의 칸 폭. 칸마다 [AppCategoryColors.barMinSegment]를 먼저 주고 남는 폭을 개수 비율로 나눈다.
+/// 칸 폭 합 + 간격 합 = [width]. 폭이 최소 합보다 좁으면 똑같이 나눈다.
+List<double> ratioBarWidths(List<int> counts, double width) {
+  if (counts.isEmpty) return const [];
+  final n = counts.length;
+  final available = math.max(0.0, width - AppCategoryColors.barGap * (n - 1));
+  const min = AppCategoryColors.barMinSegment;
+  if (available < min * n) return List.filled(n, available / n);
+  final total = counts.fold(0, (s, c) => s + c);
+  final extra = available - min * n;
+  return [for (final c in counts) min + extra * c / total];
+}
+
+/// 홈 "내 캡처 서랍" 비율 막대: 칩과 같은 순서·데이터에서 0장 카테고리를 뺀 칸. 처음 그려질 때 왼쪽부터 채워진다.
+class CategoryRatioBar extends StatelessWidget {
+  const CategoryRatioBar({super.key, required this.items});
+
+  /// [CategorySummary.sortedForHome] 그대로(0장은 여기서 뺀다).
+  final List<CategorySummaryItem> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final shown = items.where((i) => i.count > 0).toList();
+    if (shown.isEmpty) return const SizedBox.shrink();
+    return Semantics(
+      container: true,
+      label: shown.map((i) => '${i.category.label} ${i.count}장').join(', '),
+      child: ExcludeSemantics(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final w = constraints.maxWidth;
+            final widths = ratioBarWidths([for (final i in shown) i.count], w);
+            final bar = ClipRRect(
+              borderRadius: BorderRadius.circular(AppRadii.pill),
+              child: SizedBox(
+                width: w,
+                height: AppCategoryColors.barHeight,
+                child: Row(
+                  children: [
+                    for (var k = 0; k < shown.length; k++) ...[
+                      if (k > 0)
+                        const SizedBox(width: AppCategoryColors.barGap),
+                      SizedBox(
+                        width: widths[k],
+                        child: ColoredBox(
+                          color: AppCategoryColors.of(shown[k].category),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            );
+            // [Flutter 메모] TweenAnimationBuilder는 처음 한 번 0→1로 움직이고, 같은 값으로 다시 그려지면 움직이지 않는다.
+            // 안쪽 Align(widthFactor: t)이 막대 폭의 t만큼만 차지하고 ClipRect가 나머지를 잘라 왼쪽부터 드러난다.
+            // 바깥 Align은 부모의 "꽉 찬 폭" 제약을 풀어 줘야 이 축소가 먹힌다.
+            return Align(
+              alignment: Alignment.centerLeft,
+              child: TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0, end: 1),
+                duration: AppMotion.duration(context, MotionDuration.slow),
+                curve: AppMotion.standard,
+                builder: (context, t, child) => ClipRect(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: t,
+                    child: child,
+                  ),
+                ),
+                child: bar,
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+/// 막대 칸과 같은 색의 작은 점. 밝은 색은 옅은 테두리로 바탕과 구분한다.
+class CategoryDot extends StatelessWidget {
+  const CategoryDot({super.key, required this.category});
+
+  final Category category;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: AppCategoryColors.dotSize,
+      height: AppCategoryColors.dotSize,
+      decoration: BoxDecoration(
+        color: AppCategoryColors.of(category),
+        shape: BoxShape.circle,
+        border: AppCategoryColors.needsOutline(category)
+            ? Border.all(color: AppCategoryColors.dotOutline)
+            : null,
+      ),
+    );
+  }
+}
+
+/// 홈의 카테고리 알약: 색 점 · 아이콘 · 이름 · 개수 배지. 모두 같은 테두리 스타일.
 class CategoryPill extends StatelessWidget {
-  const CategoryPill({
-    super.key,
-    required this.item,
-    required this.filled,
-    required this.onTap,
-  });
+  const CategoryPill({super.key, required this.item, required this.onTap});
 
   final CategorySummaryItem item;
-  final bool filled;
   final VoidCallback onTap;
 
   @override
@@ -77,17 +162,17 @@ class CategoryPill extends StatelessWidget {
         constraints: const BoxConstraints(minHeight: 48),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: filled ? AppColors.celadon : AppColors.background,
+            color: AppColors.background,
             borderRadius: BorderRadius.circular(AppRadii.pill),
-            border: filled
-                ? null
-                : Border.all(color: AppColors.ink, width: 1.2),
+            border: Border.all(color: AppColors.ink, width: 1.2),
           ),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+            padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                CategoryDot(category: item.category),
+                const SizedBox(width: AppSpacing.s8),
                 Icon(
                   categoryIcon(item.category),
                   size: 18,
@@ -104,7 +189,7 @@ class CategoryPill extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: AppSpacing.s8),
-                CountBadge(count: item.count, dark: filled),
+                CountBadge(count: item.count),
               ],
             ),
           ),
