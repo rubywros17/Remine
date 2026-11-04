@@ -141,6 +141,12 @@ void main() {
       expect(find.bySemanticsLabel('최근 14일 중 4일 캡처'), findsOneWidget);
       expect(find.text('오늘'), findsOneWidget);
       expect(find.text('10.13'), findsOneWidget, reason: '막대 시작 날짜 = 13일 전');
+      // 1·2·3·4일 전 1장씩 → 최근 3일(오늘 포함) 2장 = 그 전 4일 2장, 몰아서·오늘 아님 → 그 외
+      expect(
+        find.text('2주 동안 꾸준히 모았어요').evaluate().length +
+            find.text('2주 중 4일이나 캡처했어요. 진심이네요').evaluate().length,
+        1,
+      );
       expect(find.text('최근 2주'), findsOneWidget);
       expect(find.text('그 전'), findsOneWidget);
       for (final id in [1, 2, 3, 9, 7, 8]) {
@@ -182,6 +188,71 @@ void main() {
         ).last,
         0,
       );
+    });
+
+    group('해석 문장', () {
+      // 14칸, 마지막 칸이 오늘(_now = 10.26)
+      List<int> days(Map<int, int> daysAgo) =>
+          List.generate(14, (i) => daysAgo[13 - i] ?? 0);
+
+      /// 그 상황의 문구 중 하나가 자리표시 없이 채워졌는지.
+      void expectFrom(String key, String? line, List<String> filled) {
+        expect(line, isNotNull);
+        expect(filled, contains(line), reason: key);
+        expect(line, isNot(contains('{')));
+        expect(line, isNot(anyOf(contains('캡쳐'), contains('찍었'))));
+      }
+
+      test('잠잠: 최근 3일 0장이면 가장 많던 날·잠잠한 일수', () {
+        // 7일 전 3장, 5일 전 1장 → 5일째 잠잠, 10월 19일에 가장
+        final c = days({7: 3, 5: 1});
+        expectFrom('quiet', tagInsight('뜨개질', c, _now), [
+          '10월 19일에 가장 빠져 있었어요. 요즘 5일째 잠잠해요',
+          '한창일 땐 하루 3장씩 캡처했는데, 요즘은 조용하네요',
+          '5일째 소식이 없어요. 아직 좋아하죠?',
+        ]);
+      });
+
+      test('다시 늘어남: 최근 3일 합 > 그 전 4일 합 (잠잠보다 아래, 몰아서보다 위)', () {
+        final c = days({0: 3, 1: 1, 4: 1, 10: 3});
+        expectFrom('rising', tagInsight('뜨개질', c, _now), [
+          '요즘 다시 빠지는 중이에요',
+          '잊은 줄 알았는데, 다시 돌아왔네요',
+          '최근 며칠 새 4장이나 모았어요',
+        ]);
+      });
+
+      test('몰아서: 하루가 전체의 절반 이상(2장 이상)', () {
+        final c = days({2: 1, 5: 1, 8: 4});
+        expectFrom('burst', tagInsight('뜨개질', c, _now), [
+          '10월 18일 하루에 4장을 몰아서 캡처했어요',
+          '10월 18일, 무슨 일 있었어요? 하루에 4장!',
+        ]);
+      });
+
+      test('오늘 캡처함 → 그 외 순서', () {
+        final today = days({0: 1, 3: 1, 4: 1, 6: 1, 9: 1});
+        expectFrom('today', tagInsight('뜨개질', today, _now), [
+          '오늘도 캡처했어요. 한창 빠져 있는 중!',
+          '오늘의 관심사도 #뜨개질',
+        ]);
+        final steady = days({1: 1, 3: 1, 4: 1, 6: 1, 9: 1});
+        expectFrom('steady', tagInsight('뜨개질', steady, _now), [
+          '2주 동안 꾸준히 모았어요',
+          '2주 중 5일이나 캡처했어요. 진심이네요',
+        ]);
+      });
+
+      test('같은 태그는 늘 같은 문구, 태그가 다르면 다른 문구도 나온다. 기간 안에 없으면 null', () {
+        final c = days({7: 3, 5: 1});
+        expect(tagInsight('뜨개질', c, _now), tagInsight('뜨개질', c, _now));
+        final lines = {
+          for (final t in ['뜨개질', '가방', '캠핑', '도안', '니트가디건', '러닝'])
+            tagInsight(t, c, _now),
+        };
+        expect(lines.length, greaterThan(1));
+        expect(tagInsight('뜨개질', List.filled(14, 0), _now), isNull);
+      });
     });
 
     test('마지막 캡처 문구: 오늘·어제·N일 전 (시각이 아니라 날짜로)', () {
