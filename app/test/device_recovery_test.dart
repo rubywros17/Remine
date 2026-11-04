@@ -228,7 +228,6 @@ void main() {
       MaterialApp(
         home: SyncGate(
           remote: rig.remote,
-          settings: rig.settings,
           child: Scaffold(
             body: Column(
               children: [

@@ -34,7 +34,6 @@ void main() {
   Widget gate(SyncRig r) => MaterialApp(
     home: SyncGate(
       remote: r.remote,
-      settings: r.settings,
       child: Scaffold(
         body: Column(
           children: [

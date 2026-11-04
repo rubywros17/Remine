@@ -1,8 +1,5 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
 import 'package:remine/app.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
 import 'package:remine/data/remote/push.dart';
@@ -154,26 +151,18 @@ void main() {
     });
   });
 
-  group('알림 안내는 첫 분석 완료 화면의 [홈으로] 뒤에 한 번', () {
+  group('알림 안내는 첫 실행 때 첫 분석 전에 한 번', () {
+    // 실제 앱과 같은 순서: 알림 안내 → 첫 분석(SyncGate)
     Widget gate(SyncRig rig) => MaterialApp(
-      home: SyncGate(
+      home: NotificationGate(
         remote: rig.remote,
         settings: rig.settings,
-        child: const Text('HOME'),
+        child: SyncGate(remote: rig.remote, child: const Text('HOME')),
       ),
     );
 
-    Future<void> finishFirstAnalysis(WidgetTester tester, SyncRig rig) async {
+    Future<void> open(WidgetTester tester, SyncRig rig) async {
       await tester.pumpWidget(gate(rig));
-      await tester.runAsync(() => rig.sync.run());
-      await tester.pump(const Duration(seconds: 3));
-      expect(
-        find.text(notificationTitle),
-        findsNothing,
-        reason: '[홈으로] 전에는 묻지 않는다',
-      );
-      await tester.ensureVisible(find.text('홈으로')); // 오류 문구가 있으면 버튼이 아래로 밀린다
-      await tester.tap(find.text('홈으로'));
       await tester.runAsync(pumpEventQueue);
       await tester.pump();
     }
@@ -184,93 +173,94 @@ void main() {
       await tester.pump();
     }
 
-    Future<SyncRig> newRig(
-      WidgetTester tester,
-      FakePushClient push, {
-      RecordingClient? client,
-    }) async => (await tester.runAsync(
-      () => SyncRig.create(photos: const [], push: push, client: client),
-    ))!;
+    Future<SyncRig> newRig(WidgetTester tester, FakePushClient push) async =>
+        (await tester.runAsync(
+          () => SyncRig.create(photos: const [], push: push),
+        ))!;
 
-    testWidgets('[알림 받기] → 시스템 권한 창 → 허용이면 켜고 토큰을 올린다', (tester) async {
+    String registerBody(SyncRig rig) => rig.client.sent
+        .singleWhere((r) => r.method == 'POST' && r.path == '/api/devices')
+        .utf8Text;
+
+    testWidgets('첫 분석 전에 묻고, 시스템 창은 [알림 받기] 뒤에만 뜬다', (tester) async {
       final push = FakePushClient();
       final rig = await newRig(tester, push);
 
-      await finishFirstAnalysis(tester, rig);
+      await open(tester, rig);
+
       expect(find.text(notificationTitle), findsOneWidget);
       expect(push.permissionRequests, 0, reason: '안내 화면 전에는 시스템 창을 띄우지 않는다');
-
-      await choose(tester, '알림 받기');
-
-      expect(push.permissionRequests, 1);
-      expect(find.text('HOME'), findsOneWidget);
-      expect(await rig.settings.notificationsEnabled(), isTrue);
-      expect(
-        rig.client.sent.where((r) => r.method == 'PUT').map((r) => r.utf8Text),
-        ['{"fcmToken":"fcm-test-token"}'],
-      );
+      expect(rig.client.sent, isEmpty, reason: '고르기 전에는 첫 분석(기기 등록)을 시작하지 않는다');
     });
 
-    testWidgets('권한 창에서 거부하면 꺼짐으로 저장한다', (tester) async {
+    testWidgets('[알림 받기] → 허용이면 켜고, 첫 기기 등록에 토큰을 싣는다', (tester) async {
+      final push = FakePushClient();
+      final rig = await newRig(tester, push);
+
+      await open(tester, rig);
+      await choose(tester, '알림 받기');
+      await tester.runAsync(() => rig.sync.run());
+
+      expect(push.permissionRequests, 1);
+      expect(await rig.settings.notificationsEnabled(), isTrue);
+      expect(registerBody(rig), '{"fcmToken":"fcm-test-token"}');
+    });
+
+    testWidgets('권한 창에서 거부하면 꺼짐으로 저장하고 첫 분석은 그대로 진행한다', (tester) async {
       final rig = await newRig(tester, FakePushClient()..grant = false);
 
-      await finishFirstAnalysis(tester, rig);
+      await open(tester, rig);
       await choose(tester, '알림 받기');
+      await tester.runAsync(() => rig.sync.run());
 
       expect(await rig.settings.notificationsEnabled(), isFalse);
+      expect(find.text(notificationTitle), findsNothing);
+      expect(registerBody(rig), '{"fcmToken":null}');
     });
 
     testWidgets('[나중에]면 권한을 묻지 않고 꺼짐, 다음 실행에는 다시 묻지 않는다', (tester) async {
       final push = FakePushClient();
       final rig = await newRig(tester, push);
 
-      await finishFirstAnalysis(tester, rig);
+      await open(tester, rig);
       await choose(tester, '나중에');
 
       expect(push.permissionRequests, 0);
-      expect(find.text('HOME'), findsOneWidget);
+      expect(find.text(notificationTitle), findsNothing);
       expect(await rig.settings.notificationsEnabled(), isFalse);
 
-      // 다시 켜면 첫 분석 화면 없이 바로 홈 → 다시 묻지 않는다
       await tester.pumpWidget(const SizedBox());
-      await tester.pumpWidget(gate(rig));
+      await open(tester, rig);
+      expect(find.text(notificationTitle), findsNothing);
+    });
+
+    testWidgets('뒤로 가기는 [나중에]와 같다', (tester) async {
+      final push = FakePushClient();
+      final rig = await newRig(tester, push);
+
+      await open(tester, rig);
+      await tester.binding.handlePopRoute();
+      await tester.runAsync(pumpEventQueue);
+      await tester.pump();
+
+      expect(push.permissionRequests, 0);
+      expect(await rig.settings.notificationsEnabled(), isFalse);
+      expect(find.text(notificationTitle), findsNothing);
+    });
+
+    testWidgets('첫 분석 완료 화면의 [홈으로] 뒤에는 묻지 않는다', (tester) async {
+      final rig = await newRig(tester, FakePushClient());
+      await tester.pumpWidget(
+        MaterialApp(home: SyncGate(remote: rig.remote, child: const Text('HOME'))),
+      );
       await tester.runAsync(() => rig.sync.run());
+      await tester.pump(const Duration(seconds: 3));
+      await tester.ensureVisible(find.text('홈으로'));
+      await tester.tap(find.text('홈으로'));
       await tester.pump();
-      expect(find.text('HOME'), findsOneWidget);
-      expect(find.text(notificationTitle), findsNothing);
-    });
-
-    testWidgets('회귀: 첫 분석이 실패로 끝나도 [홈으로] 뒤에 묻는다', (tester) async {
-      // 예전에는 첫 run이 성공해야만 물어서, 실기기에서 시간 초과가 나면 다시 묻는 경로가 없었다.
-      final rig = await newRig(
-        tester,
-        FakePushClient(),
-        client: RecordingClient()..throwOnSend = Exception('offline'),
-      );
-
-      await finishFirstAnalysis(tester, rig);
-
-      expect(find.text(notificationTitle), findsOneWidget);
-    });
-
-    testWidgets('"홈에서 먼저 볼래요"로 중간에 나가면 묻지 않는다', (tester) async {
-      final rig = await newRig(
-        tester,
-        FakePushClient(),
-        client: RecordingClient(
-          responder: (r) => Completer<http.StreamedResponse>().future,
-        ),
-      );
-      await tester.pumpWidget(gate(rig));
-      await tester.pump();
-      await tester.pump();
-
-      await choose(tester, '홈에서 먼저 볼래요');
 
       expect(find.text('HOME'), findsOneWidget);
       expect(find.text(notificationTitle), findsNothing);
-      // 응답 없는 요청의 시간 제한을 흘려보내 대기 타이머를 비운다
-      await tester.pump(const Duration(minutes: 3));
     });
   });
 

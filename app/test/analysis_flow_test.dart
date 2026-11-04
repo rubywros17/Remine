@@ -210,8 +210,8 @@ void main() {
       await tester.pump();
       expect(find.text('HOME'), findsOneWidget);
       expect(rig.sync.isRunning, isTrue);
-      // 정리: 응답 없는 요청의 2분 시간 제한을 흘려보내 대기 타이머를 비운다.
-      await tester.pump(const Duration(minutes: 3));
+      // 정리: 응답 없는 요청의 5분 시간 제한(RemineApi.timeout)을 흘려보내 대기 타이머를 비운다.
+      await tester.pump(const Duration(minutes: 6));
       expect(rig.sync.isRunning, isFalse);
     });
   });
