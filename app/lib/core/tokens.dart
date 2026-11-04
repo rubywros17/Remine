@@ -41,17 +41,19 @@ abstract final class AppColors {
 abstract final class AppCategoryColors {
   static Color of(Category c) => switch (c) {
     Category.shopping => AppColors.celadon,
-    Category.entertainment => AppColors.lemon,
-    Category.place => AppColors.darkGray,
-    Category.info => const Color(0xFFB9D6DB),
-    Category.chat => AppBrain.subtitle,
-    Category.schedule => const Color(0xFFF6C6B5),
+    Category.entertainment => Color(0xFFA8C49A),
+    Category.place => Color(0xFFC3B8E0),
+    Category.info => AppColors.lemon,
+    Category.chat => Color(0xFFA9B7C6),
+    Category.schedule => Color(0xFFF2B8A0),
     Category.etc => AppColors.border,
   };
 
-  /// 밝은 색 점은 바탕과 구분되게 옅은 테두리(ink 15%)를 두른다. 장소(다크그레이)만 필요 없다.
+  /// 7색 모두 밝아서 점은 바탕과 구분되게 옅은 테두리(ink 15%)를 두른다.
   static const dotOutline = Color(0x26111111);
-  static bool needsOutline(Category c) => c != Category.place;
+
+  /// 카테고리 알약 테두리(검정보다 부드러운 차콜).
+  static const pillBorder = AppColors.darkGray;
 
   static const double dotSize = 9;
   static const double barHeight = 30;

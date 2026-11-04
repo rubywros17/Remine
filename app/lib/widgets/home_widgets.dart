@@ -187,9 +187,7 @@ class CategoryDot extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppCategoryColors.of(category),
         shape: BoxShape.circle,
-        border: AppCategoryColors.needsOutline(category)
-            ? Border.all(color: AppCategoryColors.dotOutline)
-            : null,
+        border: Border.all(color: AppCategoryColors.dotOutline),
       ),
     );
   }
@@ -213,7 +211,7 @@ class CategoryPill extends StatelessWidget {
           decoration: BoxDecoration(
             color: AppColors.background,
             borderRadius: BorderRadius.circular(AppRadii.pill),
-            border: Border.all(color: AppColors.ink, width: 1.2),
+            border: Border.all(color: AppCategoryColors.pillBorder, width: 1.2),
           ),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
