@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 import '../core/helpers.dart';
@@ -16,13 +18,21 @@ import 'detail_screen.dart';
 /// 제목 아래에 "최근 2주 15장 · 전체 40장 · 3일 전 마지막"과 날짜별 막대([windowDays]칸)를 같이 보여 준다.
 /// 그리드도 "최근 2주"와 "그 전"으로 나눈다. 상세의 좌우 넘기기는 이 목록(최근 → 그 전) 안에서만 돈다.
 class TagScreen extends StatefulWidget {
-  const TagScreen({super.key, required this.tag, this.windowDays = 14});
+  const TagScreen({
+    super.key,
+    required this.tag,
+    this.windowDays = 14,
+    this.random,
+  });
 
   /// '#' 없는 태그 이름.
   final String tag;
 
   /// 관심사 집계 기간(서버 `windowDays`). 관심사 카드에서 들어오면 그 값, 아니면 서버 기본값과 같은 14.
   final int windowDays;
+
+  /// 해석 문장 고르기용. 테스트에서 시드를 넣어 결정적으로 만든다.
+  final Random? random;
 
   @override
   State<TagScreen> createState() => _TagScreenState();
@@ -34,6 +44,13 @@ class _TagScreenState extends State<TagScreen> {
   // 정확히 하려면 서버 목록 응답에 일자별 개수를 같이 내려 준다.
   static const _pageSize = 100;
 
+  /// 태그별로 마지막에 보여 준 해석 문장. 다시 들어오면 가능하면 다른 문장을 고른다(앱 실행 중 메모리만).
+  static final _lastInsight = <String, String>{};
+
+  // 해석 문장은 화면에 들어올 때 한 번 정한다: 리빌드·새로고침에도 같은 문장.
+  late final int _pick;
+  String? _avoidInsight;
+
   int _seenRevision = -1;
   int _loadSeq = 0;
   bool _loaded = false;
@@ -44,6 +61,13 @@ class _TagScreenState extends State<TagScreen> {
 
   final Map<int, GlobalKey> _tileKeys = {};
   List<int> _openSnapshot = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _pick = (widget.random ?? Random()).nextInt(1 << 30);
+    _avoidInsight = _lastInsight[widget.tag];
+  }
 
   @override
   void didChangeDependencies() {
@@ -114,6 +138,17 @@ class _TagScreenState extends State<TagScreen> {
     final window = windowLabel(widget.windowDays);
     final recent = _items.take(_recentCount).toList();
     final older = _items.skip(_recentCount).toList();
+    final insight = _loaded
+        ? tagInsight(
+            widget.tag,
+            _counts,
+            _today,
+            lastCapture: _items.firstOrNull?.takenAt,
+            pick: _pick,
+            avoid: _avoidInsight,
+          )
+        : null;
+    if (insight != null) _lastInsight[widget.tag] = insight;
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
@@ -172,15 +207,9 @@ class _TagScreenState extends State<TagScreen> {
                   style: AppText.caption.copyWith(color: AppColors.inkSub),
                 ),
                 // 결론(해석 문장) → 근거(막대) 순서
-                if (tagInsight(
-                      widget.tag,
-                      _counts,
-                      _today,
-                      lastCapture: _items.firstOrNull?.takenAt,
-                    )
-                    case final line?) ...[
+                if (insight != null) ...[
                   const SizedBox(height: AppSpacing.s12),
-                  Text(line, style: AppText.body),
+                  Text(insight, style: AppText.body),
                 ],
                 const SizedBox(height: AppSpacing.s16),
                 DailyBars(counts: _counts, today: _today),
@@ -243,7 +272,7 @@ List<int> dailyCounts(List<ScreenshotItem> items, DateTime now, int days) {
   return counts;
 }
 
-/// 해석 문장 문구. 상황마다 2~3개이고 [tagInsight]가 태그 이름으로 하나를 고른다.
+/// 해석 문장 문구. 상황마다 2~3개이고 [tagInsight]가 그중 하나를 고른다.
 /// 자리표시: {tag} 태그 이름, {m}·{d} 날짜, {x} 마지막 캡처 후 일수, {n} 장수·일수, {window} 기간("2주").
 /// 표기는 "캡처"("캡쳐"·"찍었어요" 쓰지 않음).
 const insightPhrases = {
@@ -273,12 +302,15 @@ const insightPhrases = {
 /// 상황은 마지막 캡처로부터 지난 날짜로 먼저 나눈다: 오래 잠잠(기간 안 0장 = 2주 이상) → 잠잠(7일 이상, 카드와 같은 기준)
 /// → 쉬는 중(3일 이상). 그보다 최근이면 새로 생김(최근 3일에만 있음)
 /// → 다시 늘어남(최근 3일 > 그 전 4일, 그보다 앞에도 있었음) → 몰아서(하루가 전체의 절반 이상)
-/// → 오늘 캡처함 → 그 외. 문구는 태그 이름 해시로 골라 같은 태그는 늘 같은 문구다.
+/// → 오늘 캡처함 → 그 외.
+/// 문구는 그 상황의 문구 중 [pick]번째(나머지 연산)이고, [avoid]와 같은 문장은 다른 문구가 있으면 뺀다.
 String? tagInsight(
   String tag,
   List<int> counts,
   DateTime today, {
   DateTime? lastCapture,
+  int pick = 0,
+  String? avoid,
 }) {
   final total = counts.fold(0, (a, b) => a + b);
   if (total == 0 && lastCapture == null) return null;
@@ -315,16 +347,18 @@ String? tagInsight(
     _ when counts.last > 0 => ('today', 0),
     _ => ('steady', counts.where((c) => c > 0).length),
   };
-  final phrases = insightPhrases[key]!;
-  // String.hashCode는 플랫폼(웹·안드로이드)마다 다를 수 있어 직접 센다.
-  final hash = tag.codeUnits.fold(0, (h, c) => (h * 31 + c) & 0x7fffffff);
-  return phrases[hash % phrases.length]
-      .replaceAll('{tag}', tag)
-      .replaceAll('{m}', '${peakDay.month}')
-      .replaceAll('{d}', '${peakDay.day}')
-      .replaceAll('{x}', '$sinceLast')
-      .replaceAll('{n}', '$n')
-      .replaceAll('{window}', windowLabel(last));
+  final lines = [
+    for (final p in insightPhrases[key]!)
+      p
+          .replaceAll('{tag}', tag)
+          .replaceAll('{m}', '${peakDay.month}')
+          .replaceAll('{d}', '${peakDay.day}')
+          .replaceAll('{x}', '$sinceLast')
+          .replaceAll('{n}', '$n')
+          .replaceAll('{window}', windowLabel(last)),
+  ];
+  if (lines.length > 1) lines.remove(avoid);
+  return lines[pick % lines.length];
 }
 
 /// 날짜별 캡처 수 막대. 있는 날은 셀라돈, 0인 날은 테두리색 낮은 막대. 아래 양끝에 시작 날짜와 "오늘".

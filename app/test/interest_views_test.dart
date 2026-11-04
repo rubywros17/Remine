@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -309,14 +310,16 @@ void main() {
         ]);
       });
 
-      test('같은 태그는 늘 같은 문구, 태그가 다르면 다른 문구도 나온다. 기간 안에 없으면 null', () {
-        final c = days({7: 3, 5: 1});
-        expect(tagInsight('뜨개질', c, _now), tagInsight('뜨개질', c, _now));
-        final lines = {
-          for (final t in ['뜨개질', '가방', '캠핑', '도안', '니트가디건', '러닝'])
-            tagInsight(t, c, _now),
-        };
-        expect(lines.length, greaterThan(1));
+      test('pick번째 문구를 고르고, avoid와 같은 문장은 빼고 고른다. 기간 안에 없으면 null', () {
+        final c = days({8: 2, 4: 1}); // 쉬는 중: 문구 2개
+        const first = '요즘 4일째 조용하네요';
+        const second = '잠깐 쉬어가는 중이네요';
+        expect(tagInsight('뜨개질', c, _now, pick: 0), first);
+        expect(tagInsight('뜨개질', c, _now, pick: 1), second);
+        expect(tagInsight('뜨개질', c, _now, pick: 2), first, reason: '나머지 연산');
+        for (final pick in [0, 1, 2, 3]) {
+          expect(tagInsight('뜨개질', c, _now, pick: pick, avoid: first), second);
+        }
         expect(tagInsight('뜨개질', List.filled(14, 0), _now), isNull);
       });
     });
@@ -367,6 +370,43 @@ void main() {
       final settled = barHeight();
       await tester.pumpAndSettle();
       expect(barHeight(), settled);
+    });
+
+    testWidgets('해석 문장은 들어올 때 한 번 정하고, 리빌드·새로고침에도 그대로, 다시 들어오면 직전과 다른 문장', (
+      tester,
+    ) async {
+      // 뜨개질 시드는 "그 외"(문구 2개)
+      const steady = ['2주 동안 꾸준히 모았어요', '2주 중 4일이나 캡처했어요. 진심이네요'];
+      String shown() =>
+          steady.singleWhere((t) => find.text(t).evaluate().isNotEmpty);
+
+      final store = RemineStore(
+        FakeScreenshotRepository(now: () => _now, seed: _seed),
+        now: () => _now,
+      );
+      Widget screen(Key key) => RemineScope(
+        store: store,
+        child: MaterialApp(
+          home: TagScreen(key: key, tag: '뜨개질', random: Random(7)),
+        ),
+      );
+
+      await tester.pumpWidget(screen(const ValueKey(1)));
+      await tester.pumpAndSettle();
+      final first = shown();
+
+      store.refresh(); // 목록 다시 불러오기
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -200));
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, 200));
+      await tester.pumpAndSettle();
+      expect(shown(), first);
+
+      // 같은 시드로 다시 들어와도(새 화면) 직전 문장은 피한다
+      await tester.pumpWidget(screen(const ValueKey(2)));
+      await tester.pumpAndSettle();
+      expect(shown(), isNot(first));
     });
 
     testWidgets('캡처를 누르면 상세가 열리고 좌우 넘기기는 이 목록(최근 → 그 전) 안에서만', (tester) async {
