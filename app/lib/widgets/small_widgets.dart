@@ -173,12 +173,9 @@ class BackButtonCircle extends StatelessWidget {
 
 /// 개수 배지(원형에 가까운 알약).
 class CountBadge extends StatelessWidget {
-  const CountBadge({super.key, required this.count, this.dark = false});
+  const CountBadge({super.key, required this.count});
 
   final int count;
-
-  /// true면 ink 채움 + 흰 글자(가장 많은 카테고리 알약 안).
-  final bool dark;
 
   @override
   Widget build(BuildContext context) {
@@ -187,12 +184,12 @@ class CountBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8),
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: dark ? AppColors.ink : AppColors.chip,
+        color: AppColors.chip,
         borderRadius: BorderRadius.circular(AppRadii.pill),
       ),
       child: Text(
         '$count',
-        style: AppText.numBadge(color: dark ? AppColors.white : AppColors.ink),
+        style: AppText.numBadge(),
       ),
     );
   }

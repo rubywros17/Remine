@@ -92,7 +92,9 @@ void main() {
       }
     });
 
-    testWidgets('알약은 개수 내림차순이고 기타가 마지막이며, 가장 많은 쇼핑만 셀라돈으로 채운다', (tester) async {
+    testWidgets('알약은 개수 내림차순이고 기타가 마지막이며, 모두 같은 테두리 스타일이다(채움 강조 없음)', (
+      tester,
+    ) async {
       await _pumpApp(tester);
 
       double top(String label) => tester.getTopLeft(find.text(label)).dy;
@@ -103,24 +105,17 @@ void main() {
       ); // 렌더됨
       expect(top('기타'), greaterThanOrEqualTo(top('장소'))); // 기타는 마지막 줄 쪽
 
-      final filled = find.ancestor(
-        of: find.text('쇼핑'),
-        matching: find.byWidgetPredicate(
-          (w) =>
-              w is DecoratedBox &&
-              (w.decoration as BoxDecoration).color == AppColors.celadon,
-        ),
-      );
-      expect(filled, findsWidgets);
-      final notFilled = find.ancestor(
-        of: find.text('장소'),
-        matching: find.byWidgetPredicate(
-          (w) =>
-              w is DecoratedBox &&
-              (w.decoration as BoxDecoration).color == AppColors.celadon,
-        ),
-      );
-      expect(notFilled, findsNothing);
+      for (final label in ['쇼핑', '장소']) {
+        final filled = find.ancestor(
+          of: find.text(label),
+          matching: find.byWidgetPredicate(
+            (w) =>
+                w is DecoratedBox &&
+                (w.decoration as BoxDecoration).color == AppColors.celadon,
+          ),
+        );
+        expect(filled, findsNothing, reason: label);
+      }
     });
 
     testWidgets('관심사 탭은 관심사 카드 목록이고, 검색 탭은 빈 화면 자리다', (tester) async {

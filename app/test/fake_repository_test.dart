@@ -60,13 +60,12 @@ void main() {
       expect(shopping.recentAssetIds.length, 4);
     });
 
-    test('홈 정렬은 개수 내림차순에 기타가 마지막이고, 가장 많은 카테고리를 알려준다', () async {
+    test('홈 정렬은 개수 내림차순에 기타가 마지막이다', () async {
       final summary = await _repo().summary();
       final sorted = summary.sortedForHome.map((c) => c.category).toList();
 
       expect(sorted.first, Category.shopping);
       expect(sorted.last, Category.etc);
-      expect(summary.largest, Category.shopping);
     });
   });
 

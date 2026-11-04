@@ -43,22 +43,18 @@ class CategorySummary {
   CategorySummaryItem of(Category category) =>
       categories.firstWhere((c) => c.category == category);
 
-  /// 홈 알약 순서: 개수 내림차순, 기타는 항상 마지막(같은 개수면 서버 순서 유지).
+  /// 홈 알약·비율 막대 순서: 개수 내림차순, 같은 개수면 [Category] 고정 순서, 기타는 개수와 상관없이 맨 끝.
+  ///
+  /// [Dart 메모] `List.sort`는 같은 값의 순서를 보장하지 않으므로 동점 기준(enum `index`)을 직접 넣는다.
   List<CategorySummaryItem> get sortedForHome {
-    final list = [...categories];
-    list.sort((a, b) {
-      if (a.category == Category.etc) return b.category == Category.etc ? 0 : 1;
-      if (b.category == Category.etc) return -1;
-      return b.count.compareTo(a.count);
+    int rank(CategorySummaryItem c) => c.category == Category.etc ? 1 : 0;
+    return [...categories]..sort((a, b) {
+      final byEtc = rank(a).compareTo(rank(b));
+      if (byEtc != 0) return byEtc;
+      final byCount = b.count.compareTo(a.count);
+      return byCount != 0
+          ? byCount
+          : a.category.index.compareTo(b.category.index);
     });
-    return list;
-  }
-
-  /// 개수가 가장 많은 카테고리(0장뿐이면 null). 홈에서 셀라돈으로 채운다.
-  Category? get largest {
-    final nonEmpty = categories.where((c) => c.count > 0).toList();
-    if (nonEmpty.isEmpty) return null;
-    nonEmpty.sort((a, b) => b.count.compareTo(a.count));
-    return nonEmpty.first.category;
   }
 }

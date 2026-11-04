@@ -29,7 +29,12 @@ Finder get _pager => find.byType(PageView);
 Finder get _card => find.descendant(of: _pager, matching: find.byType(Hero));
 
 Future<void> _openShoppingDetail(WidgetTester tester, {int tile = 0}) async {
-  await tester.ensureVisible(find.text('쇼핑')); // 낮은 화면에서는 스크롤해야 보인다
+  // 낮은 화면에서는 알약이 홈 ListView의 미리 그리는 범위 밖이라 아직 없을 수 있다 → 스크롤하며 찾는다.
+  await tester.scrollUntilVisible(
+    find.text('쇼핑'),
+    200,
+    scrollable: find.byType(Scrollable).first,
+  );
   await tester.pumpAndSettle();
   await tester.tap(find.text('쇼핑'));
   await tester.pumpAndSettle();

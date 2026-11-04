@@ -2,6 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../models/category.dart';
+
 // 디자인 토큰(색·폰트·모서리·간격·모션)은 이 파일 한 곳에만 둔다. 값의 근거는 docs/design.md.
 //
 // [Dart 메모] `abstract final class`는 "인스턴스를 만들 수도, 상속할 수도 없는" 클래스다.
@@ -33,6 +35,34 @@ abstract final class AppColors {
 
   /// 선택 전 빈 원의 얇은 그림자(밝은 사진 위에서도 보이게).
   static const selectionRingShadow = Color(0x59111111);
+}
+
+/// 카테고리 색(홈 비율 막대의 칸 · 알약 앞 점). 기존 토큰과 같은 값은 그 토큰을 그대로 쓴다.
+abstract final class AppCategoryColors {
+  static Color of(Category c) => switch (c) {
+    Category.shopping => AppColors.celadon,
+    Category.entertainment => Color(0xFFA8C49A),
+    Category.place => Color(0xFFC3B8E0),
+    Category.info => AppColors.lemon,
+    Category.chat => Color(0xFFA9B7C6),
+    Category.schedule => Color(0xFFF2B8A0),
+    Category.etc => AppColors.border,
+  };
+
+  /// 7색 모두 밝아서 점은 바탕과 구분되게 옅은 테두리(ink 15%)를 두른다.
+  static const dotOutline = Color(0x26111111);
+
+  /// 카테고리 알약 테두리(검정보다 부드러운 차콜).
+  static const pillBorder = AppColors.darkGray;
+
+  static const double dotSize = 9;
+  static const double barHeight = 30;
+  static const double barGap = 2;
+  static const double barMinSegment = 8; // 1장이어도 보이는 최소 칸 폭
+
+  /// "분석 제외" 알약 점선 테두리(inkSub): 선 길이 · 빈칸.
+  static const double excludedDash = 4;
+  static const double excludedDashGap = 3;
 }
 
 /// 관심사 탭 진입 "머릿속 캡처 지도"(디자인 캔버스 4안 · 관심사 · 머릿속 캡처 지도). 배경은 [AppColors.darkGray].
