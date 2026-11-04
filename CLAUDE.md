@@ -74,7 +74,7 @@ cd server
 - 배포: `deploy/`(compose·Caddyfile·bootstrap·backup) + `.github/workflows/deploy.yml`(main push → test → GHCR arm64 → EC2 재시작). 운영은 `prod` 프로필(`application-prod.yaml`: actuator health만, dev API 404, 로그 INFO 고정).
 - 운영 비밀값은 EC2 `/opt/remine/.env`·`secrets/`에만. GitHub Secrets에는 SSH 정보(`EC2_HOST`·`EC2_USER`·`EC2_SSH_KEY`·`EC2_KNOWN_HOSTS`)만, 도메인은 Variables `REMINE_DOMAIN`.
 - 배포 구성을 PC에서 시험할 때는 `docker compose -p remine-deploytest`로(로컬 개발 DB `remine-postgres-1`과 이름이 겹치지 않게). 서버 이미지 확인: `docker buildx build --platform linux/arm64 server`.
-- 릴리스 APK: `REMINE_KEY_PROPERTIES=E:/dev/secrets/remine/key.properties flutter build apk --release --dart-define=DATA=device --dart-define=API_BASE=https://도메인`. 키 설정이 없으면 debug 키로 서명되니 배포용으로 쓰지 말 것.
+- 릴리스 APK: `REMINE_KEY_PROPERTIES=E:/dev/secrets/remine/key.properties flutter build apk --release --split-per-abi --dart-define=DATA=device --dart-define=API_BASE=https://도메인`. 갤럭시는 `build/app/outputs/flutter-apk/app-arm64-v8a-release.apk`(34.6MB, ABI 통합 83.8MB 대비 −59%). 키 설정이 없으면 debug 키로 서명되니 배포용으로 쓰지 말 것.
 - 서버 주소는 `--dart-define=API_BASE`. 릴리스는 `https://`만 받고, 평문 HTTP(localhost)는 `app/android/app/src/debug`의 network security config로 디버그 빌드에서만 열려 있다.
 - 서버로 보낼 것은 `app/lib/data/remote/sync_plan.dart`의 `planFor` 한 곳에서만 정한다. 파일명·앱 이름은 보내지 않는다(asset id·촬영 시각·텍스트·동의한 축소 이미지뿐). 전송 금지 테스트(`test/sync_send_guard_test.dart`)가 요청 본문 바이트를 검사한다.
 
