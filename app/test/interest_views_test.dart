@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:remine/core/tokens.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
 import 'package:remine/data/remine_store.dart';
 import 'package:remine/models/category.dart';
@@ -134,7 +135,12 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('#뜨개질'), findsOneWidget);
-      expect(find.text('최근 2주 4장 · 전체 6장'), findsOneWidget);
+      expect(find.text('최근 2주 4장 · 전체 6장 · 어제 마지막'), findsOneWidget);
+      expect(find.text('4'), findsOneWidget, reason: '오른쪽 위 큰 숫자 = 최근 2주 장수');
+      expect(find.bySemanticsLabel('#뜨개질 최근 2주 4장'), findsOneWidget);
+      expect(find.bySemanticsLabel('최근 14일 중 4일 캡처'), findsOneWidget);
+      expect(find.text('오늘'), findsOneWidget);
+      expect(find.text('10.13'), findsOneWidget, reason: '막대 시작 날짜 = 13일 전');
       expect(find.text('최근 2주'), findsOneWidget);
       expect(find.text('그 전'), findsOneWidget);
       for (final id in [1, 2, 3, 9, 7, 8]) {
@@ -151,6 +157,79 @@ void main() {
         tester.getTopLeft(find.byKey(const ValueKey('tile-3'))).dy,
         lessThan(tester.getTopLeft(find.byKey(const ValueKey('tile-7'))).dy),
       );
+    });
+
+    test('날짜별 개수는 달력 날짜로 세고 오늘이 마지막 칸, 기간 밖은 버린다', () {
+      final items = [
+        _shot(1, 0, Category.etc, []),
+        _shot(2, 0, Category.etc, []),
+        _shot(3, 1, Category.etc, []),
+        _shot(4, 13, Category.etc, []),
+        _shot(5, 14, Category.etc, []),
+      ];
+      final counts = dailyCounts(items, _now, 14);
+      expect(counts.length, 14);
+      expect(counts.last, 2);
+      expect(counts[12], 1);
+      expect(counts.first, 1);
+      expect(counts.fold(0, (a, b) => a + b), 4);
+      // 24시간이 안 지났어도 자정을 넘기면 어제 칸이다
+      expect(
+        dailyCounts(
+          [_shot(6, 0, Category.etc, [])],
+          DateTime(2026, 10, 27, 0, 30),
+          14,
+        ).last,
+        0,
+      );
+    });
+
+    test('마지막 캡처 문구: 오늘·어제·N일 전 (시각이 아니라 날짜로)', () {
+      expect(lastSeenLabel(DateTime(2026, 10, 26, 0, 1), _now), '오늘 마지막');
+      expect(
+        lastSeenLabel(
+          DateTime(2026, 10, 25, 23, 59),
+          DateTime(2026, 10, 26, 0, 1),
+        ),
+        '어제 마지막',
+      );
+      expect(lastSeenLabel(DateTime(2026, 10, 23, 13), _now), '3일 전 마지막');
+    });
+
+    testWidgets('막대는 처음에 올라오고, 애니메이션 줄이기면 바로 다 그려진다', (tester) async {
+      double barHeight() => tester
+          .getSize(
+            find
+                .descendant(
+                  of: find.byType(DailyBars),
+                  matching: find.byWidgetPredicate(
+                    (w) =>
+                        w is Container &&
+                        w.decoration is BoxDecoration &&
+                        (w.decoration! as BoxDecoration).color ==
+                            AppColors.celadon,
+                  ),
+                )
+                .first,
+          )
+          .height;
+
+      await tester.pumpWidget(_scoped(const TagScreen(tag: '뜨개질')));
+      await tester.pump(); // 목록 로드
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(barHeight(), lessThan(40));
+      await tester.pumpAndSettle();
+      expect(barHeight(), greaterThan(0));
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(
+        _scoped(const TagScreen(tag: '뜨개질'), reduceMotion: true),
+      );
+      await tester.pump();
+      await tester.pump();
+      final settled = barHeight();
+      await tester.pumpAndSettle();
+      expect(barHeight(), settled);
     });
 
     testWidgets('캡처를 누르면 상세가 열리고 좌우 넘기기는 이 목록(최근 → 그 전) 안에서만', (tester) async {

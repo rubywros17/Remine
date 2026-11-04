@@ -184,6 +184,19 @@ void defineLayoutMatrix({
       _expectClean('카테고리 $label', errors);
     });
 
+    testWidgets('관심사 태그 화면(형광펜 제목·큰 숫자·날짜별 막대) · $label', (tester) async {
+      final errors = await _errorsDuring(() async {
+        await _pump(tester, size, scale);
+        await _tap(tester, find.text('#니트가디건')); // 홈 관심사 카드 → 태그 화면
+        expect(
+          find.bySemanticsLabel(RegExp(r'^최근 \d+일 중 \d+일 캡처$')),
+          findsOneWidget,
+          reason: '태그 화면(날짜별 막대)이 아님',
+        );
+      });
+      _expectClean('관심사 태그 화면 $label', errors);
+    });
+
     testWidgets('상세 · $label', (tester) async {
       final errors = await _errorsDuring(() async {
         await _pump(tester, size, scale);
