@@ -203,14 +203,50 @@ void main() {
         expect(line, isNot(anyOf(contains('캡쳐'), contains('찍었'))));
       }
 
-      test('잠잠: 최근 3일 0장이면 가장 많던 날·잠잠한 일수', () {
-        // 7일 전 3장, 5일 전 1장 → 5일째 잠잠, 10월 19일에 가장
-        final c = days({7: 3, 5: 1});
+      test('잠잠: 마지막 캡처가 7일 이상 전이면 가장 많던 날·잠잠한 일수', () {
+        // 9일 전 3장, 7일 전 1장 → 7일째 잠잠, 10월 17일에 가장
+        final c = days({9: 3, 7: 1});
         expectFrom('quiet', tagInsight('뜨개질', c, _now), [
-          '10월 19일엔 푹 빠져 있었는데, 요즘 5일째 조용하네요',
+          '10월 17일엔 푹 빠져 있었는데, 요즘 7일째 조용하네요',
           '한창일 땐 하루 3장씩 캡처했는데, 잊고 있었나요?',
-          '5일째 소식이 없어요. 아직 관심 있죠?',
+          '7일째 소식이 없어요. 아직 관심 있죠?',
         ]);
+      });
+
+      test('쉬는 중: 마지막 캡처가 3~6일 전', () {
+        final c = days({8: 2, 4: 1});
+        expectFrom('pause', tagInsight('뜨개질', c, _now), [
+          '요즘 4일째 조용하네요',
+          '잠깐 쉬어가는 중이네요',
+        ]);
+      });
+
+      test('마지막 캡처로부터 지난 날짜 경계: 2·3·6·7·13·14일', () {
+        /// 문장이 어느 상황의 문구로 만들어졌는지(자리표시는 아무 글자로 보고 맞춰 본다).
+        String situationOf(String? line) => insightPhrases.entries
+            .firstWhere(
+              (e) => e.value.any(
+                (p) => RegExp(
+                  '^${RegExp.escape(p).replaceAll(RegExp(r'\\{\w+\\}'), '.+')}\$',
+                ).hasMatch(line!),
+              ),
+            )
+            .key;
+        String at(int daysAgo) => situationOf(
+          tagInsight(
+            '뜨개질',
+            days({daysAgo: 1}),
+            _now,
+            lastCapture: _now.subtract(Duration(days: daysAgo)),
+          ),
+        );
+
+        expect(at(2), 'new', reason: '최근 3일 안이면 날짜 기준 상황이 아니다');
+        expect(at(3), 'pause');
+        expect(at(6), 'pause');
+        expect(at(7), 'quiet', reason: '카드 "잊은 관심사"와 같은 7일');
+        expect(at(13), 'quiet');
+        expect(at(14), 'dormant', reason: '14일 전은 막대 기간 밖');
       });
 
       test('오래 잠잠: 기간 안 0장이면 전체 목록의 마지막 캡처 기준, 그것도 없으면 null', () {

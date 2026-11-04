@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../core/helpers.dart';
 import '../core/tokens.dart';
 import '../data/remine_store.dart';
+import '../models/interest.dart';
 import '../models/screenshot_item.dart';
 import '../widgets/capture_grid.dart';
 import '../widgets/small_widgets.dart';
@@ -252,6 +253,7 @@ const insightPhrases = {
     '한창일 땐 하루 {n}장씩 캡처했는데, 잊고 있었나요?',
     '{x}일째 소식이 없어요. 아직 관심 있죠?',
   ],
+  'pause': ['요즘 {x}일째 조용하네요', '잠깐 쉬어가는 중이네요'],
   'new': ['오, 새로운 관심사가 생겼네요!', '요즘 여기에 꽂혔군요. 앞으로가 기대돼요'],
   'rising': [
     '요즘 다시 빠지는 중이에요',
@@ -268,7 +270,8 @@ const insightPhrases = {
 
 /// 날짜별 막대([counts], 오늘이 마지막 칸) 위 해석 문장. [lastCapture]는 기간과 상관없이 가장 최근 캡처 시각이고,
 /// 그것도 없으면 null.
-/// 상황은 위에서부터: 오래 잠잠(기간 안 0장) → 잠잠(최근 3일 0장) → 새로 생김(최근 3일에만 있음)
+/// 상황은 마지막 캡처로부터 지난 날짜로 먼저 나눈다: 오래 잠잠(기간 안 0장 = 2주 이상) → 잠잠(7일 이상, 카드와 같은 기준)
+/// → 쉬는 중(3일 이상). 그보다 최근이면 새로 생김(최근 3일에만 있음)
 /// → 다시 늘어남(최근 3일 > 그 전 4일, 그보다 앞에도 있었음) → 몰아서(하루가 전체의 절반 이상)
 /// → 오늘 캡처함 → 그 외. 문구는 태그 이름 해시로 골라 같은 태그는 늘 같은 문구다.
 String? tagInsight(
@@ -296,7 +299,9 @@ String? tagInsight(
 
   final (key, n) = switch (()) {
     _ when total == 0 => ('dormant', 0),
-    _ when recent3 == 0 => ('quiet', counts[peak]),
+    // 카드의 "잊은 관심사"와 같은 기준
+    _ when sinceLast >= Interest.forgottenAfterDays => ('quiet', counts[peak]),
+    _ when recent3 == 0 => ('pause', 0),
     _ when recent3 == total => ('new', recent3),
     _ when recent3 > sum(last - 7, last - 3) && sum(0, last - 7) > 0 => (
       'rising',
