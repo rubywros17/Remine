@@ -217,9 +217,9 @@ void main() {
       await tester.pumpWidget(_scoped(const TagScreen(tag: '뜨개질')));
       await tester.pump(); // 목록 로드
       await tester.pump(const Duration(milliseconds: 16));
-      expect(barHeight(), lessThan(40));
+      expect(barHeight(), lessThan(AppTagBars.height));
       await tester.pumpAndSettle();
-      expect(barHeight(), greaterThan(0));
+      expect(barHeight(), AppTagBars.height, reason: '최댓값인 날이 높이를 꽉 채운다');
 
       await tester.pumpWidget(const SizedBox());
       await tester.pumpWidget(

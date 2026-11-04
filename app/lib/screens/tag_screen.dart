@@ -242,15 +242,15 @@ class DailyBars extends StatelessWidget {
   final List<int> counts;
   final DateTime today;
 
-  static const _height = 40.0;
-  static const _emptyHeight = 3.0;
-
   @override
   Widget build(BuildContext context) {
     final max = counts.fold(1, (a, b) => b > a ? b : a);
     final activeDays = counts.where((c) => c > 0).length;
     final start = today.subtract(Duration(days: counts.length - 1));
-    final caption = AppText.caption.copyWith(color: AppColors.inkSub);
+    final caption = AppText.caption.copyWith(
+      fontSize: AppTagBars.labelSize,
+      color: AppColors.inkSub,
+    );
     return Semantics(
       label: '최근 ${counts.length}일 중 $activeDays일 캡처',
       excludeSemantics: true,
@@ -262,18 +262,22 @@ class DailyBars extends StatelessWidget {
             duration: AppMotion.duration(context, MotionDuration.slow),
             curve: AppMotion.standard,
             builder: (context, t, _) => SizedBox(
-              height: _height,
+              height: AppTagBars.height,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   for (final (i, c) in counts.indexed) ...[
-                    if (i > 0) const SizedBox(width: AppSpacing.s4),
+                    if (i > 0) const SizedBox(width: AppTagBars.gap),
                     Expanded(
                       child: Container(
-                        height: c == 0 ? _emptyHeight : _height * c / max * t,
+                        height: c == 0
+                            ? AppTagBars.emptyHeight
+                            : AppTagBars.height * c / max * t,
                         decoration: BoxDecoration(
                           color: c == 0 ? AppColors.border : AppColors.celadon,
-                          borderRadius: BorderRadius.circular(AppRadii.pill),
+                          borderRadius: BorderRadius.circular(
+                            AppTagBars.radius,
+                          ),
                         ),
                       ),
                     ),
