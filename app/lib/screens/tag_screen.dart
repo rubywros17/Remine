@@ -170,13 +170,19 @@ class _TagScreenState extends State<TagScreen> {
                   ].join(' · '),
                   style: AppText.caption.copyWith(color: AppColors.inkSub),
                 ),
-                const SizedBox(height: AppSpacing.s16),
-                DailyBars(counts: _counts, today: _today),
-                if (tagInsight(widget.tag, _counts, _today)
+                // 결론(해석 문장) → 근거(막대) 순서
+                if (tagInsight(
+                      widget.tag,
+                      _counts,
+                      _today,
+                      lastCapture: _items.firstOrNull?.takenAt,
+                    )
                     case final line?) ...[
                   const SizedBox(height: AppSpacing.s12),
                   Text(line, style: AppText.body),
                 ],
+                const SizedBox(height: AppSpacing.s16),
+                DailyBars(counts: _counts, today: _today),
               ],
               const SizedBox(height: AppSpacing.s20),
               if (_loaded && _items.isEmpty)
@@ -237,26 +243,35 @@ List<int> dailyCounts(List<ScreenshotItem> items, DateTime now, int days) {
 }
 
 /// 해석 문장 문구. 상황마다 2~3개이고 [tagInsight]가 태그 이름으로 하나를 고른다.
-/// 자리표시: {tag} 태그 이름, {m}·{d} 날짜, {x} 잠잠한 일수, {n} 장수·일수, {window} 기간("2주").
+/// 자리표시: {tag} 태그 이름, {m}·{d} 날짜, {x} 마지막 캡처 후 일수, {n} 장수·일수, {window} 기간("2주").
 /// 표기는 "캡처"("캡쳐"·"찍었어요" 쓰지 않음).
 const insightPhrases = {
+  'dormant': ['마지막 캡처가 {x}일 전이에요. 다시 꺼내 볼까요?', '{window} 넘게 소식이 없어요. 아직 좋아하죠?'],
   'quiet': [
     '{m}월 {d}일에 가장 빠져 있었어요. 요즘 {x}일째 잠잠해요',
     '한창일 땐 하루 {n}장씩 캡처했는데, 요즘은 조용하네요',
     '{x}일째 소식이 없어요. 아직 좋아하죠?',
   ],
+  'new': ['새로 빠지기 시작했어요', '최근에 생긴 관심사예요. 앞으로가 기대돼요'],
   'rising': ['요즘 다시 빠지는 중이에요', '잊은 줄 알았는데, 다시 돌아왔네요', '최근 며칠 새 {n}장이나 모았어요'],
   'burst': ['{m}월 {d}일 하루에 {n}장을 몰아서 캡처했어요', '{m}월 {d}일, 무슨 일 있었어요? 하루에 {n}장!'],
   'today': ['오늘도 캡처했어요. 한창 빠져 있는 중!', '오늘의 관심사도 #{tag}'],
   'steady': ['{window} 동안 꾸준히 모았어요', '{window} 중 {n}일이나 캡처했어요. 진심이네요'],
 };
 
-/// 날짜별 막대([counts], 오늘이 마지막 칸) 아래 해석 문장. 기간 안에 캡처가 없으면 null.
-/// 상황은 위에서부터: 잠잠(최근 3일 0장) → 다시 늘어남(최근 3일 > 그 전 4일) → 몰아서(하루가 전체의 절반 이상)
+/// 날짜별 막대([counts], 오늘이 마지막 칸) 위 해석 문장. [lastCapture]는 기간과 상관없이 가장 최근 캡처 시각이고,
+/// 그것도 없으면 null.
+/// 상황은 위에서부터: 오래 잠잠(기간 안 0장) → 잠잠(최근 3일 0장) → 새로 생김(최근 3일에만 있음)
+/// → 다시 늘어남(최근 3일 > 그 전 4일, 그보다 앞에도 있었음) → 몰아서(하루가 전체의 절반 이상)
 /// → 오늘 캡처함 → 그 외. 문구는 태그 이름 해시로 골라 같은 태그는 늘 같은 문구다.
-String? tagInsight(String tag, List<int> counts, DateTime today) {
+String? tagInsight(
+  String tag,
+  List<int> counts,
+  DateTime today, {
+  DateTime? lastCapture,
+}) {
   final total = counts.fold(0, (a, b) => a + b);
-  if (total == 0) return null;
+  if (total == 0 && lastCapture == null) return null;
   int sum(int from, int to) => counts
       .sublist(from.clamp(0, counts.length), to.clamp(0, counts.length))
       .fold(0, (a, b) => a + b);
@@ -268,10 +283,18 @@ String? tagInsight(String tag, List<int> counts, DateTime today) {
   }
   final peakDay = today.subtract(Duration(days: last - 1 - peak));
   final recent3 = sum(last - 3, last);
+  final sinceLast = total == 0
+      ? _calendarDays(lastCapture!, today)
+      : last - 1 - counts.lastIndexWhere((c) => c > 0);
 
   final (key, n) = switch (()) {
+    _ when total == 0 => ('dormant', 0),
     _ when recent3 == 0 => ('quiet', counts[peak]),
-    _ when recent3 > sum(last - 7, last - 3) => ('rising', recent3),
+    _ when recent3 == total => ('new', recent3),
+    _ when recent3 > sum(last - 7, last - 3) && sum(0, last - 7) > 0 => (
+      'rising',
+      recent3,
+    ),
     // 하루 1장은 "몰아서"라 부르기 어색해서 2장 이상일 때만
     _ when counts[peak] >= 2 && counts[peak] * 2 >= total => (
       'burst',
@@ -287,7 +310,7 @@ String? tagInsight(String tag, List<int> counts, DateTime today) {
       .replaceAll('{tag}', tag)
       .replaceAll('{m}', '${peakDay.month}')
       .replaceAll('{d}', '${peakDay.day}')
-      .replaceAll('{x}', '${last - 1 - counts.lastIndexWhere((c) => c > 0)}')
+      .replaceAll('{x}', '$sinceLast')
       .replaceAll('{n}', '$n')
       .replaceAll('{window}', windowLabel(last));
 }
