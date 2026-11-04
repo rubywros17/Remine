@@ -97,6 +97,7 @@ void main() {
       expect(find.text('홈에서 먼저 볼래요'), findsOneWidget);
       expect(find.text('홈으로'), findsNothing);
       expect(find.text(PrivacyNote.text), findsOneWidget);
+      expect(find.text(keepScreenOnHint), findsOneWidget);
     });
 
     testWidgets('끝나면 "N장 꺼냈어요"와 [홈으로]가 나오고 자동으로 넘어가지 않는다', (tester) async {
@@ -114,6 +115,7 @@ void main() {
       expect(find.bySemanticsLabel('15장 꺼냈어요'), findsOneWidget);
       expect(find.text('홈으로'), findsOneWidget);
       expect(find.text('홈에서 먼저 볼래요'), findsNothing);
+      expect(find.text(keepScreenOnHint), findsNothing, reason: '끝나면 화면 안내도 없다');
       await tester.pump(const Duration(seconds: 5));
       expect(home, 0, reason: '누르기 전에는 이동하지 않는다');
 
@@ -170,6 +172,68 @@ void main() {
   });
 
   group('SyncGate', () {
+    testWidgets('첫 분석 중에만 화면 꺼짐을 막고, 끝나면 푼다', (tester) async {
+      final calls = <bool>[];
+      final rig = (await tester.runAsync(
+        () => SyncRig.create(
+          photos: const [],
+          texts: const {},
+          client: RecordingClient(
+            responder: (r) => Completer<http.StreamedResponse>().future,
+          ),
+        ),
+      ))!;
+      await tester.pumpWidget(
+        _app(
+          SyncGate(
+            remote: rig.remote,
+            keepScreenOn: calls.add,
+            child: const Text('HOME'),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(calls, [true]);
+
+      rig.status.finish(); // 완료 화면([홈으로])에서는 풀어 둔다
+      await tester.pump();
+      expect(calls, [true, false]);
+      await tester.pump(const Duration(minutes: 6)); // 응답 없는 요청의 시간 제한을 흘려보낸다
+    });
+
+    testWidgets('"홈에서 먼저 볼래요"로 나가면 바로 풀고, 채널이 없어도 예외가 없다', (tester) async {
+      final calls = <bool>[];
+      final rig = (await tester.runAsync(
+        () => SyncRig.create(
+          photos: const [],
+          texts: const {},
+          client: RecordingClient(
+            responder: (r) => Completer<http.StreamedResponse>().future,
+          ),
+        ),
+      ))!;
+      await tester.pumpWidget(
+        _app(
+          SyncGate(
+            remote: rig.remote,
+            keepScreenOn: (on) {
+              calls.add(on);
+              keepScreenOnByChannel(on); // 테스트에는 채널이 없다 → 조용히 무시
+            },
+            child: const Text('HOME'),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.ensureVisible(find.text('홈에서 먼저 볼래요'));
+      await tester.tap(find.text('홈에서 먼저 볼래요'));
+      await tester.pump();
+
+      expect(calls, [true, false]);
+      expect(tester.takeException(), isNull);
+      await tester.pump(const Duration(minutes: 6)); // 응답 없는 요청의 시간 제한을 흘려보낸다
+    });
+
     testWidgets('첫 분석이 끝나도 자동으로 홈으로 넘어가지 않고 [홈으로]를 눌러야 한다', (tester) async {
       final rig = (await tester.runAsync(
         () => SyncRig.create(photos: const [], texts: const {}),
@@ -206,6 +270,7 @@ void main() {
       await tester.pump();
 
       expect(rig.sync.isRunning, isTrue);
+      await tester.ensureVisible(find.text('홈에서 먼저 볼래요')); // 안내 문구만큼 버튼이 아래로 밀린다
       await tester.tap(find.text('홈에서 먼저 볼래요'));
       await tester.pump();
       expect(find.text('HOME'), findsOneWidget);

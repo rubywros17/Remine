@@ -156,6 +156,15 @@ class _Body extends StatelessWidget {
                           const SizedBox(height: AppSpacing.s16),
                           _WorkingNote(text: waitingText!),
                         ],
+                        if (!finished) ...[
+                          const SizedBox(height: AppSpacing.s12),
+                          Text(
+                            keepScreenOnHint,
+                            style: AppText.caption.copyWith(
+                              color: AppColors.white.withValues(alpha: 0.7),
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: AppSpacing.s32),
                         fake
                             ? const _CollageBand()
@@ -264,6 +273,9 @@ class _Counter extends StatelessWidget {
     );
   }
 }
+
+/// 진행 중 안내. 화면이 꺼지면 앱이 백그라운드로 가서 동기화가 멈춘다(앱은 이 화면 동안 화면 꺼짐도 막는다, [SyncGate]).
+const keepScreenOnHint = '정리하는 동안 화면을 켜 두세요';
 
 /// 보안 문구: 박스 없이 작은 회색 글씨 한 줄(자물쇠 아이콘 작게). 좁은 화면이나 큰 글자에서는 줄바꿈된다.
 class PrivacyNote extends StatelessWidget {
