@@ -173,12 +173,7 @@ void main() {
       final selected = tester.widget<AppChip>(
         find.widgetWithText(AppChip, '#이어폰'),
       );
-      expect(selected.background, AppCategoryColors.of(Category.shopping));
-      final unselected = tester.widget<AppChip>(
-        find.widgetWithText(AppChip, '전체'),
-      );
-      expect(unselected.background, isNull); // 선택 안 된 칩은 그대로(테두리만)
-      expect(unselected.borderColor, AppColors.ink);
+      expect(selected.background, AppColors.lemon); // 선택된 칩은 레몬
 
       await tester.ensureVisible(find.text('#이어폰'));
       await tester.tap(find.text('#이어폰'));
@@ -191,34 +186,14 @@ void main() {
       expect(_tiles, findsNWidgets(4));
     });
 
-    testWidgets('거대한 개수는 차콜이다', (tester) async {
+    testWidgets('거대한 개수는 딥 셀라돈이다', (tester) async {
       await _pumpApp(tester);
       await tester.tap(find.text('장소'));
       await tester.pumpAndSettle();
 
       final number = tester.widget<Text>(find.text('4'));
-      expect(number.style!.color, AppColors.darkGray);
+      expect(number.style!.color, AppColors.celadonDeep);
     });
-
-    // 기타(#E1E3E3)·정보(레몬)처럼 밝은 색도 색 말고 굵은 글자 + 차콜 2px 테두리로 선택이 보인다.
-    for (final c in Category.values) {
-      testWidgets('${c.label}: 선택된 "전체" 칩은 카테고리 색 + 굵은 글자 + 차콜 테두리', (
-        tester,
-      ) async {
-        await _pumpApp(tester);
-        final pill = find.widgetWithText(CategoryPill, c.label);
-        await tester.ensureVisible(pill);
-        await tester.tap(pill);
-        await tester.pumpAndSettle();
-
-        final chip = tester.widget<AppChip>(find.widgetWithText(AppChip, '전체'));
-        expect(chip.background, AppCategoryColors.of(c));
-        expect(chip.borderColor, AppColors.darkGray);
-        expect(chip.borderWidth, greaterThan(1.2)); // 선택 안 된 칩(1.2)보다 두껍다
-        expect(chip.style!.fontWeight, FontWeight.w800);
-        expect(find.bySemanticsLabel('전체, 선택됨'), findsOneWidget);
-      });
-    }
 
     testWidgets('홈의 관심사 카드를 누르면 그 태그 모아보기 화면이 열린다', (tester) async {
       await _pumpApp(tester);

@@ -161,24 +161,19 @@ class _CategoryScreenState extends State<CategoryScreen> {
                     Expanded(
                       child: Text(widget.category.label, style: AppText.title),
                     ),
-                    // 바탕 위 큰 숫자는 차콜(darkGray, 대비 8.72:1).
+                    // 바탕 위 큰 숫자는 딥 셀라돈(대비 3.70:1). 일반 셀라돈은 1.90:1이라 쓰지 않는다.
                     FittedBox(
                       fit: BoxFit.scaleDown,
                       child: Text(
                         '$_count',
-                        style: AppText.numHero(color: AppColors.darkGray),
+                        style: AppText.numHero(color: AppColors.celadonDeep),
                       ),
                     ),
                   ],
                 ),
               ),
               const SizedBox(height: AppSpacing.s16),
-              _TagRow(
-                category: widget.category,
-                tags: _allTags,
-                selected: _tag,
-                onSelect: _selectTag,
-              ),
+              _TagRow(tags: _allTags, selected: _tag, onSelect: _selectTag),
               const SizedBox(height: AppSpacing.s20),
               if (_loaded)
                 CaptureGrid(
@@ -196,13 +191,11 @@ class _CategoryScreenState extends State<CategoryScreen> {
 
 class _TagRow extends StatelessWidget {
   const _TagRow({
-    required this.category,
     required this.tags,
     required this.selected,
     required this.onSelect,
   });
 
-  final Category category;
   final List<String> tags;
   final String? selected;
   final ValueChanged<String?> onSelect;
@@ -238,15 +231,8 @@ class _TagRow extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(minHeight: 48),
         child: Center(
-          // 선택됨: 카테고리 색 채움. 밝은 색(기타·정보)에서도 보이게 색 말고도 굵은 글자 + 차콜 2px 테두리.
           child: on
-              ? AppChip(
-                  label: label,
-                  background: AppCategoryColors.of(category),
-                  borderColor: AppCategoryColors.pillBorder,
-                  borderWidth: 2,
-                  style: AppText.label.copyWith(fontWeight: FontWeight.w800),
-                )
+              ? AppChip.selected(label: label)
               : AppChip.outlined(label: label),
         ),
       ),
