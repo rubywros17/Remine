@@ -82,7 +82,9 @@ class CategoryRatioBar extends StatelessWidget {
               child: SizedBox(
                 width: w,
                 height: AppCategoryColors.barHeight,
+                // stretch가 없으면 Row는 세로를 0~30 "느슨하게" 주고, 자식 없는 ColoredBox는 가장 작은 높이 0을 골라 안 보인다.
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     for (var k = 0; k < shown.length; k++) ...[
                       if (k > 0)

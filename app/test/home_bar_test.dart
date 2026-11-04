@@ -133,6 +133,22 @@ void main() {
       handle.dispose();
     });
 
+    testWidgets('애니메이션이 끝나면 칸마다 실제로 너비·높이 > 0으로 그려진다', (tester) async {
+      await _pumpBar(tester, s);
+      await tester.pumpAndSettle();
+
+      final cells = find.byType(ColoredBox);
+      expect(cells, findsNWidgets(4));
+      var sum = 0.0;
+      for (final e in cells.evaluate()) {
+        final size = (e.renderObject! as RenderBox).size;
+        expect(size.width, greaterThan(0));
+        expect(size.height, AppCategoryColors.barHeight);
+        sum += size.width;
+      }
+      expect(sum + 3 * AppCategoryColors.barGap, closeTo(300, 1e-6));
+    });
+
     testWidgets('처음엔 왼쪽부터 채워지고, 모션 줄이기면 바로 다 보인다', (tester) async {
       double barWidth() => tester.getSize(find.byType(ClipRect).first).width;
 
