@@ -44,6 +44,11 @@ class RemineApp extends StatefulWidget {
 
   @override
   State<RemineApp> createState() => _RemineAppState();
+
+  /// [디버그] 첫 실행 게이트(사진 권한 → 이미지 동의 → 알림 안내)부터 다시 그린다. 게이트가 저장된 선택을 새로 읽는다.
+  /// 저장소·동기화 기록은 그대로라 첫 분석 화면은 다시 뜨지 않는다.
+  static void restartFirstRun(BuildContext context) =>
+      context.findAncestorStateOfType<_RemineAppState>()?._restartFirstRun();
 }
 
 class _RemineAppState extends State<RemineApp> {
@@ -61,6 +66,12 @@ class _RemineAppState extends State<RemineApp> {
   // 알림을 눌렀을 때 화면을 띄우려고 Navigator를 바깥에서 잡는다(알림은 위젯 트리 밖에서 온다).
   final _navigatorKey = GlobalKey<NavigatorState>();
   StreamSubscription<PushTarget>? _taps;
+  int _firstRunGeneration = 0; // 바뀌면 게이트들을 새로 만든다([RemineApp.restartFirstRun])
+
+  void _restartFirstRun() {
+    _navigatorKey.currentState?.popUntil((r) => r.isFirst);
+    setState(() => _firstRunGeneration++);
+  }
 
   @override
   void initState() {
@@ -123,6 +134,7 @@ class _RemineAppState extends State<RemineApp> {
             : device == null
             ? const ShellScreen()
             : PermissionGate(
+                key: ValueKey(_firstRunGeneration),
                 reader: device.reader,
                 child: ConsentGate(
                   settings: device.settings,

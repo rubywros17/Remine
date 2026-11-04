@@ -98,7 +98,7 @@ class _DetailScreenState extends State<DetailScreen> {
   int? _arrivalId;
   int _arrivalToken = 0;
 
-  /// "위로 밀어 삭제" 안내(처음 한 번, 설정에 기록). 설정이 있는 기기 모드에서만 보여 준다.
+  /// "위로 밀어 삭제" 안내(처음 한 번). 기기 모드는 설정에 저장하고, 가짜 데이터 모드는 [RemineStore]에 실행 동안만 기억한다.
   bool _tutorial = false;
   bool _tutorialChecked = false;
 
@@ -115,7 +115,10 @@ class _DetailScreenState extends State<DetailScreen> {
     if (_tutorialChecked) return;
     _tutorialChecked = true;
     final settings = DeviceScope.maybeOf(context)?.settings;
-    if (settings == null) return;
+    if (settings == null) {
+      _tutorial = RemineScope.maybeOf(context)?.swipeTutorialSeen == false;
+      return;
+    }
     settings.swipeTutorialSeen().then((seen) {
       if (!seen && mounted) setState(() => _tutorial = true);
     });
@@ -129,7 +132,12 @@ class _DetailScreenState extends State<DetailScreen> {
   void _dismissTutorial() {
     if (!_tutorial) return;
     setState(() => _tutorial = false);
-    DeviceScope.maybeOf(context)?.settings.setSwipeTutorialSeen();
+    final settings = DeviceScope.maybeOf(context)?.settings;
+    if (settings != null) {
+      settings.setSwipeTutorialSeen();
+    } else {
+      RemineScope.maybeOf(context)?.swipeTutorialSeen = true;
+    }
   }
 
   @override

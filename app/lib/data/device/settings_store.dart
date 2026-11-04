@@ -22,6 +22,12 @@ abstract interface class SettingsStore {
   Future<bool> swipeTutorialSeen();
 
   Future<void> setSwipeTutorialSeen();
+
+  /// [디버그] 안내를 다시 보게 '봤음' 기록만 지운다.
+  Future<void> clearSwipeTutorialSeen();
+
+  /// [디버그] 첫 실행 선택(이미지 동의·알림)만 지워 첫 실행 안내를 다시 보게 한다. 분석·전송 기록은 그대로다.
+  Future<void> clearFirstRunChoices();
 }
 
 const _imageConsentKey = 'image_consent';
@@ -66,6 +72,20 @@ class SqfliteSettingsStore implements SettingsStore {
 
   @override
   Future<void> setSwipeTutorialSeen() => _put(_swipeTutorialKey, '1');
+
+  @override
+  Future<void> clearSwipeTutorialSeen() => _delete([_swipeTutorialKey]);
+
+  @override
+  Future<void> clearFirstRunChoices() =>
+      _delete([_imageConsentKey, _notificationsKey]);
+
+  Future<void> _delete(List<String> keys) async {
+    final db = await _local.db;
+    for (final key in keys) {
+      await db.delete('setting', where: 'key = ?', whereArgs: [key]);
+    }
+  }
 
   Future<String?> _get(String key) async {
     final rows = await (await _local.db).query(
@@ -121,4 +141,13 @@ class InMemorySettingsStore implements SettingsStore {
 
   @override
   Future<void> setSwipeTutorialSeen() async => _swipeTutorialSeen = true;
+
+  @override
+  Future<void> clearSwipeTutorialSeen() async => _swipeTutorialSeen = false;
+
+  @override
+  Future<void> clearFirstRunChoices() async {
+    _consent = null;
+    _notifications = null;
+  }
 }

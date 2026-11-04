@@ -96,4 +96,33 @@ void main() {
     await openDetail(tester);
     expect(find.text(swipeTutorialText), findsOneWidget);
   });
+
+  testWidgets('가짜 데이터 모드도 처음 한 번 보이고, 앱마다 따로 기억한다(테스트끼리 섞이지 않음)', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    Future<void> pumpFake() async {
+      await tester.pumpWidget(
+        RemineApp(
+          key: UniqueKey(), // 새 앱(새 스토어)
+          repository: FakeScreenshotRepository(now: () => _now),
+          now: () => _now,
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    await pumpFake();
+    await openDetail(tester);
+    expect(find.text(swipeTutorialText), findsOneWidget);
+    await tester.tap(find.text('알겠어요'));
+    await tester.pumpAndSettle();
+    await back(tester);
+    await openDetail(tester);
+    expect(find.text(swipeTutorialText), findsNothing, reason: '같은 실행에서는 다시 안 뜬다');
+
+    await pumpFake();
+    await openDetail(tester);
+    expect(find.text(swipeTutorialText), findsOneWidget, reason: '새 앱은 처음부터');
+  });
 }
