@@ -1,13 +1,13 @@
 import 'local_db.dart';
 
-/// 기기에 두는 사용자 설정: 이미지 분석 동의, 관심사 알림 받기.
+/// 기기에 두는 사용자 설정: 이미지 분석 동의, 관심사 알림 받기, 한 번만 보는 안내.
 abstract interface class SettingsStore {
   /// 이미지 분석 동의. 아직 묻지 않았으면 null, 거부면 false.
   Future<bool?> imageConsent();
 
   Future<void> setImageConsent(bool value);
 
-  /// 관심사 알림 받기. 아직 고르지 않았으면 null(첫 분석 뒤 안내 화면이 묻는다), 끄면 false.
+  /// 관심사 알림 받기. 아직 고르지 않았으면 null(첫 분석 전 안내 화면이 묻는다), 끄면 false.
   /// 켜져 있을 때만 서버에 FCM 토큰이 있다.
   Future<bool?> notificationsEnabled();
 
@@ -17,11 +17,17 @@ abstract interface class SettingsStore {
   Future<String?> ownCaptureLog();
 
   Future<void> setOwnCaptureLog(String json);
+
+  /// 상세 화면의 "위로 밀어 삭제" 안내를 봤는지(한 번만 보여 준다).
+  Future<bool> swipeTutorialSeen();
+
+  Future<void> setSwipeTutorialSeen();
 }
 
 const _imageConsentKey = 'image_consent';
 const _notificationsKey = 'notifications_enabled';
 const _ownCaptureLogKey = 'own_capture_log';
+const _swipeTutorialKey = 'swipe_tutorial_seen';
 
 class SqfliteSettingsStore implements SettingsStore {
   SqfliteSettingsStore(this._local);
@@ -54,6 +60,13 @@ class SqfliteSettingsStore implements SettingsStore {
   @override
   Future<void> setOwnCaptureLog(String json) => _put(_ownCaptureLogKey, json);
 
+  @override
+  Future<bool> swipeTutorialSeen() async =>
+      await _get(_swipeTutorialKey) == '1';
+
+  @override
+  Future<void> setSwipeTutorialSeen() => _put(_swipeTutorialKey, '1');
+
   Future<String?> _get(String key) async {
     final rows = await (await _local.db).query(
       'setting',
@@ -82,6 +95,7 @@ class InMemorySettingsStore implements SettingsStore {
   bool? _consent;
   bool? _notifications;
   String? _ownCaptureLog;
+  bool _swipeTutorialSeen = false;
 
   @override
   Future<bool?> imageConsent() async => _consent;
@@ -101,4 +115,10 @@ class InMemorySettingsStore implements SettingsStore {
 
   @override
   Future<void> setOwnCaptureLog(String json) async => _ownCaptureLog = json;
+
+  @override
+  Future<bool> swipeTutorialSeen() async => _swipeTutorialSeen;
+
+  @override
+  Future<void> setSwipeTutorialSeen() async => _swipeTutorialSeen = true;
 }

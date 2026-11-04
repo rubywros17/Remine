@@ -15,6 +15,7 @@ import '../data/remote/api_client.dart' show ApiException;
 import '../models/category.dart';
 import '../models/category_update.dart';
 import '../models/screenshot_item.dart';
+import '../widgets/app_button.dart';
 import '../widgets/capture_thumb.dart';
 import '../widgets/category_sheet.dart';
 import '../widgets/pressable_scale.dart';
@@ -97,8 +98,43 @@ class _DetailScreenState extends State<DetailScreen> {
   int? _arrivalId;
   int _arrivalToken = 0;
 
+  /// "위로 밀어 삭제" 안내(처음 한 번, 설정에 기록). 설정이 있는 기기 모드에서만 보여 준다.
+  bool _tutorial = false;
+  bool _tutorialChecked = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _view.addListener(_dismissTutorialOnDrag);
+  }
+
+  // InheritedWidget(DeviceScope)은 initState가 아니라 didChangeDependencies부터 읽을 수 있다.
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_tutorialChecked) return;
+    _tutorialChecked = true;
+    final settings = DeviceScope.maybeOf(context)?.settings;
+    if (settings == null) return;
+    settings.swipeTutorialSeen().then((seen) {
+      if (!seen && mounted) setState(() => _tutorial = true);
+    });
+  }
+
+  /// 안내를 닫는 데는 [알겠어요] 말고 실제로 끌기 시작하는 것도 포함한다.
+  void _dismissTutorialOnDrag() {
+    if (_tutorial && _view.value.$1 > 0) _dismissTutorial();
+  }
+
+  void _dismissTutorial() {
+    if (!_tutorial) return;
+    setState(() => _tutorial = false);
+    DeviceScope.maybeOf(context)?.settings.setSwipeTutorialSeen();
+  }
+
   @override
   void dispose() {
+    _view.removeListener(_dismissTutorialOnDrag);
     _pages.dispose();
     _view.dispose();
     super.dispose();
@@ -246,8 +282,84 @@ class _DetailScreenState extends State<DetailScreen> {
               ),
               _TopBar(position: _index + 1, total: _items.length),
               _TrashTarget(view: _view),
+              if (_tutorial) _SwipeTutorial(onDismiss: _dismissTutorial),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 상세 첫 진입 안내 "위로 밀면 휴지통으로 가요". 덮개는 터치를 막지 않아 바로 카드를 끌어 볼 수 있고,
+/// 끌기 시작하거나 [알겠어요]를 누르면 닫힌다. 애니메이션 줄이기면 효과 없이 바로 보인다.
+const swipeTutorialText = '위로 밀면 휴지통으로 가요';
+
+class _SwipeTutorial extends StatelessWidget {
+  const _SwipeTutorial({required this.onDismiss});
+
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0, end: 1),
+        duration: AppMotion.duration(context, MotionDuration.base),
+        curve: AppMotion.standard,
+        builder: (context, t, child) => Opacity(opacity: t, child: child),
+        child: Stack(
+          children: [
+            IgnorePointer(
+              child: ColoredBox(
+                color: AppColors.darkGray.withValues(alpha: 0.6),
+                child: const SizedBox.expand(),
+              ),
+            ),
+            Center(
+              child: Semantics(
+                container: true,
+                label: '안내: $swipeTutorialText. 화면 읽기에서는 휴지통으로 옮기기 동작을 쓸 수 있어요',
+                child: Padding(
+                  padding: const EdgeInsets.all(AppSpacing.screenPadding),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IgnorePointer(
+                        // 장식(아이콘은 Semantics를 만들지 않는다)
+                        child: Container(
+                          width: 56,
+                          height: 56,
+                          decoration: const BoxDecoration(
+                            color: AppColors.white,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            LucideIcons.arrowUp,
+                            color: AppColors.ink,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.s16),
+                      IgnorePointer(
+                        child: ExcludeSemantics(
+                          child: Text(
+                            swipeTutorialText,
+                            textAlign: TextAlign.center,
+                            style: AppText.sectionTitle.copyWith(
+                              color: AppColors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.s24),
+                      AppButton(label: '알겠어요', onTap: onDismiss),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );
