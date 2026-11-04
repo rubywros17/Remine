@@ -16,6 +16,7 @@ class AppChip extends StatelessWidget {
     this.trailing,
     this.style,
     this.padding = const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+    this.borderWidth = 1.2,
   });
 
   /// 중립 칩(테두리).
@@ -27,7 +28,8 @@ class AppChip extends StatelessWidget {
     this.style,
   }) : background = null,
        borderColor = AppColors.ink,
-       padding = const EdgeInsets.symmetric(horizontal: 14, vertical: 9);
+       padding = const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+       borderWidth = 1.2;
 
   /// 선택된 칩(레몬).
   const AppChip.selected({
@@ -38,7 +40,8 @@ class AppChip extends StatelessWidget {
     this.style,
   }) : background = AppColors.lemon,
        borderColor = null,
-       padding = const EdgeInsets.symmetric(horizontal: 14, vertical: 9);
+       padding = const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+       borderWidth = 1.2;
 
   /// 해시태그(연셀라돈).
   const AppChip.hashtag({super.key, required this.label, this.style})
@@ -46,11 +49,13 @@ class AppChip extends StatelessWidget {
       borderColor = null,
       leading = null,
       trailing = null,
-      padding = const EdgeInsets.symmetric(horizontal: 14, vertical: 9);
+      padding = const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      borderWidth = 1.2;
 
   final String label;
   final Color? background;
   final Color? borderColor;
+  final double borderWidth;
   final Widget? leading;
   final Widget? trailing;
   final TextStyle? style;
@@ -64,7 +69,7 @@ class AppChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(AppRadii.pill),
         border: borderColor == null
             ? null
-            : Border.all(color: borderColor!, width: 1.2),
+            : Border.all(color: borderColor!, width: borderWidth),
       ),
       child: Padding(
         padding: padding,
@@ -187,10 +192,7 @@ class CountBadge extends StatelessWidget {
         color: AppColors.chip,
         borderRadius: BorderRadius.circular(AppRadii.pill),
       ),
-      child: Text(
-        '$count',
-        style: AppText.numBadge(),
-      ),
+      child: Text('$count', style: AppText.numBadge()),
     );
   }
 }
