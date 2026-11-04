@@ -197,8 +197,13 @@ void main() {
           List.generate(14, (i) => daysAgo[13 - i] ?? 0);
 
       /// 그 상황의 문구 중 하나가 자리표시 없이 채워졌는지.
-      void expectFrom(String key, String? line, List<String> filled) {
-        expect(line, isNotNull);
+      void expectFrom(
+        String key,
+        ({InsightId id, String text})? insight,
+        List<String> filled,
+      ) {
+        expect(insight?.id.$1, key);
+        final line = insight!.text;
         expect(filled, contains(line), reason: key);
         expect(line, isNot(contains('{')));
         expect(line, isNot(anyOf(contains('캡쳐'), contains('찍었'))));
@@ -223,24 +228,12 @@ void main() {
       });
 
       test('마지막 캡처로부터 지난 날짜 경계: 2·3·6·7·13·14일', () {
-        /// 문장이 어느 상황의 문구로 만들어졌는지(자리표시는 아무 글자로 보고 맞춰 본다).
-        String situationOf(String? line) => insightPhrases.entries
-            .firstWhere(
-              (e) => e.value.any(
-                (p) => RegExp(
-                  '^${RegExp.escape(p).replaceAll(RegExp(r'\\{\w+\\}'), '.+')}\$',
-                ).hasMatch(line!),
-              ),
-            )
-            .key;
-        String at(int daysAgo) => situationOf(
-          tagInsight(
-            '뜨개질',
-            days({daysAgo: 1}),
-            _now,
-            lastCapture: _now.subtract(Duration(days: daysAgo)),
-          ),
-        );
+        String? at(int daysAgo) => tagInsight(
+          '뜨개질',
+          days({daysAgo: 1}),
+          _now,
+          lastCapture: _now.subtract(Duration(days: daysAgo)),
+        )?.id.$1;
 
         expect(at(2), 'new', reason: '최근 3일 안이면 날짜 기준 상황이 아니다');
         expect(at(3), 'pause');
@@ -310,17 +303,48 @@ void main() {
         ]);
       });
 
-      test('pick번째 문구를 고르고, avoid와 같은 문장은 빼고 고른다. 기간 안에 없으면 null', () {
+      test('pick번째 문구를 고르고, avoid와 같은 문구는 빼고 고른다. 기간 안에 없으면 null', () {
         final c = days({8: 2, 4: 1}); // 쉬는 중: 문구 2개
         const first = '요즘 4일째 조용하네요';
         const second = '잠깐 쉬어가는 중이네요';
-        expect(tagInsight('뜨개질', c, _now, pick: 0), first);
-        expect(tagInsight('뜨개질', c, _now, pick: 1), second);
-        expect(tagInsight('뜨개질', c, _now, pick: 2), first, reason: '나머지 연산');
+        expect(tagInsight('뜨개질', c, _now, pick: 0)?.text, first);
+        expect(tagInsight('뜨개질', c, _now, pick: 1)?.text, second);
+        expect(
+          tagInsight('뜨개질', c, _now, pick: 2)?.text,
+          first,
+          reason: '나머지 연산',
+        );
         for (final pick in [0, 1, 2, 3]) {
-          expect(tagInsight('뜨개질', c, _now, pick: pick, avoid: first), second);
+          expect(
+            tagInsight('뜨개질', c, _now, pick: pick, avoid: ('pause', 0))?.text,
+            second,
+          );
         }
         expect(tagInsight('뜨개질', List.filled(14, 0), _now), isNull);
+      });
+
+      test('직전 문구는 상황 + 번호로 비교: 날이 지나 숫자가 달라져도 같은 틀은 연달아 안 나온다', () {
+        final seen = tagInsight('뜨개질', days({8: 2, 4: 1}), _now, pick: 0)!;
+        expect(seen.text, '요즘 4일째 조용하네요');
+        final nextDay = tagInsight(
+          '뜨개질',
+          days({9: 2, 5: 1}),
+          _now.add(const Duration(days: 1)),
+          pick: 0,
+          avoid: seen.id,
+        );
+        expect(nextDay?.text, '잠깐 쉬어가는 중이네요');
+        // 상황이 다르면 번호가 같아도 피할 이유가 없다
+        expect(
+          tagInsight(
+            '뜨개질',
+            days({8: 2, 4: 1}),
+            _now,
+            pick: 0,
+            avoid: ('quiet', 0),
+          )?.text,
+          seen.text,
+        );
       });
     });
 
