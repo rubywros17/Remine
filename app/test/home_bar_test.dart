@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:remine/app.dart';
 import 'package:remine/core/tokens.dart';
+import 'package:remine/data/device/privacy/local_verdict_store.dart';
+import 'package:remine/data/device/privacy/privacy_filter.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
 import 'package:remine/models/category.dart';
 import 'package:remine/models/category_summary.dart';
 import 'package:remine/widgets/home_widgets.dart';
+
+import 'support/fake_device.dart';
 
 /// [counts] 순서가 곧 "서버 순서". 정렬이 이 순서에 기대지 않는지 보려고 일부러 섞어 넘긴다.
 CategorySummary _summary(Map<Category, int> counts) => CategorySummary(
@@ -46,6 +50,8 @@ Future<void> _pumpBar(
 }
 
 void main() {
+  group('분석 제외 알약', excludedPillTests);
+
   group('sortedForHome', () {
     test('동점이면 카테고리 고정 순서다(서버 순서와 상관없이)', () {
       final s = _summary({
@@ -192,5 +198,68 @@ void main() {
     expect(shown.fold(0, (sum, i) => sum + i.count), pillSum);
     expect(pillSum, summary.total);
     handle.dispose();
+  });
+}
+
+void excludedPillTests() {
+  final now = DateTime(2026, 10, 19, 12);
+
+  Future<void> pumpDevice(WidgetTester tester, {required int hidden}) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    final services = fakeServices(FakeGalleryReader());
+    for (var i = 0; i < hidden; i++) {
+      await services.capture.verdicts.save(
+        StoredVerdict.of(
+          const LocalVerdict(
+            route: LocalRoute.deviceOnly,
+            category: Category.etc,
+            hidden: true,
+            reasons: ['CARD'],
+          ),
+          assetId: 'h$i',
+          takenAt: now,
+          modifiedAt: 1,
+          now: now,
+        ),
+      );
+    }
+    await tester.pumpWidget(
+      RemineApp(
+        repository: FakeScreenshotRepository(now: () => now),
+        now: () => now,
+        device: services,
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('분석 제외 알약은 기타 바로 뒤이고, 막대 라벨에는 없다', (tester) async {
+    final handle = tester.ensureSemantics();
+    await pumpDevice(tester, hidden: 2);
+
+    final wrap = tester.widget<Wrap>(
+      find.ancestor(of: find.byType(ExcludedPill), matching: find.byType(Wrap)),
+    );
+    final last2 = wrap.children.sublist(wrap.children.length - 2);
+    expect((last2[0] as CategoryPill).item.category, Category.etc);
+    expect(last2[1], isA<ExcludedPill>());
+    expect((last2[1] as ExcludedPill).count, 2);
+    expect(
+      find.descendant(
+        of: find.byType(ExcludedPill),
+        matching: find.byType(CategoryDot),
+      ),
+      findsNothing,
+    );
+    final barLabel = tester.getSemantics(find.byType(CategoryRatioBar)).label;
+    expect(barLabel, isNot(contains('분석 제외')));
+    handle.dispose();
+  });
+
+  testWidgets('분석 제외가 0장이면 알약을 숨긴다', (tester) async {
+    await pumpDevice(tester, hidden: 0);
+    expect(find.byType(ExcludedPill), findsNothing);
   });
 }

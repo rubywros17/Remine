@@ -12,37 +12,84 @@ import 'pressable_scale.dart';
 import 'capture_thumb.dart';
 import 'small_widgets.dart';
 
-/// 홈 칩 아래 작은 글자 링크 "분석 제외 N장 →": 기기에서만 분류한 숨김 캡처 개수. 0장이면 부르는 쪽에서 숨긴다.
-class ExcludedLink extends StatelessWidget {
-  const ExcludedLink({super.key, required this.count, required this.onTap});
+/// 홈 알약 줄 맨 끝(기타 뒤)의 "분석 제외" 알약: 기기에서만 분류한 숨김 캡처 개수. 0장이면 부르는 쪽에서 숨긴다.
+/// 카테고리가 아니라서 점선 테두리 · 색 점 없음 · 자물쇠 아이콘으로 구분한다. 비율 막대에는 들어가지 않는다.
+class ExcludedPill extends StatelessWidget {
+  const ExcludedPill({super.key, required this.count, required this.onTap});
 
   final int count;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: PressableScale(
-        onTap: onTap,
-        label: '분석 제외 $count장',
-        // 글자는 작아도 누르는 영역은 높이 48 이상.
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 48),
-          child: Align(
-            alignment: Alignment.centerLeft,
-            widthFactor: 1,
-            child: Text(
-              '분석 제외 $count장 →',
-              style: AppText.caption.copyWith(color: AppColors.inkSub),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+    return PressableScale(
+      onTap: onTap,
+      label: '분석 제외 $count장',
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 48),
+        // [Flutter 메모] Border에는 점선이 없어서 CustomPaint로 알약 테두리를 직접 그린다.
+        child: CustomPaint(
+          painter: const _DashedPillPainter(),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 8, 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(LucideIcons.lock, size: 18, color: AppColors.inkSub),
+                const SizedBox(width: AppSpacing.s8),
+                Flexible(
+                  child: Text(
+                    '분석 제외',
+                    style: AppText.label.copyWith(
+                      fontSize: 15,
+                      color: AppColors.inkSub,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.s8),
+                CountBadge(count: count),
+              ],
             ),
           ),
         ),
       ),
     );
   }
+}
+
+class _DashedPillPainter extends CustomPainter {
+  const _DashedPillPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const stroke = 1.2;
+    final rrect = RRect.fromRectAndRadius(
+      (Offset.zero & size).deflate(stroke / 2),
+      Radius.circular(size.height / 2),
+    );
+    final paint = Paint()
+      ..color = AppColors.inkSub
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke;
+    // 테두리 경로를 따라 dash만큼 그리고 gap만큼 건너뛴다.
+    for (final metric in (Path()..addRRect(rrect)).computeMetrics()) {
+      for (
+        var d = 0.0;
+        d < metric.length;
+        d += AppCategoryColors.excludedDash + AppCategoryColors.excludedDashGap
+      ) {
+        canvas.drawPath(
+          metric.extractPath(d, d + AppCategoryColors.excludedDash),
+          paint,
+        );
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedPillPainter oldDelegate) => false;
 }
 
 /// 비율 막대의 칸 폭. 칸마다 [AppCategoryColors.barMinSegment]를 먼저 주고 남는 폭을 개수 비율로 나눈다.

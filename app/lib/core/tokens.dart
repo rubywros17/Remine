@@ -57,6 +57,10 @@ abstract final class AppCategoryColors {
   static const double barHeight = 30;
   static const double barGap = 2;
   static const double barMinSegment = 8; // 1장이어도 보이는 최소 칸 폭
+
+  /// "분석 제외" 알약 점선 테두리(inkSub): 선 길이 · 빈칸.
+  static const double excludedDash = 4;
+  static const double excludedDashGap = 3;
 }
 
 /// 관심사 탭 진입 "머릿속 캡처 지도"(디자인 캔버스 4안 · 관심사 · 머릿속 캡처 지도). 배경은 [AppColors.darkGray].

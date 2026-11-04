@@ -165,21 +165,20 @@ class _HomeScreenState extends State<HomeScreen> {
                   onTap: () =>
                       _open(context, CategoryScreen(category: item.category)),
                 ),
+              // 기타 바로 뒤. 카테고리가 아니라 막대에는 들어가지 않는다.
+              if (device != null && _excludedCount > 0)
+                ExcludedPill(
+                  count: _excludedCount,
+                  onTap: () => _open(
+                    context,
+                    ExcludedScreen(
+                      verdicts: device.capture.verdicts,
+                      reader: device.reader,
+                    ),
+                  ),
+                ),
             ],
           ),
-          if (device != null && _excludedCount > 0) ...[
-            const SizedBox(height: AppSpacing.s8),
-            ExcludedLink(
-              count: _excludedCount,
-              onTap: () => _open(
-                context,
-                ExcludedScreen(
-                  verdicts: device.capture.verdicts,
-                  reader: device.reader,
-                ),
-              ),
-            ),
-          ],
         ],
       ),
     );
