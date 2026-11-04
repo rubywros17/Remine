@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
+import '../app.dart';
 import '../core/tokens.dart';
 import '../data/device/device_capture_service.dart';
 import '../data/device/device_services.dart';
@@ -92,6 +93,18 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
           ? '동기화 끝(${s.total}장 처리).'
           : '동기화 멈춤: ${s.bannerMessage}',
     );
+  }
+
+  /// 상세 "위로 밀어 삭제" 안내의 '봤음' 기록만 지운다.
+  Future<void> _resetTutorial() async {
+    await widget.services.settings.clearSwipeTutorialSeen();
+    if (mounted) setState(() => _status = '상세에 들어가면 튜토리얼이 다시 떠.');
+  }
+
+  /// 이미지 동의·알림 선택만 지우고 첫 실행 게이트부터 다시 그린다. 분석·기기 id·전송 기록은 그대로(재분석 없음).
+  Future<void> _resetFirstRun() async {
+    await widget.services.settings.clearFirstRunChoices();
+    if (mounted) RemineApp.restartFirstRun(context);
   }
 
   Future<void> _sendTestPush() async {
@@ -462,6 +475,17 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
                           AppButton(
                             label: '저장된 결과 지우기',
                             onTap: _clearLocal,
+                            outlined: true,
+                          ),
+                          // 테스트용 초기화(이 화면 자체가 디버그 빌드 전용)
+                          AppButton(
+                            label: '튜토리얼 다시 보기',
+                            onTap: _resetTutorial,
+                            outlined: true,
+                          ),
+                          AppButton(
+                            label: '첫 실행 안내 다시 보기',
+                            onTap: _resetFirstRun,
                             outlined: true,
                           ),
                         ],

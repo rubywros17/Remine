@@ -180,6 +180,27 @@ void main() {
     await again.close();
   });
 
+  test('[디버그] 초기화는 고른 값만 지운다: 첫 실행 선택 / 튜토리얼 봤음', () async {
+    final local = open();
+    final settings = SqfliteSettingsStore(local);
+    await settings.setImageConsent(true);
+    await settings.setNotificationsEnabled(false);
+    await settings.setSwipeTutorialSeen();
+    await settings.setOwnCaptureLog('{"x":1}');
+
+    await settings.clearFirstRunChoices();
+    expect(await settings.imageConsent(), isNull);
+    expect(await settings.notificationsEnabled(), isNull);
+    expect(await settings.swipeTutorialSeen(), isTrue, reason: '튜토리얼 기록은 따로');
+    expect(await settings.ownCaptureLog(), '{"x":1}', reason: '다른 기록은 그대로');
+
+    await settings.clearSwipeTutorialSeen();
+    expect(await settings.swipeTutorialSeen(), isFalse);
+    await settings.setSwipeTutorialSeen(); // 지운 뒤 다시 저장해도 된다
+    expect(await settings.swipeTutorialSeen(), isTrue);
+    await local.close();
+  });
+
   test('v1 DB도 한 번에 v3까지 올라간다', () async {
     await createV1();
     final local = open();

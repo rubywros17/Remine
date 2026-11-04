@@ -20,6 +20,10 @@ class RemineStore extends ChangeNotifier {
 
   int _revision = 0;
 
+  /// 가짜 데이터 모드(기기 설정이 없을 때) 상세 "위로 밀어 삭제" 안내를 봤는지. 앱 실행 동안만 기억한다
+  /// (스토어가 앱마다 새로 생겨 테스트끼리 섞이지 않는다). 기기 모드는 SettingsStore에 저장한다.
+  bool swipeTutorialSeen = false;
+
   /// 데이터가 바뀔 때마다 1씩 오른다. 화면은 이 값이 달라지면 다시 불러온다.
   int get revision => _revision;
 

@@ -5,6 +5,7 @@ import android.app.NotificationManager
 import android.content.Intent
 import android.os.Bundle
 import android.provider.Settings
+import android.view.WindowManager
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -34,6 +35,15 @@ class MainActivity : FlutterActivity() {
                     // 자기 캡처 1회 정리의 시작점(lib/data/device/own_capture.dart). 밀리초.
                     "firstInstallTime" ->
                         result.success(packageManager.getPackageInfo(packageName, 0).firstInstallTime)
+                    // 첫 분석 화면 동안 화면 꺼짐 방지(lib/screens/sync_gate.dart). 창 플래그라 권한이 필요 없고 앱이 앞에 있을 때만 효과가 있다.
+                    "keepScreenOn" -> {
+                        if (call.arguments == true) {
+                            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        } else {
+                            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                        }
+                        result.success(null)
+                    }
                     else -> result.notImplemented()
                 }
             }
