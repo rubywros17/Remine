@@ -106,6 +106,8 @@ class _TagScreenState extends State<TagScreen> {
 
   GlobalKey _keyFor(int id) => _tileKeys.putIfAbsent(id, GlobalKey.new);
 
+  List<int> get _counts => dailyCounts(_items, _today, widget.windowDays);
+
   @override
   Widget build(BuildContext context) {
     final window = windowLabel(widget.windowDays);
@@ -169,10 +171,12 @@ class _TagScreenState extends State<TagScreen> {
                   style: AppText.caption.copyWith(color: AppColors.inkSub),
                 ),
                 const SizedBox(height: AppSpacing.s16),
-                DailyBars(
-                  counts: dailyCounts(_items, _today, widget.windowDays),
-                  today: _today,
-                ),
+                DailyBars(counts: _counts, today: _today),
+                if (tagInsight(widget.tag, _counts, _today)
+                    case final line?) ...[
+                  const SizedBox(height: AppSpacing.s12),
+                  Text(line, style: AppText.body),
+                ],
               ],
               const SizedBox(height: AppSpacing.s20),
               if (_loaded && _items.isEmpty)
@@ -230,6 +234,62 @@ List<int> dailyCounts(List<ScreenshotItem> items, DateTime now, int days) {
     if (i >= 0 && i < days) counts[i]++;
   }
   return counts;
+}
+
+/// 해석 문장 문구. 상황마다 2~3개이고 [tagInsight]가 태그 이름으로 하나를 고른다.
+/// 자리표시: {tag} 태그 이름, {m}·{d} 날짜, {x} 잠잠한 일수, {n} 장수·일수, {window} 기간("2주").
+/// 표기는 "캡처"("캡쳐"·"찍었어요" 쓰지 않음).
+const insightPhrases = {
+  'quiet': [
+    '{m}월 {d}일에 가장 빠져 있었어요. 요즘 {x}일째 잠잠해요',
+    '한창일 땐 하루 {n}장씩 캡처했는데, 요즘은 조용하네요',
+    '{x}일째 소식이 없어요. 아직 좋아하죠?',
+  ],
+  'rising': ['요즘 다시 빠지는 중이에요', '잊은 줄 알았는데, 다시 돌아왔네요', '최근 며칠 새 {n}장이나 모았어요'],
+  'burst': ['{m}월 {d}일 하루에 {n}장을 몰아서 캡처했어요', '{m}월 {d}일, 무슨 일 있었어요? 하루에 {n}장!'],
+  'today': ['오늘도 캡처했어요. 한창 빠져 있는 중!', '오늘의 관심사도 #{tag}'],
+  'steady': ['{window} 동안 꾸준히 모았어요', '{window} 중 {n}일이나 캡처했어요. 진심이네요'],
+};
+
+/// 날짜별 막대([counts], 오늘이 마지막 칸) 아래 해석 문장. 기간 안에 캡처가 없으면 null.
+/// 상황은 위에서부터: 잠잠(최근 3일 0장) → 다시 늘어남(최근 3일 > 그 전 4일) → 몰아서(하루가 전체의 절반 이상)
+/// → 오늘 캡처함 → 그 외. 문구는 태그 이름 해시로 골라 같은 태그는 늘 같은 문구다.
+String? tagInsight(String tag, List<int> counts, DateTime today) {
+  final total = counts.fold(0, (a, b) => a + b);
+  if (total == 0) return null;
+  int sum(int from, int to) => counts
+      .sublist(from.clamp(0, counts.length), to.clamp(0, counts.length))
+      .fold(0, (a, b) => a + b);
+  final last = counts.length;
+  // 가장 많은 날(같으면 최근 날)
+  var peak = 0;
+  for (var i = 0; i < last; i++) {
+    if (counts[i] >= counts[peak]) peak = i;
+  }
+  final peakDay = today.subtract(Duration(days: last - 1 - peak));
+  final recent3 = sum(last - 3, last);
+
+  final (key, n) = switch (()) {
+    _ when recent3 == 0 => ('quiet', counts[peak]),
+    _ when recent3 > sum(last - 7, last - 3) => ('rising', recent3),
+    // 하루 1장은 "몰아서"라 부르기 어색해서 2장 이상일 때만
+    _ when counts[peak] >= 2 && counts[peak] * 2 >= total => (
+      'burst',
+      counts[peak],
+    ),
+    _ when counts.last > 0 => ('today', 0),
+    _ => ('steady', counts.where((c) => c > 0).length),
+  };
+  final phrases = insightPhrases[key]!;
+  // String.hashCode는 플랫폼(웹·안드로이드)마다 다를 수 있어 직접 센다.
+  final hash = tag.codeUnits.fold(0, (h, c) => (h * 31 + c) & 0x7fffffff);
+  return phrases[hash % phrases.length]
+      .replaceAll('{tag}', tag)
+      .replaceAll('{m}', '${peakDay.month}')
+      .replaceAll('{d}', '${peakDay.day}')
+      .replaceAll('{x}', '${last - 1 - counts.lastIndexWhere((c) => c > 0)}')
+      .replaceAll('{n}', '$n')
+      .replaceAll('{window}', windowLabel(last));
 }
 
 /// 날짜별 캡처 수 막대. 있는 날은 셀라돈, 0인 날은 테두리색 낮은 막대. 아래 양끝에 시작 날짜와 "오늘".
