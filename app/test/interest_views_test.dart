@@ -213,6 +213,36 @@ void main() {
         ]);
       });
 
+      test('오래 잠잠: 기간 안 0장이면 전체 목록의 마지막 캡처 기준, 그것도 없으면 null', () {
+        expectFrom(
+          'dormant',
+          tagInsight(
+            '뜨개질',
+            List.filled(14, 0),
+            _now,
+            lastCapture: DateTime(2026, 10, 6, 23),
+          ),
+          ['마지막 캡처가 20일 전이에요. 다시 꺼내 볼까요?', '2주 넘게 소식이 없어요. 아직 좋아하죠?'],
+        );
+      });
+
+      test('새로 생김: 최근 3일에만 있으면 "다시 늘어남"이 아니다', () {
+        final c = days({0: 1, 2: 2});
+        expectFrom('new', tagInsight('뜨개질', c, _now), [
+          '새로 빠지기 시작했어요',
+          '최근에 생긴 관심사예요. 앞으로가 기대돼요',
+        ]);
+      });
+
+      test('다시 늘어남은 그 전 4일보다 앞에 캡처가 있어야: 그 전 4일에만 있으면 아래 상황으로', () {
+        // 최근 3일 2장 > 그 전 4일 1장이지만 7일 전보다 앞에는 없다 → 몰아서(오늘 2장 = 전체의 2/3)
+        final c = days({0: 2, 4: 1});
+        expect(
+          insightPhrases['rising']!.map((p) => p.replaceAll('{n}', '2')),
+          isNot(contains(tagInsight('뜨개질', c, _now))),
+        );
+      });
+
       test('다시 늘어남: 최근 3일 합 > 그 전 4일 합 (잠잠보다 아래, 몰아서보다 위)', () {
         final c = days({0: 3, 1: 1, 4: 1, 10: 3});
         expectFrom('rising', tagInsight('뜨개질', c, _now), [
