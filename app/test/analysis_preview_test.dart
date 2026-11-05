@@ -43,9 +43,9 @@ void main() {
     await tester.pumpAndSettle(); // 남은 큐를 칸에 채운다
     expect(status.counts.values.reduce((a, b) => a + b), 300);
     expect(find.text('300'), findsOneWidget);
-    expect(find.text('장 꺼냈어요'), findsOneWidget);
+    expect(find.text('장 정리했어요'), findsOneWidget);
 
-    await tester.tap(find.text('홈으로'));
+    await tester.tap(find.text('홈에서 둘러보기'));
     await tester.pumpAndSettle();
     expect(find.byType(AnalysisPreviewScreen), findsNothing);
   });

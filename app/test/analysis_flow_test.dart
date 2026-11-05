@@ -85,7 +85,7 @@ void main() {
 
   group('첫 분석 화면', () {
     testWidgets('진행 중: 실제 숫자, 안내 제목, 작은 보안 문구, 홈에서 먼저 보기', (tester) async {
-      final status = SyncStatus()..begin(15, intervalMs: 4500);
+      final status = SyncStatus()..begin(15);
       status.advance(5);
       for (var i = 0; i < 3; i++) {
         status.count(Category.shopping);
@@ -103,7 +103,7 @@ void main() {
         expect(find.text(drawerBinLabel(c)), findsOneWidget, reason: '칸 7개');
       }
       expect(find.text('홈에서 먼저 볼래요'), findsOneWidget);
-      expect(find.text('홈으로'), findsNothing);
+      expect(find.text('홈에서 둘러보기'), findsNothing);
       expect(find.text(PrivacyNote.text), findsOneWidget);
       expect(find.text(keepScreenOnHint), findsOneWidget);
     });
@@ -121,10 +121,10 @@ void main() {
       );
 
       expect(find.text('15'), findsOneWidget);
-      expect(find.text('장 꺼냈어요'), findsOneWidget);
+      expect(find.text('장 정리했어요'), findsOneWidget);
       expect(find.text('/ 15장 꺼냈어요'), findsNothing);
-      expect(find.bySemanticsLabel('15장 꺼냈어요'), findsOneWidget);
-      expect(find.text('홈으로'), findsOneWidget);
+      expect(find.bySemanticsLabel('15장 정리했어요'), findsOneWidget);
+      expect(find.text('홈에서 둘러보기'), findsOneWidget);
       expect(find.text('홈에서 먼저 볼래요'), findsNothing);
       expect(
         find.text(keepScreenOnHint),
@@ -134,7 +134,7 @@ void main() {
       await tester.pump(const Duration(seconds: 5));
       expect(home, 0, reason: '누르기 전에는 이동하지 않는다');
 
-      await tester.tap(find.text('홈으로'));
+      await tester.tap(find.text('홈에서 둘러보기'));
       expect(home, 1);
     });
 
@@ -146,7 +146,7 @@ void main() {
 
       expect(find.text('새로 꺼낼 캡처가 없어요'), findsOneWidget);
       expect(find.textContaining('서버에 연결하지 못했어요'), findsOneWidget);
-      expect(find.text('홈으로'), findsOneWidget);
+      expect(find.text('홈에서 둘러보기'), findsOneWidget);
     });
 
     testWidgets('카드는 방금 분류된 실제 캡처 썸네일 + 그 카테고리 이름표다', (tester) async {
@@ -280,9 +280,9 @@ void main() {
       await tester.pump(const Duration(seconds: 3));
 
       expect(find.text('HOME'), findsNothing, reason: '자동 이동 금지');
-      expect(find.text('홈으로'), findsOneWidget);
+      expect(find.text('홈에서 둘러보기'), findsOneWidget);
 
-      await tester.tap(find.text('홈으로'));
+      await tester.tap(find.text('홈에서 둘러보기'));
       await tester.pump();
       expect(find.text('HOME'), findsOneWidget);
     });

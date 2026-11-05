@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:math' as math;
 import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
@@ -13,7 +14,8 @@ import 'capture_thumb.dart';
 ///
 /// - [status]의 분류 기록을 큐에 넣고 [drawerGap] 간격으로 한 장씩 꺼낸다(다음 묶음이 올 때까지 고르게). 카드가
 ///   [AnalysisStage.maxCards]장 떠 있으면 그 장은 카드 없이 칸만 +1 한다(링은 울린다).
-/// - 떠 있는 카드가 없으면(큐가 비었거나 다음 카드 차례를 기다릴 때) 빈 카드가 숨 쉬며 기다린다(모션 줄이기면 멈춤).
+/// - 실행 중에는 다음에 나올 캡처(큐, 없으면 지금 서버에 보낸 묶음)를 겹친 카드로 보여 주고 맨 앞에 스캔 선이 지나간다([DrawerCardStack]).
+///   결과가 오면 맨 앞 카드가 이름표를 받고 날아가고 뒤 카드가 앞으로 당겨진다. 보여 줄 썸네일이 없으면 빈 카드가 숨 쉰다.
 /// - 분석이 끝나면 남은 큐를 [AnalysisStage.drainGap] 간격으로 카드 없이 채운다.
 /// - 숨김 캡처(썸네일 없음)와 모션 줄이기 설정에서는 카드·링 없이 칸과 숫자만 바로 갱신한다.
 /// - 칸 합계와 "다 채웠는지"를 [onProgress]로 알린다. 화면의 큰 숫자는 이 값을 쓴다.
@@ -24,7 +26,11 @@ class DrawerStage extends StatefulWidget {
     required this.counts,
     this.status,
     this.onProgress,
+    this.finished = false,
   });
+
+  /// 칸을 다 채웠는지. 그러면 카드 자리까지 칸이 자란다.
+  final bool finished;
 
   /// [status]가 없을 때(개발용 가짜 값) 칸에 보여 줄 개수.
   final Map<Category, int> counts;
@@ -93,6 +99,7 @@ class _DrawerStageState extends State<DrawerStage>
   Timer? _gap;
   bool _draining = false;
   bool _reduced = false;
+  String? _shownFront; // 지금 묶음 맨 앞에 보이는 캡처. 이 캡처의 카드는 제자리에서 이름표를 받는다
 
   @override
   void initState() {
@@ -170,10 +177,15 @@ class _DrawerStageState extends State<DrawerStage>
 
   void _launch(ClassifiedShot shot) {
     final id = _nextId++;
+    final fromStack = shot.assetId == _shownFront;
     final flight = _Flight(
       id,
       shot,
-      id.isEven ? -AnalysisStage.tiltRadians : AnalysisStage.tiltRadians,
+      fromStack
+          ? AnalysisStage.stackFrontTilt
+          : id.isEven
+          ? -AnalysisStage.tiltRadians
+          : AnalysisStage.tiltRadians,
       this,
     );
     flight.enter.addStatusListener((s) {
@@ -183,7 +195,8 @@ class _DrawerStageState extends State<DrawerStage>
       if (s == AnimationStatus.completed) _land(flight);
     });
     setState(() => _cards.add(flight));
-    flight.enter.forward();
+    // 이미 맨 앞에 보이던 카드는 등장을 건너뛰고 이름표부터.
+    flight.enter.forward(from: fromStack ? DrawerFlightCard.appearEnd : 0);
   }
 
   void _land(_Flight flight) {
@@ -209,6 +222,16 @@ class _DrawerStageState extends State<DrawerStage>
       _shown.values.fold(0, (a, b) => a + b),
       status.finished && _queue.isEmpty && _cards.isEmpty,
     );
+  }
+
+  /// 묶음에 보여 줄 캡처. 큐가 먼저고(다음에 날아갈 순서), 없으면 지금 서버에 보낸 묶음.
+  List<String> _stackIds() {
+    final status = widget.status;
+    if (status == null || !status.running) return const [];
+    final queued = [
+      for (final s in _queue.take(SyncStatus.maxFaces)) s.assetId!,
+    ];
+    return queued.isNotEmpty ? queued : status.batchFaces;
   }
 
   @override
@@ -251,10 +274,13 @@ class _DrawerStageState extends State<DrawerStage>
   Widget _buildStage(BuildContext context, BoxConstraints box) {
     final width = box.maxWidth;
     final height = box.maxHeight;
-    final binsHeight = (height * AnalysisStage.binsShare).clamp(
-      AnalysisStage.binsMinHeight,
-      AnalysisStage.binsMaxHeight,
-    );
+    final finished = widget.finished;
+    final binsHeight = finished
+        ? height
+        : (height * AnalysisStage.binsShare).clamp(
+            AnalysisStage.binsMinHeight,
+            AnalysisStage.binsMaxHeight,
+          );
     final zoneHeight = height - binsHeight;
     final maxCardWidth = width * AnalysisStage.cardMaxWidthShare;
     final tallCardWidth =
@@ -263,6 +289,10 @@ class _DrawerStageState extends State<DrawerStage>
         ? tallCardWidth
         : maxCardWidth;
     final cardSize = Size(cardWidth, cardWidth * AnalysisStage.cardAspect);
+    // 가장 많이 기울어진 카드까지 포함한 높이. 이 안에 들어가게 놓아 위 문구·아래 칸 숫자와 겹치지 않는다.
+    final tiltedHeight =
+        cardSize.height * math.cos(AnalysisStage.tiltRadians) +
+        cardSize.width * math.sin(AnalysisStage.tiltRadians);
     final cellWidth =
         (width - AnalysisStage.binGap * (Category.values.length - 1)) /
         Category.values.length;
@@ -274,14 +304,22 @@ class _DrawerStageState extends State<DrawerStage>
                 AnalysisStage.overshoot)
             .clamp(AnalysisStage.binStub, double.infinity);
 
-    // 처음 몇 장은 칸이 곧장 꽉 차지 않게, binFullAt장까지는 같은 비율로 자란다.
-    final most = _shown.values.fold(AnalysisStage.binFullAt, _max);
+    // 처음 몇 장은 칸이 곧장 꽉 차지 않게, binFullAt장까지는 같은 비율로 자란다. 끝나면 최대값이 남는 공간을 다 쓴다.
+    final most = _shown.values.fold(
+      finished ? 1 : AnalysisStage.binFullAt,
+      _max,
+    );
     double barHeight(Category c) =>
         AnalysisStage.binStub +
         (barMax - AnalysisStage.binStub) * ((_shown[c] ?? 0) / most);
 
-    // 카드 아래쪽을 칸 영역 위에 붙인다.
-    final from = Offset(width / 2, zoneHeight - cardSize.height / 2);
+    // 기울어진 카드의 아래 끝을 칸 영역 위에 붙인다.
+    final from = Offset(width / 2, zoneHeight - tiltedHeight / 2);
+    // 등장은 위에서 내려오지만 스테이지 위로는 나가지 않는다(낮은 화면에서 문구를 덮지 않게).
+    final appearFrom = -math.min(
+      -AnalysisStage.appearOffsetY,
+      math.max(0.0, zoneHeight - tiltedHeight),
+    );
     // 숫자 위까지만 날아간다. 축소된 카드의 아래 끝이 숫자에 닿지 않는 자리.
     Offset target(Category c) => Offset(
       (c.index + 0.5) * cellWidth + c.index * AnalysisStage.binGap,
@@ -294,8 +332,10 @@ class _DrawerStageState extends State<DrawerStage>
     );
     final cardLeft = from.dx - cardSize.width / 2;
     final cardTop = from.dy - cardSize.height / 2;
-    // 카드 간격(최대 4초)이 카드 수명보다 길어서, 큐에 장이 남아 있어도 카드 사이에는 자리가 빈다. 그때도 보여 준다.
-    final idle = widget.status?.running == true && _cards.isEmpty;
+    final stackIds = _stackIds();
+    _shownFront = stackIds.isEmpty ? null : stackIds.first;
+    final idle =
+        widget.status?.running == true && stackIds.isEmpty && _cards.isEmpty;
 
     return Stack(
       clipBehavior: Clip.none,
@@ -318,12 +358,21 @@ class _DrawerStageState extends State<DrawerStage>
                     barHeight: barHeight(c),
                     landings: _landings[c] ?? 0,
                     reduced: _reduced,
+                    finished: finished,
                   ),
                 ),
               ],
             ],
           ),
         ),
+        if (stackIds.isNotEmpty)
+          Positioned(
+            left: cardLeft,
+            top: cardTop,
+            width: cardSize.width,
+            height: cardSize.height,
+            child: DrawerCardStack(assetIds: stackIds, reduced: _reduced),
+          ),
         if (idle)
           Positioned(
             left: cardLeft,
@@ -345,6 +394,7 @@ class _DrawerStageState extends State<DrawerStage>
               fly: card.fly,
               tilt: card.tilt,
               travel: target(card.shot.category) - from,
+              appearFrom: appearFrom,
             ),
           ),
       ],
@@ -363,9 +413,11 @@ class DrawerFlightCard extends StatelessWidget {
     required this.fly,
     required this.tilt,
     required this.travel,
+    this.appearFrom = AnalysisStage.appearOffsetY,
   });
 
-  static final double _appearEnd =
+  /// [enter]에서 등장이 끝나는 지점. 여기부터 이름표가 나온다.
+  static final double appearEnd =
       AnalysisStage.appear.inMilliseconds / _Flight._enterTotal.inMilliseconds;
   static final double _popEnd =
       (AnalysisStage.appear + AnalysisStage.tagPop).inMilliseconds /
@@ -376,13 +428,14 @@ class DrawerFlightCard extends StatelessWidget {
   final Animation<double> fly;
   final double tilt;
   final Offset travel;
+  final double appearFrom;
 
   @override
   Widget build(BuildContext context) {
-    final appear = Interval(0, _appearEnd, curve: AppMotion.standard);
+    final appear = Interval(0, appearEnd, curve: AppMotion.standard);
     final pop = enter.drive(
       CurveTween(
-        curve: Interval(_appearEnd, _popEnd, curve: Curves.easeOutBack),
+        curve: Interval(appearEnd, _popEnd, curve: Curves.easeOutBack),
       ),
     );
     final assetId = shot.assetId!;
@@ -403,8 +456,9 @@ class DrawerFlightCard extends StatelessWidget {
             child: FittedBox(
               fit: BoxFit.scaleDown,
               child: DecoratedBox(
+                key: const ValueKey('flight-tag'),
                 decoration: BoxDecoration(
-                  color: AppColors.lemon,
+                  color: AppCategoryColors.of(shot.category),
                   borderRadius: BorderRadius.circular(AppRadii.pill),
                 ),
                 child: Padding(
@@ -428,7 +482,7 @@ class DrawerFlightCard extends StatelessWidget {
         // 곡선 경로(2차 베지어): 옆으로 나갔다가 칸으로 떨어진다. 제어점은 칸의 x, 출발점의 y.
         final dx = travel.dx * (2 * (1 - f) * f + f * f);
         final dy = travel.dy * f * f;
-        final y = lerpDouble(AnalysisStage.appearOffsetY, 0, t)!;
+        final y = lerpDouble(appearFrom, 0, t)!;
         final scale =
             lerpDouble(AnalysisStage.appearScale, 1, t)! *
             lerpDouble(1, AnalysisStage.flyEndScale, f)!;
@@ -448,7 +502,172 @@ class DrawerFlightCard extends StatelessWidget {
   }
 }
 
-/// 떠 있는 카드가 없을 때 카드 자리에 놓이는 빈 카드. 다음 묶음을 기다리는 동안 은은하게 숨 쉰다.
+/// 대기 묶음: 맨 앞 카드 + 좌우로 비켜 기운 뒤 카드 2장. 장이 빠지면 뒤 카드가 앞으로 당겨진다.
+class DrawerCardStack extends StatelessWidget {
+  const DrawerCardStack({
+    super.key,
+    required this.assetIds,
+    required this.reduced,
+  });
+
+  /// 맨 앞부터.
+  final List<String> assetIds;
+  final bool reduced;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      clipBehavior: Clip.none,
+      fit: StackFit.expand,
+      children: [
+        for (var slot = assetIds.length - 1; slot >= 0; slot--)
+          _StackCard(
+            key: ValueKey(assetIds[slot]),
+            assetId: assetIds[slot],
+            slot: slot,
+            reduced: reduced,
+          ),
+      ],
+    );
+  }
+}
+
+class _StackCard extends StatelessWidget {
+  const _StackCard({
+    super.key,
+    required this.assetId,
+    required this.slot,
+    required this.reduced,
+  });
+
+  final String assetId;
+  final int slot; // 0이 맨 앞
+  final bool reduced;
+
+  @override
+  Widget build(BuildContext context) {
+    final front = slot == 0;
+    final duration = AppMotion.duration(context, MotionDuration.base);
+    final side = slot == 1 ? 1.0 : -1.0;
+    final tilt = front
+        ? AnalysisStage.stackFrontTilt
+        : side * AnalysisStage.tiltRadians;
+    // [Flutter 메모] 값이 바뀌면 알아서 보간하는 암시적 애니메이션. key가 같으니 자리만 옮겨 다니고 썸네일은 다시 읽지 않는다.
+    return AnimatedSlide(
+      offset: Offset(front ? 0 : side * AnalysisStage.stackBackOffset, 0),
+      duration: duration,
+      curve: AppMotion.standard,
+      child: AnimatedRotation(
+        turns: tilt / (2 * math.pi),
+        duration: duration,
+        curve: AppMotion.standard,
+        child: AnimatedScale(
+          scale: front ? 1 : AnalysisStage.stackBackScale,
+          duration: duration,
+          curve: AppMotion.standard,
+          child: AnimatedOpacity(
+            opacity: front ? 1 : AnalysisStage.stackBackOpacity,
+            duration: duration,
+            child: CaptureThumb(
+              assetId: assetId,
+              seed: assetId.hashCode.abs(),
+              radius: AppRadii.tile,
+              size: 240,
+              child: front && !reduced
+                  ? const Positioned.fill(child: _ScanLine())
+                  : null,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// 맨 앞 카드 위를 왕복하는 셀라돈 선. 주변은 옅은 글로우, 위쪽은 아주 옅은 그라데이션.
+class _ScanLine extends StatefulWidget {
+  const _ScanLine();
+
+  @override
+  State<_ScanLine> createState() => _ScanLineState();
+}
+
+class _ScanLineState extends State<_ScanLine>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _scan = AnimationController(
+    vsync: this,
+    duration: AnalysisStage.scanHalf,
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _scan.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppRadii.tile),
+      child: LayoutBuilder(
+        builder: (context, box) {
+          final travel = box.maxHeight - AnalysisStage.scanLineHeight;
+          final trail = box.maxHeight * AnalysisStage.scanTrailShare;
+          return AnimatedBuilder(
+            animation: _scan,
+            builder: (context, _) {
+              final y = travel * _scan.value;
+              return Stack(
+                children: [
+                  Positioned(
+                    left: 0,
+                    right: 0,
+                    top: y - trail,
+                    height: trail,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            AppColors.celadon.withValues(alpha: 0),
+                            AppColors.celadon.withValues(
+                              alpha: AnalysisStage.scanTrailOpacity,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    key: const ValueKey('scan-line'),
+                    left: 0,
+                    right: 0,
+                    top: y,
+                    height: AnalysisStage.scanLineHeight,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: AppColors.celadon,
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.celadon.withValues(alpha: 0.6),
+                            blurRadius: AnalysisStage.scanGlowBlur,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// 보여 줄 썸네일이 없을 때 카드 자리에 놓이는 빈 카드. 다음 묶음을 기다리는 동안 은은하게 숨 쉰다.
 class DrawerIdleCard extends StatelessWidget {
   const DrawerIdleCard({super.key});
 
@@ -528,8 +747,10 @@ class _Bin extends StatefulWidget {
     required this.barHeight,
     required this.landings,
     required this.reduced,
+    required this.finished,
   });
 
+  final bool finished;
   final Category category;
   final int count;
   final double barHeight;
@@ -581,7 +802,11 @@ class _BinState extends State<_Bin> with SingleTickerProviderStateMixin {
         const SizedBox(height: AnalysisStage.binGap),
         TweenAnimationBuilder<double>(
           tween: Tween(end: widget.barHeight),
-          duration: widget.reduced ? Duration.zero : AnalysisStage.binSpring,
+          duration: widget.reduced
+              ? Duration.zero
+              : widget.finished
+              ? AnalysisStage.binGrow
+              : AnalysisStage.binSpring,
           curve: Curves.easeOutBack,
           builder: (context, height, _) => SizedBox(
             height: height < 0 ? 0 : height,

@@ -386,9 +386,9 @@ void defineLayoutMatrix({
           ),
         );
         await tester.pump(const Duration(milliseconds: 400));
-        expect(find.text('남은 시간을 계산하고 있어요'), findsOneWidget);
+        expect(find.text(etaPendingText), findsOneWidget);
         // 서버 응답을 기다리는 중(움직이는 막대 + 안내 문구). 막대가 계속 움직이므로 settle 대신 시간을 흘려보낸다.
-        final waiting = SyncStatus()..begin(300, intervalMs: 4500);
+        final waiting = SyncStatus()..begin(300);
         waiting.setWaiting(20);
         await tester.pumpWidget(
           MaterialApp(
@@ -402,7 +402,7 @@ void defineLayoutMatrix({
       _expectClean('첫 분석 실제 진행 $label', errors);
     });
 
-    testWidgets('첫 분석 · 완료 상태·카드 비행(칸 99장·홈으로 버튼) · $label', (tester) async {
+    testWidgets('첫 분석 · 완료 요약·대기 묶음·카드 비행(칸 99장) · $label', (tester) async {
       final errors = await _errorsDuring(() async {
         tester.view.physicalSize = size;
         tester.view.devicePixelRatio = 1.0;
@@ -432,14 +432,15 @@ void defineLayoutMatrix({
         }
 
         await show(status);
-        expect(find.text('홈으로'), findsOneWidget);
+        expect(find.text('홈에서 둘러보기'), findsOneWidget);
         // 아직 한 장도 분류되지 않은 완료(새 캡처 없음)와 연결 실패 안내.
         await show(SyncStatus()..finish());
         expect(find.text('새로 꺼낼 캡처가 없어요'), findsWidgets);
         await show(SyncStatus()..finish(issue: SyncIssue.offline));
         expect(find.textContaining('서버에 연결하지 못했어요'), findsOneWidget);
-        // 진행 중 + 카드가 쌓이고 날아가는 상태(칸마다 몇 장씩 들어간다).
-        final partial = SyncStatus()..begin(300, intervalMs: 4500);
+        // 진행 중 + 대기 묶음과 카드가 쌓이고 날아가는 상태(칸마다 몇 장씩 들어간다).
+        final partial = SyncStatus()..begin(300);
+        partial.setWaiting(16, assetIds: ['w0', 'w1', 'w2']);
         await tester.pumpWidget(
           MaterialApp(
             home: DeviceScope(

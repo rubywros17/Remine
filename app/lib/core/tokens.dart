@@ -280,6 +280,22 @@ abstract final class AnalysisStage {
   static const double appearOffsetY = -40;
   static const double appearScale = 0.88;
   static const double tiltRadians = 0.0873; // ±5°
+
+  /// 대기 묶음: 맨 앞 −1°, 뒤 2장은 좌우로 비켜 ±[tiltRadians]·[stackBackScale]배·반투명.
+  static const double stackFrontTilt = -0.0175; // −1°
+  static const double stackBackScale = 0.9;
+  static const double stackBackOpacity = 0.55;
+  static const double stackBackOffset = 0.22; // 카드 폭 비율
+
+  /// 맨 앞 카드의 스캔 선: 위↔아래 왕복 2초.
+  static const scanHalf = Duration(seconds: 1);
+  static const double scanLineHeight = 3;
+  static const double scanGlowBlur = 8;
+  static const double scanTrailShare = 0.22; // 선 위 그라데이션 높이(카드 높이 비율)
+  static const double scanTrailOpacity = 0.18;
+
+  /// 완료 순간 칸이 남는 공간까지 자라는 시간.
+  static const binGrow = Duration(milliseconds: 600);
   static const double flyEndScale = 0.2;
 
   /// 떠 있는 카드가 없을 때 빈 카드가 숨 쉬는 반주기(1.6초 주기, scale [breathScale]↔1).

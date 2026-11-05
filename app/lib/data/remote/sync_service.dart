@@ -150,7 +150,7 @@ class SyncService {
         ' → 보낼 후보 ${waiting.length} → SYNC_LIMIT 후 ${pending.length}',
       );
       final tally = _Tally();
-      status.begin(pending.length, intervalMs: config.classifyIntervalMs);
+      status.begin(pending.length);
       var deviceIdNow = deviceId;
       final size = batchSize < config.maxBatchSize
           ? batchSize
@@ -437,7 +437,8 @@ class SyncService {
       round++;
       final AnalyzeResult result;
       try {
-        status.setWaiting(send.length); // 화면이 "분류하는 중"을 보여 준다
+        // 화면이 "분류하는 중"과 이 묶음의 썸네일을 보여 준다(기기 안 표시일 뿐, 보내는 내용과 무관).
+        status.setWaiting(send.length, assetIds: send.keys.toList());
         result = await api.analyze(currentDevice, [
           for (final o in send.values) o.toItem(),
         ]);
