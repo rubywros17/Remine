@@ -23,8 +23,8 @@ class _AnalysisPreviewScreenState extends State<AnalysisPreviewScreen> {
   static const _total = 300;
   static const _tick = Duration(milliseconds: 66); // 300장 × 66ms ≈ 20초
 
-  /// 이만큼마다 카드를 바꾼다(약 1초에 한 번). 매 장 바꾸면 썸네일을 읽기 전에 카드가 밀려 깜빡인다.
-  static const _cardEvery = 15;
+  /// 이만큼마다 한 장만 카드로 띄운다(초당 3장 → 큐가 쌓이는 모습까지 보인다). 나머지는 숨김처럼 칸 숫자만 오른다.
+  static const _cardEvery = 5;
 
   // 많이 나올 카테고리를 더 많이 넣어 뽑는다.
   static const _weighted = [

@@ -1,3 +1,5 @@
+import 'dart:collection' show UnmodifiableListView;
+
 import 'package:flutter/foundation.dart' show ChangeNotifier;
 
 import '../../models/category.dart';
@@ -30,11 +32,11 @@ enum SyncIssue {
   };
 }
 
-/// 방금 분류된 캡처 한 장(첫 분석 화면 가운데 카드에 실제 썸네일 + 카테고리로 보여 준다).
-class RecentShot {
-  const RecentShot(this.assetId, this.category);
+/// 분류된 캡처 한 장. [assetId]가 없으면 숨김(민감·금융) 캡처라 썸네일 카드 없이 개수만 센다.
+class ClassifiedShot {
+  const ClassifiedShot(this.assetId, this.category);
 
-  final String assetId;
+  final String? assetId;
   final Category category;
 }
 
@@ -48,7 +50,7 @@ class SyncStatus extends ChangeNotifier {
 
   bool _running = false;
   bool _finished = false;
-  final List<RecentShot> _recent = [];
+  final List<ClassifiedShot> _shots = [];
   int _done = 0;
   int _total = 0;
   DateTime? _startedAt;
@@ -63,10 +65,9 @@ class SyncStatus extends ChangeNotifier {
   /// 이번 실행이 (성공이든 실패든) 끝났는지. 첫 분석 화면이 완료 상태를 보여 주는 데 쓴다.
   bool get finished => _finished;
 
-  /// 방금 분류된 캡처(최신이 앞, 최대 [maxRecent]장).
-  List<RecentShot> get recent => List.unmodifiable(_recent);
+  /// 이번 실행에서 분류된 순서대로의 기록. 첫 분석 화면이 이 순서로 카드를 띄운다.
+  List<ClassifiedShot> get shots => UnmodifiableListView(_shots);
 
-  static const maxRecent = 4;
   int get done => _done;
   int get total => _total;
   SyncIssue get issue => _issue;
@@ -104,7 +105,7 @@ class SyncStatus extends ChangeNotifier {
   void begin(int total, {int intervalMs = 0}) {
     _running = true;
     _finished = false;
-    _recent.clear();
+    _shots.clear();
     _intervalMs = intervalMs;
     _waiting = 0;
     _done = 0;
@@ -128,13 +129,10 @@ class SyncStatus extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// [category]로 분류된 한 장을 센다. [assetId]를 주면 "방금 분류된 캡처"에도 올린다(숨김 캡처에는 주지 않는다).
+  /// [category]로 분류된 한 장을 센다. 숨김 캡처에는 [assetId]를 주지 않는다(카드 없이 개수만).
   void count(Category category, {String? assetId}) {
     _counts[category] = (_counts[category] ?? 0) + 1;
-    if (assetId != null) {
-      _recent.insert(0, RecentShot(assetId, category));
-      if (_recent.length > maxRecent) _recent.removeLast();
-    }
+    _shots.add(ClassifiedShot(assetId, category));
   }
 
   void finish({SyncIssue issue = SyncIssue.none, int failedCount = 0}) {

@@ -256,6 +256,40 @@ abstract final class AppMotion {
       reduced(context) ? Duration.zero : _durations[d]!;
 }
 
+/// 첫 분석 화면의 카드 스테이지·서랍 칸. 카드 한 장: 등장 → 이름표 → 멈춤 → 칸으로 쏙.
+abstract final class AnalysisStage {
+  static const appear = Duration(milliseconds: 280);
+  static const tagPop = Duration(milliseconds: 180);
+  static const hold = Duration(milliseconds: 220);
+  static const fly = Duration(milliseconds: 460);
+  static const binSpring = Duration(milliseconds: 360); // 칸 높이·링
+
+  /// 카드 시작 간격. 큐가 [fastQueue]장을 넘으면 [fastGap]으로 줄인다.
+  static const gap = Duration(milliseconds: 600);
+  static const fastGap = Duration(milliseconds: 300);
+  static const fastQueue = 20;
+  static const maxFlying = 2;
+
+  static const double appearOffsetY = -40;
+  static const double appearScale = 0.88;
+  static const double tiltRadians = 0.0873; // ±5°
+  static const double flyEndScale = 0.2;
+
+  static const double minHeight = 180; // 이보다 낮으면 화면 전체가 스크롤된다
+  static const double binsShare = 0.42; // 전체 높이 중 칸 영역(나머지는 카드 자리)
+  static const double cardMaxHeight = 168;
+  static const double cardAspect = 1.5;
+  static const double binGap = 4;
+  static const double binRadius = 6;
+  static const double binStub = 6; // 0장인 칸도 보이는 최소 높이
+  static const int binFullAt = 20; // 가장 많은 칸이 이 장수를 넘으면 그 칸이 최대 높이다
+  static const double overshoot = 1.1; // 스프링이 튀어 오르는 만큼 남겨 둔다
+  static const double numberHeight = 16;
+  static const double labelHeight = 16;
+  static const double ringScale = 1.25;
+  static const double ringWidth = 2;
+}
+
 /// 상세 화면 제스처 값(좌우 넘기기 · 아래로 닫기 · 위로 던져 휴지통). 값의 근거와 동작은 docs/design.md.
 /// 손가락 감각은 실기기에서 조정하므로 숫자는 전부 여기 한 곳에 둔다.
 abstract final class AppGesture {

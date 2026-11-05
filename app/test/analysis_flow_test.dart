@@ -93,7 +93,10 @@ void main() {
 
       expect(find.text('5'), findsOneWidget);
       expect(find.text('/ 15장 꺼냈어요'), findsOneWidget);
-      expect(find.text('지금까지 찾은 것'), findsOneWidget);
+      expect(find.text('지금까지 찾은 것'), findsNothing);
+      for (final c in Category.values) {
+        expect(find.text(c.label), findsOneWidget, reason: '칸 7개');
+      }
       expect(find.text('홈에서 먼저 볼래요'), findsOneWidget);
       expect(find.text('홈으로'), findsNothing);
       expect(find.text(PrivacyNote.text), findsOneWidget);
@@ -115,7 +118,11 @@ void main() {
       expect(find.bySemanticsLabel('15장 꺼냈어요'), findsOneWidget);
       expect(find.text('홈으로'), findsOneWidget);
       expect(find.text('홈에서 먼저 볼래요'), findsNothing);
-      expect(find.text(keepScreenOnHint), findsNothing, reason: '끝나면 화면 안내도 없다');
+      expect(
+        find.text(keepScreenOnHint),
+        findsNothing,
+        reason: '끝나면 화면 안내도 없다',
+      );
       await tester.pump(const Duration(seconds: 5));
       expect(home, 0, reason: '누르기 전에는 이동하지 않는다');
 
@@ -134,40 +141,47 @@ void main() {
       expect(find.text('홈으로'), findsOneWidget);
     });
 
-    testWidgets('가운데 카드는 방금 분류된 실제 캡처 썸네일 + 그 카테고리 라벨이다', (tester) async {
+    testWidgets('카드는 방금 분류된 실제 캡처 썸네일 + 그 카테고리 이름표다', (tester) async {
       final status = SyncStatus()..begin(10);
-      status.count(Category.shopping, assetId: 'a1');
-      status.count(Category.place, assetId: 'a2');
       await tester.pumpWidget(
         _app(
           AnalysisScreen(status: status, onHome: () {}),
           reader: FakeGalleryReader(),
         ),
       );
+      status.count(Category.shopping, assetId: 'a1');
+      status.advance(1);
       await tester.pump();
       await tester.pump();
 
-      expect(find.byKey(const ValueKey('recent-a1')), findsOneWidget);
-      expect(find.byKey(const ValueKey('recent-a2')), findsOneWidget);
-      expect(find.byType(Image), findsNWidgets(2));
-      // 카드 위 라벨 + 아래 칩에 같은 이름이 있다.
-      expect(find.text('쇼핑'), findsNWidgets(2));
-      expect(find.text('장소'), findsNWidgets(2));
-      expect(status.recent.map((s) => s.assetId), ['a2', 'a1']); // 최신이 앞
+      expect(find.byType(Image), findsOneWidget);
+      expect(find.text('쇼핑'), findsNWidgets(2), reason: '칸 이름 + 카드 이름표');
+      await tester.pumpAndSettle();
+      expect(find.byType(Image), findsNothing, reason: '칸으로 들어가 사라진다');
     });
 
-    testWidgets('숨김(민감·금융) 캡처는 방금 분류된 카드에 올리지 않는다', (tester) async {
+    test('숨김(민감·금융) 캡처는 썸네일 id 없이 기록된다', () {
       final status = SyncStatus()..begin(1);
-      status.count(Category.etc); // assetId 없이 개수만
-      expect(status.recent, isEmpty);
+      status.count(Category.etc);
+      expect(status.shots.single.assetId, isNull);
+      expect(status.counts[Category.etc], 1);
     });
 
-    testWidgets('방금 분류된 카드는 최대 4장만 남는다', (tester) async {
+    test('분류 기록은 순서대로 전부 남고 새 실행에서 비워진다', () {
       final status = SyncStatus()..begin(10);
       for (var i = 0; i < 6; i++) {
         status.count(Category.info, assetId: 'a$i');
       }
-      expect(status.recent.map((s) => s.assetId), ['a5', 'a4', 'a3', 'a2']);
+      expect(status.shots.map((s) => s.assetId), [
+        'a0',
+        'a1',
+        'a2',
+        'a3',
+        'a4',
+        'a5',
+      ]);
+      status.begin(1);
+      expect(status.shots, isEmpty);
     });
   });
 
@@ -270,7 +284,9 @@ void main() {
       await tester.pump();
 
       expect(rig.sync.isRunning, isTrue);
-      await tester.ensureVisible(find.text('홈에서 먼저 볼래요')); // 안내 문구만큼 버튼이 아래로 밀린다
+      await tester.ensureVisible(
+        find.text('홈에서 먼저 볼래요'),
+      ); // 안내 문구만큼 버튼이 아래로 밀린다
       await tester.tap(find.text('홈에서 먼저 볼래요'));
       await tester.pump();
       expect(find.text('HOME'), findsOneWidget);
