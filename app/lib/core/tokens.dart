@@ -126,16 +126,6 @@ abstract final class AppThumbs {
 }
 
 /// 모서리 반경.
-/// 태그 화면 날짜별 막대(시안 값). 있는 날은 셀라돈이고 그 기간의 최댓값이 [height]를 꽉 채운다.
-/// 0장인 날은 [emptyHeight] 높이의 테두리색 막대. 아래 라벨(시작 날짜 · "오늘")은 [labelSize] 보조 글자.
-abstract final class AppTagBars {
-  static const double height = 58;
-  static const double gap = 5;
-  static const double radius = 4;
-  static const double emptyHeight = 4;
-  static const double labelSize = 10;
-}
-
 abstract final class AppRadii {
   static const double card = 28;
   static const double sheet = 30;
