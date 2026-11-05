@@ -10,7 +10,7 @@ plugins {
 // 릴리스 서명 키 설정. 키(keystore)와 비밀번호는 레포 밖에 둔다.
 // 환경변수 REMINE_KEY_PROPERTIES(예: E:/dev/secrets/remine/key.properties)가 가리키는 파일, 없으면 android/key.properties(.gitignore).
 // 파일 내용: storeFile=키 경로, storePassword=, keyAlias=, keyPassword=
-// 파일이 없으면 지금처럼 debug 키로 서명한다(로컬 `flutter run --release`용, 배포용 APK로 쓰지 말 것).
+// 파일이 없으면 릴리스 빌드를 실패시킨다. debug 키로 서명하면 폰의 릴리스 앱과 서명이 달라, 설치할 때 앱이 지워지고 데이터가 날아간다.
 val keyPropertiesFile = System.getenv("REMINE_KEY_PROPERTIES")?.let { file(it) } ?: rootProject.file("key.properties")
 val keyProperties = Properties().apply {
     if (keyPropertiesFile.exists()) keyPropertiesFile.inputStream().use { load(it) }
@@ -39,6 +39,7 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["appLabel"] = "remine"
     }
 
     signingConfigs {
@@ -53,16 +54,28 @@ android {
     }
 
     buildTypes {
+        debug {
+            // 패키지를 나눠 릴리스 앱과 같이 설치한다. google-services.json에 이 패키지도 등록되어 있어야 빌드된다.
+            applicationIdSuffix = ".debug"
+            manifestPlaceholders["appLabel"] = "re:mine Dev"
+        }
         release {
-            signingConfig = if (keyPropertiesFile.exists()) {
-                signingConfigs.getByName("release")
-            } else {
-                logger.warn("릴리스 서명 키 설정이 없어 debug 키로 서명합니다(REMINE_KEY_PROPERTIES).")
-                signingConfigs.getByName("debug")
+            if (keyPropertiesFile.exists()) {
+                signingConfig = signingConfigs.getByName("release")
             }
             // R8(코드 축소) 규칙: ML Kit 다른 문자 체계 클래스 경고 무시
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
+    }
+}
+
+// 디버그 빌드는 키 없이도 되어야 하므로, 설정 단계가 아니라 릴리스 태스크를 실행할 때만 검사한다.
+gradle.taskGraph.whenReady {
+    val releasing = allTasks.any { it.path in listOf(":app:assembleRelease", ":app:bundleRelease") }
+    if (releasing && !keyPropertiesFile.exists()) {
+        throw GradleException(
+            "릴리스 서명 키 설정이 없습니다. REMINE_KEY_PROPERTIES를 key.properties 경로로 설정하세요. (찾은 경로: $keyPropertiesFile)",
+        )
     }
 }
 
