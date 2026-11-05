@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import '../app.dart';
+import '../core/helpers.dart';
 import '../core/tokens.dart';
 import '../data/device/device_capture_service.dart';
 import '../data/device/device_services.dart';
@@ -17,6 +18,7 @@ import '../widgets/gallery_thumb.dart';
 import '../widgets/pressable_scale.dart';
 import '../widgets/selectable_thumb.dart';
 import '../widgets/small_widgets.dart';
+import 'analysis_preview_screen.dart';
 
 /// [디버그 전용] 고른 사진의 OCR 결과를 JSON으로 내보내 ML Kit 기준으로 다시 측정한다.
 /// 진입점이 `kDebugMode`로 막혀 있어 릴리스 빌드에는 들어가지 않는다(트리 셰이킹).
@@ -105,6 +107,12 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
   Future<void> _resetFirstRun() async {
     await widget.services.settings.clearFirstRunChoices();
     if (mounted) RemineApp.restartFirstRun(context);
+  }
+
+  void _openAnalysisPreview() {
+    final ids = [for (final p in _photos) p.id];
+    Navigator.of(context)
+        .push(appRoute(context, (_) => AnalysisPreviewScreen(assetIds: ids)));
   }
 
   Future<void> _sendTestPush() async {
@@ -486,6 +494,11 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
                           AppButton(
                             label: '첫 실행 안내 다시 보기',
                             onTap: _resetFirstRun,
+                            outlined: true,
+                          ),
+                          AppButton(
+                            label: '첫 분석 화면 미리보기',
+                            onTap: _openAnalysisPreview,
                             outlined: true,
                           ),
                         ],
