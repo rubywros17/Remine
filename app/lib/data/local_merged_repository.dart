@@ -4,6 +4,7 @@ import '../models/category_update.dart';
 import '../models/interest.dart';
 import '../models/screenshot_item.dart';
 import 'device/privacy/local_verdict_store.dart';
+import 'device/trash_store.dart';
 import 'screenshot_repository.dart';
 
 /// 기본 저장소([base], 서버 분석 결과)에 **기기 안에서 분류한 캡처**를 합쳐 보여 주는 저장소.
@@ -12,23 +13,25 @@ import 'screenshot_repository.dart';
 ///   "분석 제외" 화면에서만 보인다.
 /// - 서버 id와 겹치지 않게 기기 판정 캡처의 id는 음수(`-localId`)다.
 /// - 한계: 기기 판정 캡처의 카테고리 수정은 아직 안 된다(서버 연동 브랜치에서 로컬 저장을 붙인다).
-///   휴지통은 이 객체가 살아 있는 동안만 기억한다.
+/// - 휴지통은 [TrashStore]에 남는다. 기기 판정 캡처는 서버에 없으니 어떤 요청도 보내지 않는다.
 class LocalMergedRepository implements ScreenshotRepository {
-  LocalMergedRepository(this._base, this._verdicts);
+  LocalMergedRepository(this._base, this._verdicts, {TrashStore? trash})
+    : _trash = trash ?? InMemoryTrashStore();
 
   final ScreenshotRepository _base;
   final LocalVerdictStore _verdicts;
-  final Set<int> _trashedLocal = {};
+  final TrashStore _trash;
 
   static const _recentCount = 4;
 
   Future<List<ScreenshotItem>> _localItems(Category? category) async {
     final rows = await _verdicts.deviceOnly(hidden: false);
+    final trashed = {for (final t in await _trash.all()) t.assetId};
     return [
       for (final v in rows)
         if (v.category != null &&
             (category == null || v.category == category) &&
-            !_trashedLocal.contains(-v.localId))
+            !trashed.contains(v.assetId))
           ScreenshotItem(
             id: -v.localId,
             localAssetId: v.assetId,
@@ -113,22 +116,35 @@ class LocalMergedRepository implements ScreenshotRepository {
     return _base.updateCategory(id, category);
   }
 
+  Future<StoredVerdict?> _verdictOf(int id) async {
+    for (final v in await _verdicts.deviceOnly(hidden: false)) {
+      if (v.localId == -id) return v;
+    }
+    return null;
+  }
+
   @override
   Future<void> trash(int id) async {
-    if (id < 0) {
-      _trashedLocal.add(id);
-    } else {
-      await _base.trash(id);
-    }
+    if (id >= 0) return _base.trash(id);
+    final v = await _verdictOf(id);
+    final category = v?.category;
+    if (v == null || category == null) return;
+    await _trash.add(
+      TrashedShot(
+        assetId: v.assetId,
+        category: category,
+        takenAt: v.takenAt,
+        trashedAt: DateTime.now(),
+        onServer: false,
+      ),
+    );
   }
 
   @override
   Future<void> restore(int id) async {
-    if (id < 0) {
-      _trashedLocal.remove(id);
-    } else {
-      await _base.restore(id);
-    }
+    if (id >= 0) return _base.restore(id);
+    final v = await _verdictOf(id);
+    if (v != null) await _trash.restore(v.assetId);
   }
 
   @override

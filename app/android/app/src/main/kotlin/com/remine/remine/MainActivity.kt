@@ -3,6 +3,7 @@ package com.remine.remine
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.WindowManager
@@ -35,6 +36,8 @@ class MainActivity : FlutterActivity() {
                     // 자기 캡처 1회 정리의 시작점(lib/data/device/own_capture.dart). 밀리초.
                     "firstInstallTime" ->
                         result.success(packageManager.getPackageInfo(packageName, 0).firstInstallTime)
+                    // 갤러리 휴지통(MediaStore.createTrashRequest)은 Android 11+에만 있다(lib/data/device/photo_manager_gallery_reader.dart).
+                    "sdkInt" -> result.success(Build.VERSION.SDK_INT)
                     // 첫 분석 화면 동안 화면 꺼짐 방지(lib/screens/sync_gate.dart). 창 플래그라 권한이 필요 없고 앱이 앞에 있을 때만 효과가 있다.
                     "keepScreenOn" -> {
                         if (call.arguments == true) {

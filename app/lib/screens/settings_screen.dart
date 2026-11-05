@@ -1,16 +1,26 @@
 import 'package:flutter/material.dart';
 
+import '../core/helpers.dart';
 import '../core/tokens.dart';
+import '../data/device/device_trash.dart';
 import '../data/device/settings_store.dart';
 import '../data/remote/remote_services.dart';
+import '../widgets/pressable_scale.dart';
 import '../widgets/small_widgets.dart';
+import 'trash_screen.dart';
 
-/// 설정: 이미지 분석 동의, 관심사 알림 받기(서버 연동 + 푸시가 있을 때만).
+/// 설정: 이미지 분석 동의, 관심사 알림 받기(서버 연동 + 푸시가 있을 때만), 휴지통.
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key, required this.settings, this.remote});
+  const SettingsScreen({
+    super.key,
+    required this.settings,
+    this.remote,
+    this.trash,
+  });
 
   final SettingsStore settings;
   final RemoteServices? remote;
+  final DeviceTrash? trash;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -135,6 +145,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onChanged: _setNotify,
               ),
             ],
+            if (widget.trash != null) ...[
+              const SizedBox(height: AppSpacing.s24),
+              _TrashRow(trash: widget.trash!),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _TrashRow extends StatelessWidget {
+  const _TrashRow({required this.trash});
+
+  final DeviceTrash trash;
+
+  @override
+  Widget build(BuildContext context) {
+    return PressableScale(
+      label: '휴지통',
+      onTap: () =>
+          Navigator.of(context)
+              .push(appRoute(context, (_) => TrashScreen(trash: trash))),
+      child: Padding(
+        padding: const EdgeInsets.only(left: 14),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('휴지통', style: AppText.cardTitle),
+                  const SizedBox(height: AppSpacing.s4),
+                  Text('버린 캡처를 되살리거나 갤러리에서 지워요.', style: AppText.caption),
+                ],
+              ),
+            ),
           ],
         ),
       ),

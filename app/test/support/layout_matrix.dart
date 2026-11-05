@@ -592,6 +592,7 @@ void defineLayoutMatrix({
           reader: reader,
           capture: _StallingCapture(base.capture, done.future),
           settings: base.settings,
+          trash: base.trash,
           exportDir: base.exportDir,
         );
         tester.view.physicalSize = size;

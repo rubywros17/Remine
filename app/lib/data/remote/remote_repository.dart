@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import '../../models/category.dart';
@@ -5,6 +6,7 @@ import '../../models/category_summary.dart';
 import '../../models/category_update.dart';
 import '../../models/interest.dart';
 import '../../models/screenshot_item.dart';
+import '../device/trash_store.dart';
 import '../screenshot_repository.dart';
 import 'api_client.dart';
 import 'remote_state_store.dart';
@@ -15,18 +17,27 @@ import 'sync_status.dart';
 /// - 응답을 받을 때마다 **마지막 목록·요약을 로컬 DB에 저장**한다. 서버에 닿지 못하면 저장해 둔 것을 보여 주고
 ///   [SyncStatus]에 연결 문제를 알려 홈이 배너를 띄운다. 저장한 게 없으면 빈 결과다(앱이 죽지 않는다).
 /// - 목록 항목을 받을 때 asset id ↔ 서버 id 매핑도 채운다.
-/// - 휴지통은 앱 안의 개념이라 서버를 부르지 않는다(spec F-06, 서버 삭제 API는 이후).
+/// - 휴지통은 [TrashStore]에 남긴다. 스와이프는 서버 응답을 기다리지 않고, 목록·요약은 여기서 직접 뺀다.
+///   서버에는 [onTrashChanged]로 알리고(관심사 집계에서 빼려고), 실패하면 대기열에 남아 다음 동기화 때 다시 보낸다.
 /// - 기기에서 분류한 캡처는 이 클래스가 아니라 [LocalMergedRepository]가 합친다.
 class RemoteRepository implements ScreenshotRepository {
-  RemoteRepository(this._api, this._state, this._status);
+  RemoteRepository(this._api, this._state, this._status, {TrashStore? trash})
+    : _trash = trash ?? InMemoryTrashStore();
 
   final RemineApi _api;
   final RemoteStateStore _state;
   final SyncStatus _status;
 
-  /// 휴지통에 넣은 서버 캡처 id → 카테고리(요약 개수에서 빼려고 카테고리도 기억한다).
-  final Map<int, Category> _trashed = {};
+  final TrashStore _trash;
   final Map<int, ScreenshotItem> _seen = {};
+
+  /// 휴지통이 바뀌면 부른다(SyncService가 서버에 알린다).
+  Future<void> Function()? onTrashChanged;
+
+  Future<List<TrashedShot>> _serverTrash() async => [
+    for (final t in await _trash.hidden())
+      if (t.onServer) t,
+  ];
 
   static ScreenshotPage _empty(int page, int size) => ScreenshotPage(
     items: const [],
@@ -63,8 +74,9 @@ class RemoteRepository implements ScreenshotRepository {
       await _state.linkServerIds({
         for (final item in parsed.items) item.localAssetId: item.id,
       });
+      final trashed = {for (final t in await _serverTrash()) t.assetId};
       final items = parsed.items
-          .where((s) => !_trashed.containsKey(s.id))
+          .where((s) => !trashed.contains(s.localAssetId))
           .toList();
       return ScreenshotPage(
         items: items,
@@ -84,7 +96,7 @@ class RemoteRepository implements ScreenshotRepository {
     final json = await _fetch('summary', _api.summaryJson);
     try {
       final parsed = json == null ? null : CategorySummary.fromJson(json);
-      if (parsed != null) return _withoutTrashed(parsed);
+      if (parsed != null) return _withoutTrashed(parsed, await _serverTrash());
     } catch (_) {}
     return CategorySummary(
       categories: [
@@ -99,18 +111,26 @@ class RemoteRepository implements ScreenshotRepository {
     );
   }
 
-  CategorySummary _withoutTrashed(CategorySummary s) {
-    if (_trashed.isEmpty) return s;
+  CategorySummary _withoutTrashed(
+    CategorySummary s,
+    List<TrashedShot> trashed,
+  ) {
+    if (trashed.isEmpty) return s;
+    final ids = {for (final t in trashed) t.assetId};
     return CategorySummary(
       categories: [
         for (final c in s.categories)
           CategorySummaryItem(
             category: c.category,
             count:
-                (c.count - _trashed.values.where((t) => t == c.category).length)
+                (c.count -
+                        trashed.where((t) => t.category == c.category).length)
                     .clamp(0, c.count),
             topTags: c.topTags,
-            recentAssetIds: c.recentAssetIds,
+            recentAssetIds: [
+              for (final id in c.recentAssetIds)
+                if (!ids.contains(id)) id,
+            ],
           ),
       ],
     );
@@ -158,19 +178,35 @@ class RemoteRepository implements ScreenshotRepository {
   @override
   Future<void> trash(int id) async {
     final item = _seen[id];
-    if (item != null) _trashed[id] = item.category;
+    if (item == null) return;
+    await _trash.add(
+      TrashedShot(
+        assetId: item.localAssetId,
+        category: item.category,
+        takenAt: item.takenAt,
+        trashedAt: DateTime.now(),
+        onServer: true,
+      ),
+    );
+    _notifyTrash();
   }
 
   @override
-  Future<void> restore(int id) async => _trashed.remove(id);
+  Future<void> restore(int id) async {
+    final item = _seen[id];
+    if (item == null) return;
+    await _trash.restore(item.localAssetId);
+    _notifyTrash();
+  }
+
+  // 기다리지 않는다: 스와이프 모션이 서버 응답에 묶이지 않게. 실패해도 대기열에 남는다.
+  void _notifyTrash() => unawaited(onTrashChanged?.call());
 
   /// 서버 기준값(응답의 `minCount`)이 없을 때(옛 응답·캐시) 쓰는 값. 서버 기본값과 같다.
   static const fallbackMinCount = 3;
 
-  /// GET /api/interests. 휴지통에 넣은 캡처는 빼고 횟수를 줄이며, 그래서 기준 횟수 아래로 내려간 관심사는 숨긴다.
-  ///
-  /// 한계: 서버 휴지통 API가 없어서 응답의 `recent`(최근 3장)에 있는 캡처만 휴지통 여부를 알 수 있다.
-  /// 더 오래된 캡처를 휴지통에 넣으면 서버 횟수에 그대로 남는다(서버 삭제가 생기면 사라지는 한계).
+  /// GET /api/interests. 서버가 휴지통 캡처를 빼고 세지만, 아직 서버에 못 알린 캡처가 있을 수 있어 여기서도 뺀다.
+  /// 그래서 기준 횟수 아래로 내려간 관심사는 숨긴다(응답의 `recent`에 있는 캡처만 알 수 있는 한계는 알리기 전까지만이다).
   @override
   Future<List<Interest>> interests() async {
     final json = await _fetch('interests', _api.interestsJson);
@@ -178,13 +214,16 @@ class RemoteRepository implements ScreenshotRepository {
     try {
       final minCount = (json['minCount'] as num?)?.toInt() ?? fallbackMinCount;
       final spanDays = (json['windowDays'] as num).toInt();
-      final trashed = _trashed.keys.toSet();
+      final trashed = {for (final t in await _serverTrash()) t.assetId};
+      Interest withoutTrashed(Interest i) => i.without({
+        for (final c in i.recent)
+          if (trashed.contains(c.localAssetId)) c.id,
+      });
       return [
         for (final item in json['items'] as List)
-          Interest.fromJson(
-            item as Map<String, dynamic>,
-            spanDays: spanDays,
-          ).without(trashed),
+          withoutTrashed(
+            Interest.fromJson(item as Map<String, dynamic>, spanDays: spanDays),
+          ),
       ].where((i) => i.captureCount >= minCount).toList();
     } catch (_) {
       return const []; // 깨진 응답·캐시. 내용은 남기지 않는다.

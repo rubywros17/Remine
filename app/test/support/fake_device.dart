@@ -4,6 +4,8 @@ import 'dart:typed_data';
 
 import 'package:remine/data/device/device_capture_service.dart';
 import 'package:remine/data/device/device_services.dart';
+import 'package:remine/data/device/device_trash.dart';
+import 'package:remine/data/device/trash_store.dart';
 import 'package:remine/data/device/settings_store.dart';
 import 'package:remine/data/device/gallery_reader.dart';
 import 'package:remine/data/device/ocr_store.dart';
@@ -39,6 +41,20 @@ class FakeGalleryReader implements GalleryReader {
   final GalleryAccess grantOnRequest;
   final List<GalleryAlbum> _albums;
   final List<GalleryPhoto> photos;
+
+  /// 사용자가 시스템 확인창에서 허용하는지. false면 취소한 것처럼 빈 목록을 돌려준다.
+  bool allowTrash = true;
+  bool trashSupported = true;
+  final List<List<String>> trashRequests = [];
+
+  @override
+  Future<bool> canMoveToTrash() async => trashSupported;
+
+  @override
+  Future<List<String>> moveToTrash(List<String> photoIds) async {
+    trashRequests.add(photoIds);
+    return allowTrash ? photoIds : const [];
+  }
 
   int requested = 0;
   int reselected = 0;
@@ -140,18 +156,31 @@ DeviceServices fakeServices(
   Directory? exportTo,
   SettingsStore? settings,
   RemoteServices? remote,
-}) => DeviceServices(
-  reader: reader,
-  capture: DeviceCaptureService(
+  TrashStore? trash,
+}) {
+  final ocrStore = store ?? InMemoryOcrStore();
+  final capture = DeviceCaptureService(
     reader: reader,
     ocr: ocr ?? FakeOcrEngine(),
-    store: store ?? InMemoryOcrStore(),
+    store: ocrStore,
     temp: OcrTempFiles(
       tmp ?? Directory('${Directory.systemTemp.path}/remine_fake_ocr'),
     ),
     now: () => DateTime(2026, 10, 19, 12),
-  ),
-  settings: settings ?? InMemorySettingsStore(false),
-  exportDir: () async => exportTo ?? Directory.systemTemp,
-  remote: remote,
-);
+  );
+  return DeviceServices(
+    reader: reader,
+    capture: capture,
+    settings: settings ?? InMemorySettingsStore(false),
+    trash: DeviceTrash(
+      store: trash ?? InMemoryTrashStore(),
+      reader: reader,
+      verdicts: capture.verdicts,
+      ocr: ocrStore,
+      onChanged: remote?.sync.flushTrash,
+      forgetEntries: remote?.state.removeEntries,
+    ),
+    exportDir: () async => exportTo ?? Directory.systemTemp,
+    remote: remote,
+  );
+}

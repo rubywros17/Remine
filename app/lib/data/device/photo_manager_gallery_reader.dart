@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart' show MethodChannel, PlatformException;
 import 'package:photo_manager/photo_manager.dart';
 
 import 'gallery_reader.dart';
@@ -109,5 +110,36 @@ class PhotoManagerGalleryReader implements GalleryReader {
   Future<Uint8List?> bytes(String photoId) async {
     final a = await AssetEntity.fromId(photoId);
     return a?.originBytes;
+  }
+
+  static const _trashMinSdk = 30; // MediaStore.createTrashRequest
+
+  @override
+  Future<bool> canMoveToTrash() async {
+    try {
+      final sdk = await const MethodChannel('remine/settings')
+          .invokeMethod<int>('sdkInt');
+      return sdk != null && sdk >= _trashMinSdk;
+    } on PlatformException catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  Future<List<String>> moveToTrash(List<String> photoIds) async {
+    final assets = <AssetEntity>[];
+    final gone = <String>[];
+    for (final id in photoIds) {
+      final a = await AssetEntity.fromId(id);
+      if (a == null) {
+        gone.add(id); // 이미 갤러리에 없다 → 앱 기록만 지우면 된다
+      } else {
+        assets.add(a);
+      }
+    }
+    final moved = assets.isEmpty
+        ? const <String>[]
+        : await PhotoManager.editor.android.moveToTrash(assets);
+    return [...gone, ...moved];
   }
 }

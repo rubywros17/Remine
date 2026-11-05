@@ -10,10 +10,12 @@ import 'package:path_provider/path_provider.dart';
 
 import 'app.dart';
 import 'data/device/device_capture_service.dart';
+import 'data/device/device_trash.dart';
 import 'data/device/device_services.dart';
 import 'data/device/gallery_reader.dart';
 import 'data/device/local_db.dart';
 import 'data/device/settings_store.dart';
+import 'data/device/trash_store.dart';
 import 'data/device/privacy/local_verdict_store.dart';
 import 'data/device/ocr_engine.dart';
 import 'data/device/ocr_store.dart';
@@ -68,21 +70,33 @@ Future<DeviceServices> _deviceServices() async {
   final db = LocalDb();
   final settings = SqfliteSettingsStore(db);
   final foreground = await _foregroundLog(settings);
+  final trashStore = SqfliteTrashStore(db);
+  final ocrStore = SqfliteOcrStore(db);
+  final verdicts = SqfliteLocalVerdictStore(db);
   final capture = DeviceCaptureService(
     reader: reader,
     ocr: MlKitOcrEngine(),
-    store: SqfliteOcrStore(db),
-    verdicts: SqfliteLocalVerdictStore(db),
+    store: ocrStore,
+    verdicts: verdicts,
     temp: OcrTempFiles(Directory(p.join(cache.path, 'ocr_tmp'))),
     foreground: foreground,
   );
+  final remote = _apiBaseAllowed
+      ? _remote(reader, capture, settings, db, trashStore, await _push())
+      : null;
   return DeviceServices(
     reader: reader,
     capture: capture,
     settings: settings,
-    remote: _apiBaseAllowed
-        ? _remote(reader, capture, settings, db, await _push())
-        : null,
+    trash: DeviceTrash(
+      store: trashStore,
+      reader: reader,
+      verdicts: verdicts,
+      ocr: ocrStore,
+      onChanged: remote?.sync.flushTrash,
+      forgetEntries: remote?.state.removeEntries,
+    ),
+    remote: remote,
     exportDir: () async =>
         (await getExternalStorageDirectory()) ??
         await getApplicationSupportDirectory(),
@@ -132,6 +146,7 @@ RemoteServices _remote(
   DeviceCaptureService capture,
   SettingsStore settings,
   LocalDb db,
+  TrashStore trash,
   PushClient? push,
 ) {
   // 디버그 빌드만 요청별 "메서드 경로 → 상태 코드"를 logcat에 남긴다(본문·쿼리·토큰 없음).
@@ -139,24 +154,28 @@ RemoteServices _remote(
   final api = RemineApi(_apiBase, http.Client(), log: log);
   final state = SqfliteRemoteStateStore(db);
   final status = SyncStatus();
+  final repository = RemoteRepository(api, state, status, trash: trash);
+  final sync = SyncService(
+    api: api,
+    reader: reader,
+    capture: capture,
+    settings: settings,
+    state: state,
+    images: ImagePreparer(reader, const FlutterImageShrinker()),
+    status: status,
+    photoLimit: kDebugMode ? _syncLimit : 0,
+    batchSize: kDebugMode && _syncBatchSize > 0
+        ? _syncBatchSize
+        : SyncService.defaultBatchSize,
+    autoSync: !kDebugMode || _autoSync,
+    push: push,
+    log: log,
+    trash: trash,
+  );
+  repository.onTrashChanged = sync.flushTrash;
   return RemoteServices(
-    repository: RemoteRepository(api, state, status),
-    sync: SyncService(
-      api: api,
-      reader: reader,
-      capture: capture,
-      settings: settings,
-      state: state,
-      images: ImagePreparer(reader, const FlutterImageShrinker()),
-      status: status,
-      photoLimit: kDebugMode ? _syncLimit : 0,
-      batchSize: kDebugMode && _syncBatchSize > 0
-          ? _syncBatchSize
-          : SyncService.defaultBatchSize,
-      autoSync: !kDebugMode || _autoSync,
-      push: push,
-      log: log,
-    ),
+    repository: repository,
+    sync: sync,
     status: status,
     state: state,
     push: push,

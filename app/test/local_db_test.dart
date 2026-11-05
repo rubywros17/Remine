@@ -126,14 +126,14 @@ void main() {
     await db.close();
   }
 
-  test('v2 DB를 열면 v3로 올라가고 기존 설정·판정은 그대로, 서버 표가 생긴다', () async {
+  test('v2 DB를 열면 최신으로 올라가고 기존 설정·판정은 그대로, 서버 표가 생긴다', () async {
     await createV2();
     final local = open();
     final settings = SqfliteSettingsStore(local);
     final verdicts = SqfliteLocalVerdictStore(local);
     final remote = SqfliteRemoteStateStore(local);
 
-    expect(await (await local.db).getVersion(), 3);
+    expect(await (await local.db).getVersion(), LocalDb.version);
     expect(await settings.imageConsent(), isTrue); // 동의 설정 유지
     expect((await verdicts.find('chat1'))!.category, Category.chat);
 
@@ -201,11 +201,11 @@ void main() {
     await local.close();
   });
 
-  test('v1 DB도 한 번에 v3까지 올라간다', () async {
+  test('v1 DB도 한 번에 최신까지 올라간다', () async {
     await createV1();
     final local = open();
     await local.db;
-    expect(await (await local.db).getVersion(), 3);
+    expect(await (await local.db).getVersion(), LocalDb.version);
     final remote = SqfliteRemoteStateStore(local);
     await remote.putCache('k', 'v');
     expect(await remote.cached('k'), 'v');

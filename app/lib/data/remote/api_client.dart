@@ -289,10 +289,25 @@ class RemineApi {
     () => http.Request('DELETE', _uri('/api/devices/me/fcm-token')),
   );
 
-  /// POST /api/screenshots/forget. 보내지 말았어야 할 캡처(Remine 자기 캡처)를 서버에서 지운다(없는 id는 무시).
-  Future<void> forget(int deviceId, List<String> assetIds) => _withDevice(
+  /// POST /api/screenshots/forget. 서버에서 지운다(없는 id는 무시): Remine 자기 캡처, 갤러리에서 삭제한 캡처.
+  Future<void> forget(int deviceId, List<String> assetIds) =>
+      _postAssetIds('/api/screenshots/forget', deviceId, assetIds);
+
+  /// POST /api/screenshots/trash. 앱 휴지통 캡처를 관심사 집계·푸시에서 뺀다(없는 id는 무시).
+  Future<void> trash(int deviceId, List<String> assetIds) =>
+      _postAssetIds('/api/screenshots/trash', deviceId, assetIds);
+
+  /// POST /api/screenshots/restore. 되살린 캡처를 다시 집계에 넣는다(없는 id는 무시).
+  Future<void> restore(int deviceId, List<String> assetIds) =>
+      _postAssetIds('/api/screenshots/restore', deviceId, assetIds);
+
+  Future<void> _postAssetIds(
+    String path,
+    int deviceId,
+    List<String> assetIds,
+  ) => _withDevice(
     deviceId,
-    () => http.Request('POST', _uri('/api/screenshots/forget'))
+    () => http.Request('POST', _uri(path))
       ..headers['Content-Type'] = 'application/json'
       ..body = jsonEncode({'assetIds': assetIds}),
   );

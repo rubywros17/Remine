@@ -102,7 +102,11 @@ class _RemineAppState extends State<RemineApp> {
     final device = widget.device;
     return device == null
         ? base
-        : LocalMergedRepository(base, device.capture.verdicts);
+        : LocalMergedRepository(
+            base,
+            device.capture.verdicts,
+            trash: device.trash.store,
+          );
   }
 
   @override

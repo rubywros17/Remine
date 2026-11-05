@@ -137,4 +137,10 @@ abstract interface class GalleryReader {
 
   /// OCR 입력용 원본 바이트.
   Future<Uint8List?> bytes(String photoId);
+
+  /// 갤러리 휴지통으로 옮길 수 있는 기기인지(Android 11+).
+  Future<bool> canMoveToTrash();
+
+  /// 시스템 확인창 한 번으로 갤러리 휴지통으로 옮긴다. 옮겼거나 이미 없는 id를 돌려주고, 취소하면 빈 목록이다.
+  Future<List<String>> moveToTrash(List<String> photoIds);
 }
