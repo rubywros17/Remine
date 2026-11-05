@@ -339,6 +339,7 @@
 - [ ] FCM 토큰 → FID 등록(`register`/`onRegistered`) 전환 — firebase_messaging 17에서 토큰 API가 deprecated. 서버 발송 대상도 함께 바꿔야 함
 - [ ] 앱이 앞에 있을 때 온 알림 표시(`flutter_local_notifications`) — 필요해지면
 - [ ] 하이브리드 기준값 재검증 (ML Kit OCR, 더 큰 표본)
+- [ ] `app/test/auto_sync_test.dart`의 "[지금 동기화]" 테스트 불안정 원인 확인 — 전체 실행 중 드물게 `analyzeCalls`가 0건으로 실패, 단독·재실행은 통과(2026-11-05)
 - [ ] 분류 힌트 입력(앱 이름, 인스타 저장 컬렉션 이름 등 화면 상단 문구) — **ML Kit(텍스트 위치 정보) 도입 후 재검토.**
   Tesseract 텍스트로는 Instagram 37장 중 컬렉션 이름처럼 보이는 첫 줄이 3~4장(약 10%)뿐이라 효과를 검증할 수 없었고,
   앱 이름 힌트는 표본의 대부분(43장 중 37장)이 같은 앱이라 정보량이 낮아 프롬프트 v2 실험에서 제외했다.
