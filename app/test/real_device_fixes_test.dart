@@ -225,14 +225,15 @@ void main() {
       expect(status.eta, isNull);
     });
 
-    test('응답을 기다리는 동안 문구가 나오고, 응답이 오면 사라진다', () {
+    test('진행 문구는 묶음 사이에도 마지막 장수를 유지한다', () {
       final status = SyncStatus()..begin(15, intervalMs: 4500);
-      expect(status.waitingMessage, isNull);
+      expect(status.progressMessage, '분류를 준비하는 중이에요…');
       status.setWaiting(15);
-      expect(status.waitingMessage, contains('15장을 분류하는 중이에요'));
-      expect(status.waitingMessage, contains('약 1분 7초'));
+      expect(status.progressMessage, '15장을 분류하는 중이에요…');
       status.setWaiting(0);
-      expect(status.waitingMessage, isNull);
+      expect(status.progressMessage, '15장을 분류하는 중이에요…');
+      status.begin(3);
+      expect(status.progressMessage, '분류를 준비하는 중이에요…');
     });
 
     test('동기화가 끝나면 대기 표시도 꺼진다', () {

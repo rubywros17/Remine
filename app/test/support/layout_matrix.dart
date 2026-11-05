@@ -376,7 +376,7 @@ void defineLayoutMatrix({
             home: AnalysisScreen(status: status, onHome: () {}),
           ),
         );
-        await tester.pumpAndSettle();
+        await tester.pump(const Duration(milliseconds: 400)); // 진행 막대가 계속 움직인다
         expect(find.text('홈에서 먼저 볼래요'), findsOneWidget);
         // 시작 직후(예상 시간 계산 중)와 실행 전(0/0)도 그려 본다.
         final fresh = SyncStatus()..begin(300);
@@ -385,7 +385,7 @@ void defineLayoutMatrix({
             home: AnalysisScreen(status: fresh, onHome: () {}),
           ),
         );
-        await tester.pumpAndSettle();
+        await tester.pump(const Duration(milliseconds: 400));
         expect(find.text('남은 시간을 계산하고 있어요'), findsOneWidget);
         // 서버 응답을 기다리는 중(움직이는 막대 + 안내 문구). 막대가 계속 움직이므로 settle 대신 시간을 흘려보낸다.
         final waiting = SyncStatus()..begin(300, intervalMs: 4500);
@@ -460,7 +460,9 @@ void defineLayoutMatrix({
         }
         expect(find.byType(DrawerFlightCard), findsWidgets);
         expect(find.text('홈에서 먼저 볼래요'), findsOneWidget);
-        await tester.pumpAndSettle();
+        for (var i = 0; i < 60; i++) {
+          await tester.pump(const Duration(milliseconds: 150));
+        }
       });
       _expectClean('첫 분석 완료 상태 $label', errors);
     });

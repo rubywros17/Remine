@@ -164,7 +164,9 @@ void main() {
 
       expect(find.byType(Image), findsOneWidget);
       expect(find.text('쇼핑'), findsNWidgets(2), reason: '칸 이름 + 카드 이름표');
-      await tester.pumpAndSettle();
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
       expect(find.byType(Image), findsNothing, reason: '칸으로 들어가 사라진다');
     });
 

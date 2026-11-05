@@ -93,13 +93,14 @@ class _LiveAnalysisState extends State<_LiveAnalysis> {
           status: status,
           onProgress: _onProgress,
           finished: _settled,
-          issueText: _settled ? status.issueMessage : null,
           etaText: eta != null
               ? formatEta(eta)
               : status.running
               ? '남은 시간을 계산하고 있어요'
               : null,
-          waitingText: status.waitingMessage,
+          progressText: _settled
+              ? status.bannerMessage
+              : status.progressMessage,
           onHome: widget.onHome,
         );
       },
@@ -115,9 +116,8 @@ class _Body extends StatelessWidget {
     this.status,
     this.onProgress,
     this.finished = false,
-    this.issueText,
     this.etaText,
-    this.waitingText,
+    this.progressText,
     this.onHome,
   });
 
@@ -129,9 +129,8 @@ class _Body extends StatelessWidget {
   final SyncStatus? status;
   final void Function(int landed, bool settled)? onProgress;
   final bool finished;
-  final String? issueText;
   final String? etaText;
-  final String? waitingText;
+  final String? progressText;
   final VoidCallback? onHome;
 
   @override
@@ -171,29 +170,19 @@ class _Body extends StatelessWidget {
                             finished: finished,
                             etaText: etaText,
                           ),
-                          if (issueText != null) ...[
-                            const SizedBox(height: AppSpacing.s8),
-                            Text(
-                              issueText!,
-                              style: AppText.body.copyWith(
-                                fontSize: 14,
-                                color: AppColors.lemon,
-                              ),
+                          const SizedBox(height: AppSpacing.s16),
+                          _ProgressSlot(
+                            text: progressText,
+                            finished: finished,
+                            working: status != null,
+                          ),
+                          const SizedBox(height: AppSpacing.s12),
+                          _FixedLine(
+                            finished ? null : keepScreenOnHint,
+                            style: AppText.caption.copyWith(
+                              color: AppColors.white.withValues(alpha: 0.7),
                             ),
-                          ],
-                          if (waitingText != null) ...[
-                            const SizedBox(height: AppSpacing.s16),
-                            _WorkingNote(text: waitingText!),
-                          ],
-                          if (!finished) ...[
-                            const SizedBox(height: AppSpacing.s12),
-                            Text(
-                              keepScreenOnHint,
-                              style: AppText.caption.copyWith(
-                                color: AppColors.white.withValues(alpha: 0.7),
-                              ),
-                            ),
-                          ],
+                          ),
                         ],
                       ),
                       const SizedBox(height: AppSpacing.s16),
@@ -274,13 +263,11 @@ class _Counter extends StatelessWidget {
                 : '/ $total장 꺼냈어요',
             style: AppText.sectionTitle.copyWith(color: AppColors.white),
           ),
-          if (!finished && etaText != null) ...[
-            const SizedBox(height: AppSpacing.s8),
-            Text(
-              etaText!,
-              style: AppText.body.copyWith(color: AppColors.celadonSoft),
-            ),
-          ],
+          const SizedBox(height: AppSpacing.s8),
+          _FixedLine(
+            finished ? null : etaText,
+            style: AppText.body.copyWith(color: AppColors.celadonSoft),
+          ),
         ],
       ),
     );
@@ -320,36 +307,75 @@ class PrivacyNote extends StatelessWidget {
   }
 }
 
-/// "N장을 분류하는 중" 안내. 서버 응답을 기다리는 동안 숫자가 안 바뀌어도 멈춘 게 아니라는 걸 막대가 움직여 보여 준다.
-/// 모션 줄이기 설정이면 움직이는 막대 없이 글자만 보여 준다.
-class _WorkingNote extends StatelessWidget {
-  const _WorkingNote({required this.text});
+/// 한 줄 고정 높이 글자. [text]가 없어도 자리를 그대로 차지해 아래 레이아웃이 움직이지 않는다.
+class _FixedLine extends StatelessWidget {
+  const _FixedLine(this.text, {required this.style});
 
-  final String text;
+  final String? text;
+  final TextStyle style;
 
   @override
   Widget build(BuildContext context) {
+    return Text(
+      text ?? ' ',
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      // [Flutter 메모] 글꼴이 달라도 줄 높이를 강제로 같게 한다.
+      strutStyle: StrutStyle.fromTextStyle(style, forceStrutHeight: true),
+      style: style,
+    );
+  }
+}
+
+/// 진행 영역: 가는 막대 + 한 줄 안내. 묶음 사이·완료 뒤에도 같은 자리를 차지해 레이아웃이 튀지 않는다.
+/// 끝나면 막대는 숨기고 안내 자리에 문제 문구(있을 때만)를 보여 준다. 모션 줄이기면 막대 없이 글자만.
+class _ProgressSlot extends StatelessWidget {
+  const _ProgressSlot({
+    required this.text,
+    required this.finished,
+    required this.working,
+  });
+
+  final String? text;
+  final bool finished;
+
+  /// 실제 진행 중인 화면인지(개발용 가짜 값이면 막대를 띄우지 않는다).
+  final bool working;
+
+  static const barHeight = 4.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final showBar = working && !finished && !AppMotion.reduced(context);
     return Semantics(
+      key: const ValueKey('analysis-progress'),
       liveRegion: true,
-      label: text,
+      label: text ?? '',
       excludeSemantics: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (!AppMotion.reduced(context)) ...[
-            ClipRRect(
-              borderRadius: BorderRadius.circular(AppRadii.pill),
-              child: const LinearProgressIndicator(
-                minHeight: 4,
-                color: AppColors.celadon,
-                backgroundColor: Color(0x33FFFFFF),
-              ),
-            ),
-            const SizedBox(height: AppSpacing.s8),
-          ],
-          Text(
+          SizedBox(
+            height: barHeight,
+            width: double.infinity,
+            child: showBar
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(AppRadii.pill),
+                    child: const LinearProgressIndicator(
+                      minHeight: barHeight,
+                      color: AppColors.celadon,
+                      backgroundColor: Color(0x33FFFFFF),
+                    ),
+                  )
+                : null,
+          ),
+          const SizedBox(height: AppSpacing.s8),
+          _FixedLine(
             text,
-            style: AppText.body.copyWith(fontSize: 14, color: AppColors.white),
+            style: AppText.body.copyWith(
+              fontSize: 14,
+              color: finished ? AppColors.lemon : AppColors.white,
+            ),
           ),
         ],
       ),

@@ -98,7 +98,9 @@ void main() {
       expect(banner, findsOneWidget);
       semantics.dispose();
       await tester.tap(find.textContaining('새 캡처를 정리하는 중이에요'));
-      await tester.pumpAndSettle();
+      // 분석 화면은 진행 중 막대가 계속 움직여 settle되지 않으므로 전환 시간만 흘려보낸다.
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
       expect(find.byType(AnalysisScreen), findsOneWidget);
 
       await tester.ensureVisible(find.text('홈에서 먼저 볼래요'));
@@ -112,7 +114,8 @@ void main() {
       );
 
       await tester.tap(find.textContaining('새 캡처를 정리하는 중이에요'));
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
       rig.status.advance(7);
       rig.status.finish();
       await tester.pump();

@@ -11,8 +11,9 @@ import 'capture_thumb.dart';
 
 /// 첫 분석 화면 가운데: 방금 분류된 캡처 카드가 나타났다가 7개 서랍 칸 중 자기 칸으로 들어간다.
 ///
-/// - [status]의 분류 기록을 큐에 넣고 [AnalysisStage.gap] 간격으로 한 장씩 꺼낸다. 카드가 [AnalysisStage.maxCards]장 떠 있으면
-///   그 장은 카드 없이 칸만 +1 한다(링은 울린다).
+/// - [status]의 분류 기록을 큐에 넣고 [drawerGap] 간격으로 한 장씩 꺼낸다(다음 묶음이 올 때까지 고르게). 카드가
+///   [AnalysisStage.maxCards]장 떠 있으면 그 장은 카드 없이 칸만 +1 한다(링은 울린다).
+/// - 떠 있는 카드가 없으면(큐가 비었거나 다음 카드 차례를 기다릴 때) 빈 카드가 숨 쉬며 기다린다(모션 줄이기면 멈춤).
 /// - 분석이 끝나면 남은 큐를 [AnalysisStage.drainGap] 간격으로 카드 없이 채운다.
 /// - 숨김 캡처(썸네일 없음)와 모션 줄이기 설정에서는 카드·링 없이 칸과 숫자만 바로 갱신한다.
 /// - 칸 합계와 "다 채웠는지"를 [onProgress]로 알린다. 화면의 큰 숫자는 이 값을 쓴다.
@@ -33,6 +34,26 @@ class DrawerStage extends StatefulWidget {
   @override
   State<DrawerStage> createState() => _DrawerStageState();
 }
+
+/// 다음 카드까지의 간격. 분석이 끝났으면 빠르게 채우고, 큐가 밀렸으면 줄이고, 그 외에는 다음 묶음까지 남은 시간을 나눈다.
+Duration drawerGap({
+  required int queue,
+  required Duration? untilNextBatch,
+  required bool draining,
+}) {
+  if (draining) return AnalysisStage.drainGap;
+  if (queue > AnalysisStage.fastQueue) return AnalysisStage.fastGap;
+  if (untilNextBatch == null || queue <= 0) return AnalysisStage.gap;
+  final ms = (untilNextBatch.inMilliseconds / queue).round().clamp(
+    AnalysisStage.gap.inMilliseconds,
+    AnalysisStage.maxGap.inMilliseconds,
+  );
+  return Duration(milliseconds: ms);
+}
+
+/// 비행 진행도(곡선 적용 후)에 따른 불투명도. 칸 숫자에 닿기 전에 완전히 사라진다.
+double flightOpacity(double progress) =>
+    1 - const Interval(0.6, 0.85).transform(progress);
 
 /// 칸 아래 이름. 7칸이 좁아 이 화면에서만 두 글자로 줄인다(다른 화면과 카드 이름표는 [Category.label]).
 String drawerBinLabel(Category c) =>
@@ -95,12 +116,10 @@ class _DrawerStageState extends State<DrawerStage>
     final status = widget.status!;
     if (status.runId != _runId) _reset(status.runId);
     final shots = status.shots;
-    var bumped = false;
     for (var i = _seen; i < shots.length; i++) {
       final shot = shots[i];
       if (shot.assetId == null || _reduced) {
         _shown.update(shot.category, (n) => n + 1, ifAbsent: () => 1);
-        bumped = true;
       } else {
         _queue.add(shot);
       }
@@ -111,7 +130,7 @@ class _DrawerStageState extends State<DrawerStage>
       _gap = null;
     }
     _draining = status.finished;
-    if (bumped) setState(() {});
+    setState(() {}); // 칸 숫자·대기 카드 표시
     _next();
     _report();
   }
@@ -132,11 +151,11 @@ class _DrawerStageState extends State<DrawerStage>
 
   void _next() {
     if (_gap != null || _queue.isEmpty) return;
-    final wait = _draining
-        ? AnalysisStage.drainGap
-        : _queue.length > AnalysisStage.fastQueue
-        ? AnalysisStage.fastGap
-        : AnalysisStage.gap;
+    final wait = drawerGap(
+      queue: _queue.length,
+      untilNextBatch: widget.status?.untilNextBatch,
+      draining: _draining,
+    );
     final shot = _queue.removeFirst();
     if (_draining || _cards.length >= AnalysisStage.maxCards) {
       _bump(shot.category);
@@ -232,13 +251,18 @@ class _DrawerStageState extends State<DrawerStage>
   Widget _buildStage(BuildContext context, BoxConstraints box) {
     final width = box.maxWidth;
     final height = box.maxHeight;
-    final binsHeight = height * AnalysisStage.binsShare;
-    final zoneHeight = height - binsHeight;
-    final cardHeight = (zoneHeight * 0.88).clamp(
-      0.0,
-      AnalysisStage.cardMaxHeight,
+    final binsHeight = (height * AnalysisStage.binsShare).clamp(
+      AnalysisStage.binsMinHeight,
+      AnalysisStage.binsMaxHeight,
     );
-    final cardSize = Size(cardHeight / AnalysisStage.cardAspect, cardHeight);
+    final zoneHeight = height - binsHeight;
+    final maxCardWidth = width * AnalysisStage.cardMaxWidthShare;
+    final tallCardWidth =
+        zoneHeight * AnalysisStage.cardShare / AnalysisStage.cardAspect;
+    final cardWidth = tallCardWidth < maxCardWidth
+        ? tallCardWidth
+        : maxCardWidth;
+    final cardSize = Size(cardWidth, cardWidth * AnalysisStage.cardAspect);
     final cellWidth =
         (width - AnalysisStage.binGap * (Category.values.length - 1)) /
         Category.values.length;
@@ -256,11 +280,22 @@ class _DrawerStageState extends State<DrawerStage>
         AnalysisStage.binStub +
         (barMax - AnalysisStage.binStub) * ((_shown[c] ?? 0) / most);
 
-    final from = Offset(width / 2, zoneHeight / 2);
+    // 카드 아래쪽을 칸 영역 위에 붙인다.
+    final from = Offset(width / 2, zoneHeight - cardSize.height / 2);
+    // 숫자 위까지만 날아간다. 축소된 카드의 아래 끝이 숫자에 닿지 않는 자리.
     Offset target(Category c) => Offset(
       (c.index + 0.5) * cellWidth + c.index * AnalysisStage.binGap,
-      height - AnalysisStage.labelHeight - AnalysisStage.binGap - barHeight(c),
+      height -
+          AnalysisStage.labelHeight -
+          AnalysisStage.binGap * 2 -
+          barHeight(c) -
+          AnalysisStage.numberHeight -
+          cardSize.height * AnalysisStage.flyEndScale / 2,
     );
+    final cardLeft = from.dx - cardSize.width / 2;
+    final cardTop = from.dy - cardSize.height / 2;
+    // 카드 간격(최대 4초)이 카드 수명보다 길어서, 큐에 장이 남아 있어도 카드 사이에는 자리가 빈다. 그때도 보여 준다.
+    final idle = widget.status?.running == true && _cards.isEmpty;
 
     return Stack(
       clipBehavior: Clip.none,
@@ -289,11 +324,19 @@ class _DrawerStageState extends State<DrawerStage>
             ],
           ),
         ),
+        if (idle)
+          Positioned(
+            left: cardLeft,
+            top: cardTop,
+            width: cardSize.width,
+            height: cardSize.height,
+            child: _BreathingCard(reduced: _reduced),
+          ),
         for (final card in _cards)
           Positioned(
             key: ValueKey(card.id),
-            left: from.dx - cardSize.width / 2,
-            top: from.dy - cardSize.height / 2,
+            left: cardLeft,
+            top: cardTop,
             width: cardSize.width,
             height: cardSize.height,
             child: DrawerFlightCard(
@@ -389,10 +432,7 @@ class DrawerFlightCard extends StatelessWidget {
         final scale =
             lerpDouble(AnalysisStage.appearScale, 1, t)! *
             lerpDouble(1, AnalysisStage.flyEndScale, f)!;
-        final opacity = (t * (1 - const Interval(0.6, 1).transform(f))).clamp(
-          0.0,
-          1.0,
-        );
+        final opacity = (t * flightOpacity(f)).clamp(0.0, 1.0);
         return Transform.translate(
           offset: Offset(dx, y + dy),
           child: Transform.rotate(
@@ -404,6 +444,78 @@ class DrawerFlightCard extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// 떠 있는 카드가 없을 때 카드 자리에 놓이는 빈 카드. 다음 묶음을 기다리는 동안 은은하게 숨 쉰다.
+class DrawerIdleCard extends StatelessWidget {
+  const DrawerIdleCard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppColors.white.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(AppRadii.tile),
+      ),
+    );
+  }
+}
+
+class _BreathingCard extends StatefulWidget {
+  const _BreathingCard({required this.reduced});
+
+  final bool reduced;
+
+  @override
+  State<_BreathingCard> createState() => _BreathingCardState();
+}
+
+class _BreathingCardState extends State<_BreathingCard>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _breath = AnimationController(
+    vsync: this,
+    duration: AnalysisStage.breathHalf,
+    value: 1,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(_BreathingCard old) {
+    super.didUpdateWidget(old);
+    if (old.reduced != widget.reduced) _sync();
+  }
+
+  void _sync() {
+    if (widget.reduced) {
+      _breath.value = 1;
+    } else {
+      _breath.repeat(reverse: true);
+    }
+  }
+
+  @override
+  void dispose() {
+    _breath.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ScaleTransition(
+      scale: _breath.drive(
+        Tween(
+          begin: AnalysisStage.breathScale,
+          end: 1.0,
+        ).chain(CurveTween(curve: Curves.easeInOut)),
+      ),
+      child: const DrawerIdleCard(),
     );
   }
 }

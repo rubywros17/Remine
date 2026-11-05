@@ -264,8 +264,10 @@ abstract final class AnalysisStage {
   static const fly = Duration(milliseconds: 460);
   static const binSpring = Duration(milliseconds: 360); // 칸 높이·링
 
-  /// 카드 시작 간격. 큐가 [fastQueue]장을 넘으면 [fastGap]으로 줄인다.
+  /// 카드 시작 간격. 다음 묶음까지 남은 시간을 큐에 나눠 [gap]~[maxGap]으로 쓰고,
+  /// 큐가 [fastQueue]장을 넘으면 [fastGap]으로 줄인다.
   static const gap = Duration(milliseconds: 600);
+  static const maxGap = Duration(milliseconds: 4000);
   static const fastGap = Duration(milliseconds: 300);
   static const fastQueue = 20;
 
@@ -280,9 +282,16 @@ abstract final class AnalysisStage {
   static const double tiltRadians = 0.0873; // ±5°
   static const double flyEndScale = 0.2;
 
-  static const double minHeight = 180; // 이보다 낮으면 화면 전체가 스크롤된다
-  static const double binsShare = 0.42; // 전체 높이 중 칸 영역(나머지는 카드 자리)
-  static const double cardMaxHeight = 168;
+  /// 떠 있는 카드가 없을 때 빈 카드가 숨 쉬는 반주기(1.6초 주기, scale [breathScale]↔1).
+  static const breathHalf = Duration(milliseconds: 800);
+  static const double breathScale = 0.98;
+
+  static const double minHeight = 140; // 이보다 낮으면 화면 전체가 스크롤된다
+  static const double binsShare = 0.36; // 전체 높이 중 칸 영역(나머지는 카드 자리)
+  static const double binsMinHeight = 80;
+  static const double binsMaxHeight = 150;
+  static const double cardShare = 0.8; // 카드 자리 높이 중 카드 높이
+  static const double cardMaxWidthShare = 0.6; // 넓이 중 카드 폭 상한(낮고 넓은 화면)
   static const double cardAspect = 1.5;
   static const double binGap = 4;
   static const double binRadius = 6;

@@ -109,10 +109,14 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
     if (mounted) RemineApp.restartFirstRun(context);
   }
 
-  void _openAnalysisPreview() {
+  void _openAnalysisPreview({bool measured = false}) {
     final ids = [for (final p in _photos) p.id];
-    Navigator.of(context)
-        .push(appRoute(context, (_) => AnalysisPreviewScreen(assetIds: ids)));
+    Navigator.of(context).push(
+      appRoute(
+        context,
+        (_) => AnalysisPreviewScreen(assetIds: ids, measured: measured),
+      ),
+    );
   }
 
   Future<void> _sendTestPush() async {
@@ -499,6 +503,11 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
                           AppButton(
                             label: '첫 분석 화면 미리보기',
                             onTap: _openAnalysisPreview,
+                            outlined: true,
+                          ),
+                          AppButton(
+                            label: '첫 분석 미리보기(16장/72초)',
+                            onTap: () => _openAnalysisPreview(measured: true),
                             outlined: true,
                           ),
                         ],

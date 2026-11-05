@@ -54,7 +54,10 @@ class SyncStatus extends ChangeNotifier {
   int _runId = 0;
   int _done = 0;
   int _total = 0;
-  DateTime? _startedAt;
+  DateTime? _lastBatchAt;
+  final List<({int items, Duration took})> _batches = []; // 최근 [_batchWindow]묶음
+  Duration? _etaShown;
+  int _lastBatchCount = 0;
   SyncIssue _issue = SyncIssue.none;
   int _failedCount = 0;
   int _intervalMs = 0;
@@ -88,23 +91,49 @@ class SyncStatus extends ChangeNotifier {
   /// 서버가 알려 준 장당 분류 간격(ms). 0이면 모른다/대기 없음.
   int get intervalMs => _intervalMs;
 
+  static const _batchWindow = 3;
+
   /// 남은 예상 시간. 처음에는 서버가 알려 준 호출 간격으로 어림하고(없으면 null),
-  /// 몇 장 처리해 실제 속도를 알게 되면 그 속도로 계산한다.
+  /// 묶음이 끝나면 최근 3묶음의 평균 속도로 계산한다. 표시값은 줄어드는 방향으로만 바뀐다.
   Duration? get eta {
-    final start = _startedAt;
-    if (!_running || start == null) return null;
+    if (!_running) return null;
+    final computed = _computeEta();
+    final shown = _etaShown;
+    if (computed != null && (shown == null || computed < shown)) {
+      _etaShown = computed;
+    }
+    return _etaShown;
+  }
+
+  Duration? _computeEta() {
     final remaining = _total - _done;
-    if (_done < minSamplesForEta) {
+    if (_batches.isEmpty) {
       return _intervalMs > 0
           ? Duration(milliseconds: _intervalMs * remaining)
           : null;
     }
-    final perItem = _now().difference(start).inMilliseconds / _done;
-    return Duration(milliseconds: (perItem * remaining).round());
+    var ms = 0;
+    var items = 0;
+    for (final b in _batches) {
+      ms += b.took.inMilliseconds;
+      items += b.items;
+    }
+    final left =
+        (ms / items * remaining).round() - _sinceLastBatch.inMilliseconds;
+    return Duration(milliseconds: left < 0 ? 0 : left);
   }
 
-  /// 이만큼은 처리해 봐야 속도를 믿고 예상 시간을 보여 준다.
-  static const minSamplesForEta = 5;
+  /// 최근 3묶음 평균으로 어림한 다음 묶음까지 남은 시간. 아직 모르면 null, 늦어지고 있으면 0 이하.
+  Duration? get untilNextBatch {
+    if (!_running || _batches.isEmpty) return null;
+    final total = _batches.fold(0, (a, b) => a + b.took.inMilliseconds);
+    return Duration(milliseconds: total ~/ _batches.length) - _sinceLastBatch;
+  }
+
+  Duration get _sinceLastBatch {
+    final last = _lastBatchAt;
+    return last == null ? Duration.zero : _now().difference(last);
+  }
 
   void begin(int total, {int intervalMs = 0}) {
     _running = true;
@@ -115,14 +144,23 @@ class SyncStatus extends ChangeNotifier {
     _waiting = 0;
     _done = 0;
     _total = total;
-    _startedAt = _now();
+    _lastBatchAt = _now();
+    _batches.clear();
+    _etaShown = null;
+    _lastBatchCount = 0;
     _counts.clear();
     _failedCount = 0;
     if (_issue != SyncIssue.partial) _issue = SyncIssue.none;
     notifyListeners();
   }
 
+  /// [by]장이 든 묶음 하나가 끝났다.
   void advance(int by) {
+    if (by > 0) {
+      _batches.add((items: by, took: _sinceLastBatch));
+      if (_batches.length > _batchWindow) _batches.removeAt(0);
+      _lastBatchAt = _now();
+    }
     _done = (_done + by).clamp(0, _total);
     notifyListeners();
   }
@@ -131,6 +169,7 @@ class SyncStatus extends ChangeNotifier {
   void setWaiting(int count) {
     if (_waiting == count) return;
     _waiting = count;
+    if (count > 0) _lastBatchCount = count;
     notifyListeners();
   }
 
@@ -165,14 +204,9 @@ class SyncStatus extends ChangeNotifier {
     }
   }
 
-  /// 서버 응답을 기다리는 동안 보여 줄 문장. 숫자가 한참 안 바뀌어도 멈춘 게 아니라는 걸 알려 준다.
-  String? get waitingMessage {
-    if (_waiting == 0) return null;
-    final batch = _intervalMs > 0
-        ? ' 한 묶음에 ${formatBatchTime(Duration(milliseconds: _intervalMs * _waiting))} 정도 걸려요.'
-        : '';
-    return '$_waiting장을 분류하는 중이에요.$batch';
-  }
+  /// 진행 영역의 한 줄. 묶음 사이에도 마지막 장수를 그대로 보여 준다(문구가 사라졌다 나타나지 않게).
+  String get progressMessage =>
+      _lastBatchCount > 0 ? '$_lastBatchCount장을 분류하는 중이에요…' : '분류를 준비하는 중이에요…';
 
   /// 홈 배너용 짧은 문구(한 줄). 원인 상세나 개인정보는 담지 않는다.
   String? get bannerMessage => switch (_issue) {
@@ -182,16 +216,6 @@ class SyncStatus extends ChangeNotifier {
     SyncIssue.rejected => '서버가 요청을 받지 않았어요',
     SyncIssue.internal => '정리하다 문제가 생겼어요',
     SyncIssue.partial => '$_failedCount장은 다음에 다시 분류해요',
-  };
-
-  /// [SyncIssue]를 사용자에게 보여 줄 문장. 개인정보나 원인 상세는 담지 않는다.
-  String? get issueMessage => switch (_issue) {
-    SyncIssue.none => null,
-    SyncIssue.offline => '서버에 연결하지 못했어요. 이미 정리된 캡처는 그대로 볼 수 있어요.',
-    SyncIssue.server => '서버가 잠시 불안정해요. 조금 뒤에 다시 시도할게요.',
-    SyncIssue.rejected => '서버가 요청을 받지 않았어요. 앱을 최신으로 업데이트해 주세요.',
-    SyncIssue.internal => '정리하다 문제가 생겼어요. 다시 열면 이어서 할게요.',
-    SyncIssue.partial => '$_failedCount장은 다음에 다시 분류할게요.',
   };
 }
 
@@ -203,13 +227,4 @@ String formatEta(Duration eta) {
   final hours = minutes ~/ 60;
   final rest = minutes % 60;
   return rest == 0 ? '약 $hours시간 남았어요' : '약 $hours시간 $rest분 남았어요';
-}
-
-/// 한 묶음이 걸리는 시간 문구: "약 1분 30초", "약 40초".
-String formatBatchTime(Duration d) {
-  final seconds = d.inSeconds;
-  if (seconds < 60) return '약 $seconds초';
-  final m = seconds ~/ 60;
-  final r = seconds % 60;
-  return r == 0 ? '약 $m분' : '약 $m분 $r초';
 }
