@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:remine/core/tokens.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
 import 'package:remine/data/remine_store.dart';
 import 'package:remine/models/category.dart';
@@ -134,7 +136,18 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('#뜨개질'), findsOneWidget);
-      expect(find.text('최근 2주 4장 · 전체 6장'), findsOneWidget);
+      expect(find.text('최근 2주 4장 · 전체 6장 · 어제 마지막'), findsOneWidget);
+      expect(find.text('4'), findsOneWidget, reason: '오른쪽 위 큰 숫자 = 최근 2주 장수');
+      expect(find.bySemanticsLabel('#뜨개질 최근 2주 4장'), findsOneWidget);
+      expect(find.bySemanticsLabel('최근 14일 중 4일 캡처'), findsOneWidget);
+      expect(find.text('오늘'), findsOneWidget);
+      expect(find.text('10.13'), findsOneWidget, reason: '막대 시작 날짜 = 13일 전');
+      // 1·2·3·4일 전 1장씩 → 최근 3일(오늘 포함) 2장 = 그 전 4일 2장, 몰아서·오늘 아님 → 그 외
+      expect(
+        find.text('2주 동안 꾸준히 모았어요').evaluate().length +
+            find.text('2주 중 4일이나 캡처했어요. 진심이네요').evaluate().length,
+        1,
+      );
       expect(find.text('최근 2주'), findsOneWidget);
       expect(find.text('그 전'), findsOneWidget);
       for (final id in [1, 2, 3, 9, 7, 8]) {
@@ -151,6 +164,376 @@ void main() {
         tester.getTopLeft(find.byKey(const ValueKey('tile-3'))).dy,
         lessThan(tester.getTopLeft(find.byKey(const ValueKey('tile-7'))).dy),
       );
+    });
+
+    test('날짜별 개수는 달력 날짜로 세고 오늘이 마지막 칸, 기간 밖은 버린다', () {
+      final items = [
+        _shot(1, 0, Category.etc, []),
+        _shot(2, 0, Category.etc, []),
+        _shot(3, 1, Category.etc, []),
+        _shot(4, 13, Category.etc, []),
+        _shot(5, 14, Category.etc, []),
+      ];
+      final counts = dailyCounts(items, _now, 14);
+      expect(counts.length, 14);
+      expect(counts.last, 2);
+      expect(counts[12], 1);
+      expect(counts.first, 1);
+      expect(counts.fold(0, (a, b) => a + b), 4);
+      // 24시간이 안 지났어도 자정을 넘기면 어제 칸이다
+      expect(
+        dailyCounts(
+          [_shot(6, 0, Category.etc, [])],
+          DateTime(2026, 10, 27, 0, 30),
+          14,
+        ).last,
+        0,
+      );
+    });
+
+    group('해석 문장', () {
+      // 14칸, 마지막 칸이 오늘(_now = 10.26)
+      List<int> days(Map<int, int> daysAgo) =>
+          List.generate(14, (i) => daysAgo[13 - i] ?? 0);
+
+      /// 그 상황의 문구 중 하나가 자리표시 없이 채워졌는지.
+      void expectFrom(
+        String key,
+        ({InsightId id, String text})? insight,
+        List<String> filled,
+      ) {
+        expect(insight?.id.$1, key);
+        final line = insight!.text;
+        expect(filled, contains(line), reason: key);
+        expect(line, isNot(contains('{')));
+        expect(line, isNot(anyOf(contains('캡쳐'), contains('찍었'))));
+      }
+
+      test('잠잠: 마지막 캡처가 7일 이상 전이면 가장 많던 날·잠잠한 일수', () {
+        // 9일 전 3장, 7일 전 1장 → 7일째 잠잠, 10월 17일에 가장
+        final c = days({9: 3, 7: 1});
+        expectFrom('quiet', tagInsight('뜨개질', c, _now), [
+          '10월 17일엔 푹 빠져 있었는데, 요즘 7일째 조용하네요',
+          '한창일 땐 하루 3장씩 캡처했는데, 잊고 있었나요?',
+          '7일째 소식이 없어요. 아직 관심 있죠?',
+        ]);
+      });
+
+      test('"하루 N장씩" 문구는 가장 많던 날이 2장 이상일 때만', () {
+        Set<String?> lines(List<int> c) => {
+          for (final pick in [0, 1, 2, 3, 4, 5])
+            tagInsight('뜨개질', c, _now, pick: pick)?.text,
+        };
+        final one = lines(days({9: 1, 7: 1}));
+        expect(one, hasLength(2));
+        expect(one.where((t) => t!.contains('장씩')), isEmpty);
+        expect(
+          lines(days({9: 2, 7: 1})),
+          contains('한창일 땐 하루 2장씩 캡처했는데, 잊고 있었나요?'),
+        );
+        // 쓸 수 있는 문구가 2개뿐이어도 직전 문구는 피한다
+        expect(
+          tagInsight('뜨개질', days({9: 1, 7: 1}), _now, avoid: ('quiet', 0))?.id,
+          ('quiet', 2),
+        );
+      });
+
+      test('마지막 캡처 3~6일 전은 패턴 상황으로: 몰아서 또는 그 외', () {
+        expect(tagInsight('뜨개질', days({4: 3}), _now)?.id.$1, 'burst');
+        expect(tagInsight('뜨개질', days({4: 1, 9: 1}), _now)?.id.$1, 'steady');
+      });
+
+      test('그 외의 "가장 푹 빠져" 문구는 가장 많던 날이 2장 이상일 때만', () {
+        Set<String?> lines(List<int> c) => {
+          for (final pick in [0, 1, 2, 3, 4, 5])
+            tagInsight('뜨개질', c, _now, pick: pick)?.text,
+        };
+        final two = days({1: 2, 3: 1, 4: 1, 6: 1, 9: 1});
+        expect(tagInsight('뜨개질', two, _now)?.id.$1, 'steady');
+        expect(lines(two), contains('10월 25일에 가장 푹 빠져 있었어요'));
+        final one = days({1: 1, 3: 1, 4: 1, 6: 1, 9: 1});
+        expect(tagInsight('뜨개질', one, _now)?.id.$1, 'steady');
+        expect(lines(one), hasLength(2));
+        expect(lines(one).where((t) => t!.contains('가장')), isEmpty);
+      });
+
+      group('그 외 문구 조건', () {
+        Set<String?> lines(List<int> c) => {
+          for (final pick in [0, 1, 2, 3, 4, 5])
+            tagInsight('뜨개질', c, _now, pick: pick)?.text,
+        };
+        const lastCaptureLines = {
+          '10월 22일에 마지막으로 캡처했어요',
+          '10월 22일에 눈여겨봤던 관심사예요',
+        };
+
+        test('1장: 마지막 캡처 날의 기본 문구만', () {
+          expect(lines(days({4: 1})), lastCaptureLines);
+        });
+
+        test('2일 × 1장: 기본 문구만, 날짜는 가장 많던 날이 아니라 마지막 캡처 날', () {
+          expect(lines(days({4: 1, 9: 1})), lastCaptureLines);
+        });
+
+        test('3일 이상: 꾸준히·N일이나만, 기본 문구는 안 나온다', () {
+          expect(lines(days({4: 1, 6: 1, 9: 1})), {
+            '2주 동안 꾸준히 모았어요',
+            '2주 중 3일이나 캡처했어요. 진심이네요',
+          });
+        });
+
+        test('3일 이상 + 가장 많던 날 2장: 가장 많던 날 문구도 나온다', () {
+          expect(lines(days({4: 1, 6: 2, 9: 1, 10: 1, 11: 1})), {
+            '2주 동안 꾸준히 모았어요',
+            '2주 중 5일이나 캡처했어요. 진심이네요',
+            '10월 20일에 가장 푹 빠져 있었어요',
+          });
+        });
+
+        test('문구 글자를 바꿔도 조건은 그대로: "꾸준히"가 없어도 3일 미만이면 안 나온다', () {
+          const edited = {
+            'steady': [
+              Phrase('차곡차곡 모았어요', minDays: 3),
+              Phrase('기본 문구', fallback: true),
+            ],
+          };
+          String? line(List<int> c) =>
+              tagInsight('뜨개질', c, _now, phrases: edited)?.text;
+          expect(line(days({4: 1})), '기본 문구');
+          expect(line(days({4: 1, 6: 1, 9: 1})), '차곡차곡 모았어요');
+          // 전부 조건에 걸려도 죽지 않고 문장만 없다
+          expect(
+            tagInsight(
+              '뜨개질',
+              days({4: 1}),
+              _now,
+              phrases: const {
+                'steady': [Phrase('차곡차곡 모았어요', minDays: 3)],
+              },
+            ),
+            isNull,
+          );
+        });
+
+        test('기본 문구 안에서도 직전 문구는 피한다', () {
+          final seen = tagInsight('뜨개질', days({4: 1}), _now, pick: 0)!;
+          final next = tagInsight(
+            '뜨개질',
+            days({4: 1}),
+            _now,
+            pick: 0,
+            avoid: seen.id,
+          )!;
+          expect(next.id.$1, 'steady');
+          expect(next.id, isNot(seen.id));
+          expect(lastCaptureLines, contains(next.text));
+        });
+      });
+
+      test('마지막 캡처로부터 지난 날짜 경계: 2·3·6·7·13·14일', () {
+        String? at(int daysAgo) => tagInsight(
+          '뜨개질',
+          days({daysAgo: 1}),
+          _now,
+          lastCapture: _now.subtract(Duration(days: daysAgo)),
+        )?.id.$1;
+
+        expect(at(2), 'new', reason: '최근 3일에만 있음');
+        expect(at(3), 'steady', reason: '최근 3일 밖이라 새로 생김이 아니다');
+        expect(at(6), 'steady');
+        expect(at(7), 'quiet', reason: '카드 "잊은 관심사"와 같은 7일');
+        expect(at(13), 'quiet');
+        expect(at(14), 'dormant', reason: '14일 전은 막대 기간 밖');
+      });
+
+      test('오래 잠잠: 기간 안 0장이면 전체 목록의 마지막 캡처 기준, 그것도 없으면 null', () {
+        expectFrom(
+          'dormant',
+          tagInsight(
+            '뜨개질',
+            List.filled(14, 0),
+            _now,
+            lastCapture: DateTime(2026, 10, 6, 23),
+          ),
+          ['마지막 캡처가 20일 전이에요. 다시 꺼내 볼까요?', '2주 넘게 소식이 없어요. 아직 좋아하죠?'],
+        );
+      });
+
+      test('새로 생김: 최근 3일에만 있으면 "다시 늘어남"이 아니다', () {
+        final c = days({0: 1, 2: 2});
+        expectFrom('new', tagInsight('뜨개질', c, _now), [
+          '오, 새로운 관심사가 생겼네요!',
+          '요즘 여기에 꽂혔군요. 앞으로가 기대돼요',
+        ]);
+      });
+
+      test('다시 늘어남은 그 전 4일보다 앞에 캡처가 있어야: 그 전 4일에만 있으면 아래 상황으로', () {
+        // 최근 3일 2장 > 그 전 4일 1장이지만 7일 전보다 앞에는 없다 → 몰아서(오늘 2장 = 전체의 2/3)
+        final c = days({0: 2, 4: 1});
+        expect(
+          insightPhrases['rising']!.map((p) => p.text.replaceAll('{n}', '2')),
+          isNot(contains(tagInsight('뜨개질', c, _now))),
+        );
+      });
+
+      test('다시 늘어남: 최근 3일 합 > 그 전 4일 합 (잠잠보다 아래, 몰아서보다 위)', () {
+        final c = days({0: 3, 1: 1, 4: 1, 10: 3});
+        expectFrom('rising', tagInsight('뜨개질', c, _now), [
+          '요즘 다시 빠지는 중이에요',
+          '잊은 줄 알았는데, 다시 돌아왔네요!',
+          '최근 며칠 새 4장이나 모았어요. 진심이네요!',
+        ]);
+      });
+
+      test('몰아서: 하루가 전체의 절반 이상(2장 이상)', () {
+        final c = days({2: 1, 5: 1, 8: 4});
+        expectFrom('burst', tagInsight('뜨개질', c, _now), [
+          '10월 18일 하루에 4장을 몰아서 캡처했어요',
+          '10월 18일, 무슨 일 있었어요? 하루에 4장이나!',
+        ]);
+      });
+
+      test('오늘 캡처함 → 그 외 순서', () {
+        final today = days({0: 1, 3: 1, 4: 1, 6: 1, 9: 1});
+        expectFrom('today', tagInsight('뜨개질', today, _now), [
+          '오늘도 캡처했어요. 한창 빠져 있는 중!',
+          '오늘의 관심사도 #뜨개질',
+        ]);
+        final steady = days({1: 1, 3: 1, 4: 1, 6: 1, 9: 1});
+        expectFrom('steady', tagInsight('뜨개질', steady, _now), [
+          '2주 동안 꾸준히 모았어요',
+          '2주 중 5일이나 캡처했어요. 진심이네요',
+        ]);
+      });
+
+      test('pick번째 문구를 고르고, avoid와 같은 문구는 빼고 고른다. 기간 안에 없으면 null', () {
+        final c = days({2: 1, 5: 1, 8: 4}); // 몰아서: 문구 2개
+        const first = '10월 18일 하루에 4장을 몰아서 캡처했어요';
+        const second = '10월 18일, 무슨 일 있었어요? 하루에 4장이나!';
+        expect(tagInsight('뜨개질', c, _now, pick: 0)?.text, first);
+        expect(tagInsight('뜨개질', c, _now, pick: 1)?.text, second);
+        expect(
+          tagInsight('뜨개질', c, _now, pick: 2)?.text,
+          first,
+          reason: '나머지 연산',
+        );
+        for (final pick in [0, 1, 2, 3]) {
+          expect(
+            tagInsight('뜨개질', c, _now, pick: pick, avoid: ('burst', 0))?.text,
+            second,
+          );
+        }
+        expect(tagInsight('뜨개질', List.filled(14, 0), _now), isNull);
+      });
+
+      test('직전 문구는 상황 + 번호로 비교: 날이 지나 숫자가 달라져도 같은 틀은 연달아 안 나온다', () {
+        final seen = tagInsight('뜨개질', days({9: 2, 7: 1}), _now, pick: 0)!;
+        expect(seen.text, '10월 17일엔 푹 빠져 있었는데, 요즘 7일째 조용하네요');
+        final nextDay = tagInsight(
+          '뜨개질',
+          days({10: 2, 8: 1}),
+          _now.add(const Duration(days: 1)),
+          pick: 0,
+          avoid: seen.id,
+        );
+        expect(nextDay?.id, ('quiet', 1));
+        // 상황이 다르면 번호가 같아도 피할 이유가 없다
+        expect(
+          tagInsight(
+            '뜨개질',
+            days({9: 2, 7: 1}),
+            _now,
+            pick: 0,
+            avoid: ('steady', 0),
+          )?.text,
+          seen.text,
+        );
+      });
+    });
+
+    test('마지막 캡처 문구: 오늘·어제·N일 전 (시각이 아니라 날짜로)', () {
+      expect(lastSeenLabel(DateTime(2026, 10, 26, 0, 1), _now), '오늘 마지막');
+      expect(
+        lastSeenLabel(
+          DateTime(2026, 10, 25, 23, 59),
+          DateTime(2026, 10, 26, 0, 1),
+        ),
+        '어제 마지막',
+      );
+      expect(lastSeenLabel(DateTime(2026, 10, 23, 13), _now), '3일 전 마지막');
+    });
+
+    testWidgets('막대는 처음에 올라오고, 애니메이션 줄이기면 바로 다 그려진다', (tester) async {
+      double barHeight() => tester
+          .getSize(
+            find
+                .descendant(
+                  of: find.byType(DailyBars),
+                  matching: find.byWidgetPredicate(
+                    (w) =>
+                        w is Container &&
+                        w.decoration is BoxDecoration &&
+                        (w.decoration! as BoxDecoration).color ==
+                            AppColors.celadon,
+                  ),
+                )
+                .first,
+          )
+          .height;
+
+      await tester.pumpWidget(_scoped(const TagScreen(tag: '뜨개질')));
+      await tester.pump(); // 목록 로드
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(barHeight(), lessThan(AppTagBars.height));
+      await tester.pumpAndSettle();
+      expect(barHeight(), AppTagBars.height, reason: '최댓값인 날이 높이를 꽉 채운다');
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(
+        _scoped(const TagScreen(tag: '뜨개질'), reduceMotion: true),
+      );
+      await tester.pump();
+      await tester.pump();
+      final settled = barHeight();
+      await tester.pumpAndSettle();
+      expect(barHeight(), settled);
+    });
+
+    testWidgets('해석 문장은 들어올 때 한 번 정하고, 리빌드·새로고침에도 그대로, 다시 들어오면 직전과 다른 문장', (
+      tester,
+    ) async {
+      // 뜨개질 시드는 "그 외"(문구 2개)
+      const steady = ['2주 동안 꾸준히 모았어요', '2주 중 4일이나 캡처했어요. 진심이네요'];
+      String shown() =>
+          steady.singleWhere((t) => find.text(t).evaluate().isNotEmpty);
+
+      final store = RemineStore(
+        FakeScreenshotRepository(now: () => _now, seed: _seed),
+        now: () => _now,
+      );
+      Widget screen(Key key) => RemineScope(
+        store: store,
+        child: MaterialApp(
+          home: TagScreen(key: key, tag: '뜨개질', random: Random(7)),
+        ),
+      );
+
+      await tester.pumpWidget(screen(const ValueKey(1)));
+      await tester.pumpAndSettle();
+      final first = shown();
+
+      store.refresh(); // 목록 다시 불러오기
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -200));
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, 200));
+      await tester.pumpAndSettle();
+      expect(shown(), first);
+
+      // 같은 시드로 다시 들어와도(새 화면) 직전 문장은 피한다
+      await tester.pumpWidget(screen(const ValueKey(2)));
+      await tester.pumpAndSettle();
+      expect(shown(), isNot(first));
     });
 
     testWidgets('캡처를 누르면 상세가 열리고 좌우 넘기기는 이 목록(최근 → 그 전) 안에서만', (tester) async {
