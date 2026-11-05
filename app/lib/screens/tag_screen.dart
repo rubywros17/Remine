@@ -275,35 +275,61 @@ List<int> dailyCounts(List<ScreenshotItem> items, DateTime now, int days) {
 /// 해석 문구 하나를 가리키는 값: 상황 이름과 그 상황 안의 문구 번호. 숫자가 달라져도 같은 틀이면 같은 값이다.
 typedef InsightId = (String situation, int index);
 
-/// 해석 문장 문구. 상황마다 2~3개이고 [tagInsight]가 그중 하나를 고른다.
+/// 해석 문구 하나와 쓸 수 있는 조건. 조건을 글자와 따로 적어 두어, [text]를 고쳐도 조건은 그대로다.
+///
+/// [Dart 메모] `const` 생성자로 만든 객체는 컴파일할 때 값이 정해져 `const` 맵 안에 넣을 수 있다.
+/// `{this.minDays = 0}`처럼 중괄호 안 인자는 이름을 붙여 넘기는 선택 인자다(Java의 빌더 대신 쓴다).
+class Phrase {
+  const Phrase(
+    this.text, {
+    this.minDays = 0,
+    this.minPeak = 0,
+    this.fallback = false,
+  });
+
+  final String text;
+
+  /// 기간 안에 캡처한 날이 이만큼 있어야 쓴다.
+  final int minDays;
+
+  /// 가장 많던 날의 장수가 이만큼 있어야 쓴다.
+  final int minPeak;
+
+  /// 기본 문구: 그 상황에서 조건에 맞는 다른 문구가 하나도 없을 때만 쓴다.
+  final bool fallback;
+}
+
+/// 해석 문장 문구. 상황마다 2개 이상이고 [tagInsight]가 그중 하나를 고른다.
 /// 자리표시: {tag} 태그 이름, {m}·{d} 가장 많던 날, {lastM}·{lastD} 마지막 캡처 날, {x} 마지막 캡처 후 일수, {n} 장수·일수, {window} 기간("2주").
 /// 표기는 "캡처"("캡쳐"·"찍었어요" 쓰지 않음).
-/// 조건은 문구 내용으로 판단한다: "{n}장씩"·"가장"은 가장 많던 날 2장 이상, "꾸준히"·"{n}일이나"는 캡처한 날 3일 이상.
-/// {lastM}이 든 문구는 기본 문구라 조건에 맞는 다른 문구가 없을 때만 쓴다.
 const insightPhrases = {
-  'dormant': ['마지막 캡처가 {x}일 전이에요. 다시 꺼내 볼까요?', '{window} 넘게 소식이 없어요. 아직 좋아하죠?'],
-  'quiet': [
-    '{m}월 {d}일엔 푹 빠져 있었는데, 요즘 {x}일째 조용하네요',
-    '한창일 땐 하루 {n}장씩 캡처했는데, 잊고 있었나요?',
-    '{x}일째 소식이 없어요. 아직 관심 있죠?',
+  'dormant': [
+    Phrase('마지막 캡처가 {x}일 전이에요. 다시 꺼내 볼까요?'),
+    Phrase('{window} 넘게 소식이 없어요. 아직 좋아하죠?'),
   ],
-  'new': ['오, 새로운 관심사가 생겼네요!', '요즘 여기에 꽂혔군요. 앞으로가 기대돼요'],
+  'quiet': [
+    Phrase('{m}월 {d}일엔 푹 빠져 있었는데, 요즘 {x}일째 조용하네요'),
+    // 1장인 날을 "한창"이라 부르기 어색해서 2장 이상일 때만
+    Phrase('한창일 땐 하루 {n}장씩 캡처했는데, 잊고 있었나요?', minPeak: 2),
+    Phrase('{x}일째 소식이 없어요. 아직 관심 있죠?'),
+  ],
+  'new': [Phrase('오, 새로운 관심사가 생겼네요!'), Phrase('요즘 여기에 꽂혔군요. 앞으로가 기대돼요')],
   'rising': [
-    '요즘 다시 빠지는 중이에요',
-    '잊은 줄 알았는데, 다시 돌아왔네요!',
-    '최근 며칠 새 {n}장이나 모았어요. 진심이네요!',
+    Phrase('요즘 다시 빠지는 중이에요'),
+    Phrase('잊은 줄 알았는데, 다시 돌아왔네요!'),
+    Phrase('최근 며칠 새 {n}장이나 모았어요. 진심이네요!'),
   ],
   'burst': [
-    '{m}월 {d}일 하루에 {n}장을 몰아서 캡처했어요',
-    '{m}월 {d}일, 무슨 일 있었어요? 하루에 {n}장이나!',
+    Phrase('{m}월 {d}일 하루에 {n}장을 몰아서 캡처했어요'),
+    Phrase('{m}월 {d}일, 무슨 일 있었어요? 하루에 {n}장이나!'),
   ],
-  'today': ['오늘도 캡처했어요. 한창 빠져 있는 중!', '오늘의 관심사도 #{tag}'],
+  'today': [Phrase('오늘도 캡처했어요. 한창 빠져 있는 중!'), Phrase('오늘의 관심사도 #{tag}')],
   'steady': [
-    '{window} 동안 꾸준히 모았어요',
-    '{window} 중 {n}일이나 캡처했어요. 진심이네요',
-    '{m}월 {d}일에 가장 푹 빠져 있었어요',
-    '{lastM}월 {lastD}일에 마지막으로 캡처했어요',
-    '{lastM}월 {lastD}일에 눈여겨봤던 관심사예요',
+    Phrase('{window} 동안 꾸준히 모았어요', minDays: 3),
+    Phrase('{window} 중 {n}일이나 캡처했어요. 진심이네요', minDays: 3),
+    Phrase('{m}월 {d}일에 가장 푹 빠져 있었어요', minPeak: 2),
+    Phrase('{lastM}월 {lastD}일에 마지막으로 캡처했어요', fallback: true),
+    Phrase('{lastM}월 {lastD}일에 눈여겨봤던 관심사예요', fallback: true),
   ],
 };
 
@@ -313,7 +339,7 @@ const insightPhrases = {
 /// 그보다 최근이면 패턴으로: 새로 생김(최근 3일에만 있음)
 /// → 다시 늘어남(최근 3일 > 그 전 4일, 그보다 앞에도 있었음) → 몰아서(하루가 전체의 절반 이상)
 /// → 오늘 캡처함 → 그 외.
-/// 문구는 그 상황의 문구 중 [pick]번째(나머지 연산)이고, [avoid]와 같은 문구는 다른 문구가 있으면 뺀다.
+/// 문구는 그 상황에서 조건([Phrase])에 맞는 것 중 [pick]번째(나머지 연산)이고, [avoid]와 같은 문구는 다른 문구가 있으면 뺀다.
 ({InsightId id, String text})? tagInsight(
   String tag,
   List<int> counts,
@@ -321,6 +347,7 @@ const insightPhrases = {
   DateTime? lastCapture,
   int pick = 0,
   InsightId? avoid,
+  Map<String, List<Phrase>> phrases = insightPhrases,
 }) {
   final total = counts.fold(0, (a, b) => a + b);
   if (total == 0 && lastCapture == null) return null;
@@ -359,19 +386,17 @@ const insightPhrases = {
     _ when counts.last > 0 => ('today', 0),
     _ => ('steady', activeDays),
   };
-  final phrases = insightPhrases[key]!;
-  // 1장인 날을 "한창"·"가장 푹 빠진 날"이라 부르기 어색해서 2장 이상일 때만
-  bool fits(String p) {
-    if (p.contains('{n}장씩') || p.contains('가장')) return counts[peak] >= 2;
-    if (p.contains('꾸준히') || p.contains('{n}일이나')) return activeDays >= 3;
-    return !p.contains('{lastM}');
-  }
-
-  final indices = List.generate(phrases.length, (i) => i);
-  final fitting = indices.where((i) => fits(phrases[i])).toList();
+  final list = phrases[key]!;
+  final peakCount = total == 0 ? 0 : counts[peak];
+  final indices = List.generate(list.length, (i) => i);
+  final fitting = indices.where((i) {
+    final p = list[i];
+    return !p.fallback && activeDays >= p.minDays && peakCount >= p.minPeak;
+  }).toList();
   final usable = fitting.isNotEmpty
       ? fitting
-      : indices.where((i) => phrases[i].contains('{lastM}')).toList();
+      : indices.where((i) => list[i].fallback).toList();
+  if (usable.isEmpty) return null; // 문구를 고치다 전부 조건에 걸려도 화면이 죽지 않게
   final candidates = usable.length > 1
       ? [
           for (final i in usable)
@@ -381,7 +406,7 @@ const insightPhrases = {
   final index = candidates[pick % candidates.length];
   return (
     id: (key, index),
-    text: phrases[index]
+    text: list[index].text
         .replaceAll('{tag}', tag)
         .replaceAll('{lastM}', '${lastDay.month}')
         .replaceAll('{lastD}', '${lastDay.day}')

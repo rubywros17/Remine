@@ -290,6 +290,31 @@ void main() {
           });
         });
 
+        test('문구 글자를 바꿔도 조건은 그대로: "꾸준히"가 없어도 3일 미만이면 안 나온다', () {
+          const edited = {
+            'steady': [
+              Phrase('차곡차곡 모았어요', minDays: 3),
+              Phrase('기본 문구', fallback: true),
+            ],
+          };
+          String? line(List<int> c) =>
+              tagInsight('뜨개질', c, _now, phrases: edited)?.text;
+          expect(line(days({4: 1})), '기본 문구');
+          expect(line(days({4: 1, 6: 1, 9: 1})), '차곡차곡 모았어요');
+          // 전부 조건에 걸려도 죽지 않고 문장만 없다
+          expect(
+            tagInsight(
+              '뜨개질',
+              days({4: 1}),
+              _now,
+              phrases: const {
+                'steady': [Phrase('차곡차곡 모았어요', minDays: 3)],
+              },
+            ),
+            isNull,
+          );
+        });
+
         test('기본 문구 안에서도 직전 문구는 피한다', () {
           final seen = tagInsight('뜨개질', days({4: 1}), _now, pick: 0)!;
           final next = tagInsight(
@@ -346,7 +371,7 @@ void main() {
         // 최근 3일 2장 > 그 전 4일 1장이지만 7일 전보다 앞에는 없다 → 몰아서(오늘 2장 = 전체의 2/3)
         final c = days({0: 2, 4: 1});
         expect(
-          insightPhrases['rising']!.map((p) => p.replaceAll('{n}', '2')),
+          insightPhrases['rising']!.map((p) => p.text.replaceAll('{n}', '2')),
           isNot(contains(tagInsight('뜨개질', c, _now))),
         );
       });
