@@ -238,12 +238,23 @@ void main() {
         );
       });
 
-      test('쉬는 중: 마지막 캡처가 3~6일 전', () {
-        final c = days({8: 2, 4: 1});
-        expectFrom('pause', tagInsight('뜨개질', c, _now), [
-          '요즘 4일째 조용하네요',
-          '잠깐 쉬어가는 중이네요',
-        ]);
+      test('마지막 캡처 3~6일 전은 패턴 상황으로: 몰아서 또는 그 외', () {
+        expect(tagInsight('뜨개질', days({4: 3}), _now)?.id.$1, 'burst');
+        expect(tagInsight('뜨개질', days({4: 1, 9: 1}), _now)?.id.$1, 'steady');
+      });
+
+      test('그 외의 "가장 푹 빠져" 문구는 가장 많던 날이 2장 이상일 때만', () {
+        Set<String?> lines(List<int> c) => {
+          for (final pick in [0, 1, 2, 3, 4, 5])
+            tagInsight('뜨개질', c, _now, pick: pick)?.text,
+        };
+        final two = days({1: 2, 3: 1, 4: 1, 6: 1, 9: 1});
+        expect(tagInsight('뜨개질', two, _now)?.id.$1, 'steady');
+        expect(lines(two), contains('10월 25일에 가장 푹 빠져 있었어요'));
+        final one = days({1: 1, 3: 1, 4: 1, 6: 1, 9: 1});
+        expect(tagInsight('뜨개질', one, _now)?.id.$1, 'steady');
+        expect(lines(one), hasLength(2));
+        expect(lines(one).where((t) => t!.contains('가장')), isEmpty);
       });
 
       test('마지막 캡처로부터 지난 날짜 경계: 2·3·6·7·13·14일', () {
@@ -254,9 +265,9 @@ void main() {
           lastCapture: _now.subtract(Duration(days: daysAgo)),
         )?.id.$1;
 
-        expect(at(2), 'new', reason: '최근 3일 안이면 날짜 기준 상황이 아니다');
-        expect(at(3), 'pause');
-        expect(at(6), 'pause');
+        expect(at(2), 'new', reason: '최근 3일에만 있음');
+        expect(at(3), 'steady', reason: '최근 3일 밖이라 새로 생김이 아니다');
+        expect(at(6), 'steady');
         expect(at(7), 'quiet', reason: '카드 "잊은 관심사"와 같은 7일');
         expect(at(13), 'quiet');
         expect(at(14), 'dormant', reason: '14일 전은 막대 기간 밖');
@@ -323,9 +334,9 @@ void main() {
       });
 
       test('pick번째 문구를 고르고, avoid와 같은 문구는 빼고 고른다. 기간 안에 없으면 null', () {
-        final c = days({8: 2, 4: 1}); // 쉬는 중: 문구 2개
-        const first = '요즘 4일째 조용하네요';
-        const second = '잠깐 쉬어가는 중이네요';
+        final c = days({2: 1, 5: 1, 8: 4}); // 몰아서: 문구 2개
+        const first = '10월 18일 하루에 4장을 몰아서 캡처했어요';
+        const second = '10월 18일, 무슨 일 있었어요? 하루에 4장이나!';
         expect(tagInsight('뜨개질', c, _now, pick: 0)?.text, first);
         expect(tagInsight('뜨개질', c, _now, pick: 1)?.text, second);
         expect(
@@ -335,7 +346,7 @@ void main() {
         );
         for (final pick in [0, 1, 2, 3]) {
           expect(
-            tagInsight('뜨개질', c, _now, pick: pick, avoid: ('pause', 0))?.text,
+            tagInsight('뜨개질', c, _now, pick: pick, avoid: ('burst', 0))?.text,
             second,
           );
         }
@@ -343,24 +354,24 @@ void main() {
       });
 
       test('직전 문구는 상황 + 번호로 비교: 날이 지나 숫자가 달라져도 같은 틀은 연달아 안 나온다', () {
-        final seen = tagInsight('뜨개질', days({8: 2, 4: 1}), _now, pick: 0)!;
-        expect(seen.text, '요즘 4일째 조용하네요');
+        final seen = tagInsight('뜨개질', days({9: 2, 7: 1}), _now, pick: 0)!;
+        expect(seen.text, '10월 17일엔 푹 빠져 있었는데, 요즘 7일째 조용하네요');
         final nextDay = tagInsight(
           '뜨개질',
-          days({9: 2, 5: 1}),
+          days({10: 2, 8: 1}),
           _now.add(const Duration(days: 1)),
           pick: 0,
           avoid: seen.id,
         );
-        expect(nextDay?.text, '잠깐 쉬어가는 중이네요');
+        expect(nextDay?.id, ('quiet', 1));
         // 상황이 다르면 번호가 같아도 피할 이유가 없다
         expect(
           tagInsight(
             '뜨개질',
-            days({8: 2, 4: 1}),
+            days({9: 2, 7: 1}),
             _now,
             pick: 0,
-            avoid: ('quiet', 0),
+            avoid: ('steady', 0),
           )?.text,
           seen.text,
         );

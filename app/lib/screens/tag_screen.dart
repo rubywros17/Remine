@@ -277,7 +277,7 @@ typedef InsightId = (String situation, int index);
 
 /// 해석 문장 문구. 상황마다 2~3개이고 [tagInsight]가 그중 하나를 고른다.
 /// 자리표시: {tag} 태그 이름, {m}·{d} 날짜, {x} 마지막 캡처 후 일수, {n} 장수·일수, {window} 기간("2주").
-/// 표기는 "캡처"("캡쳐"·"찍었어요" 쓰지 않음).
+/// 표기는 "캡처"("캡쳐"·"찍었어요" 쓰지 않음). "{n}장씩"·"가장"이 든 문구는 가장 많던 날이 2장 이상일 때만 쓴다.
 const insightPhrases = {
   'dormant': ['마지막 캡처가 {x}일 전이에요. 다시 꺼내 볼까요?', '{window} 넘게 소식이 없어요. 아직 좋아하죠?'],
   'quiet': [
@@ -285,7 +285,6 @@ const insightPhrases = {
     '한창일 땐 하루 {n}장씩 캡처했는데, 잊고 있었나요?',
     '{x}일째 소식이 없어요. 아직 관심 있죠?',
   ],
-  'pause': ['요즘 {x}일째 조용하네요', '잠깐 쉬어가는 중이네요'],
   'new': ['오, 새로운 관심사가 생겼네요!', '요즘 여기에 꽂혔군요. 앞으로가 기대돼요'],
   'rising': [
     '요즘 다시 빠지는 중이에요',
@@ -297,13 +296,17 @@ const insightPhrases = {
     '{m}월 {d}일, 무슨 일 있었어요? 하루에 {n}장이나!',
   ],
   'today': ['오늘도 캡처했어요. 한창 빠져 있는 중!', '오늘의 관심사도 #{tag}'],
-  'steady': ['{window} 동안 꾸준히 모았어요', '{window} 중 {n}일이나 캡처했어요. 진심이네요'],
+  'steady': [
+    '{window} 동안 꾸준히 모았어요',
+    '{window} 중 {n}일이나 캡처했어요. 진심이네요',
+    '{m}월 {d}일에 가장 푹 빠져 있었어요',
+  ],
 };
 
 /// 날짜별 막대([counts], 오늘이 마지막 칸) 위 해석 문장. [lastCapture]는 기간과 상관없이 가장 최근 캡처 시각이고,
 /// 그것도 없으면 null.
 /// 상황은 마지막 캡처로부터 지난 날짜로 먼저 나눈다: 오래 잠잠(기간 안 0장 = 2주 이상) → 잠잠(7일 이상, 카드와 같은 기준)
-/// → 쉬는 중(3일 이상). 그보다 최근이면 새로 생김(최근 3일에만 있음)
+/// 그보다 최근이면 패턴으로: 새로 생김(최근 3일에만 있음)
 /// → 다시 늘어남(최근 3일 > 그 전 4일, 그보다 앞에도 있었음) → 몰아서(하루가 전체의 절반 이상)
 /// → 오늘 캡처함 → 그 외.
 /// 문구는 그 상황의 문구 중 [pick]번째(나머지 연산)이고, [avoid]와 같은 문구는 다른 문구가 있으면 뺀다.
@@ -336,7 +339,6 @@ const insightPhrases = {
     _ when total == 0 => ('dormant', 0),
     // 카드의 "잊은 관심사"와 같은 기준
     _ when sinceLast >= Interest.forgottenAfterDays => ('quiet', counts[peak]),
-    _ when recent3 == 0 => ('pause', 0),
     _ when recent3 == total => ('new', recent3),
     _ when recent3 > sum(last - 7, last - 3) && sum(0, last - 7) > 0 => (
       'rising',
@@ -351,10 +353,12 @@ const insightPhrases = {
     _ => ('steady', counts.where((c) => c > 0).length),
   };
   final phrases = insightPhrases[key]!;
-  // "하루 1장씩"은 한창이었다고 하기 어색해서 2장 이상일 때만
+  // 1장인 날을 "한창"·"가장 푹 빠진 날"이라 부르기 어색해서 2장 이상일 때만
   final usable = [
     for (var i = 0; i < phrases.length; i++)
-      if (n >= 2 || !phrases[i].contains('{n}장씩')) i,
+      if (!(phrases[i].contains('{n}장씩') || phrases[i].contains('가장')) ||
+          counts[peak] >= 2)
+        i,
   ];
   final candidates = usable.length > 1
       ? [
