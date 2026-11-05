@@ -276,8 +276,10 @@ List<int> dailyCounts(List<ScreenshotItem> items, DateTime now, int days) {
 typedef InsightId = (String situation, int index);
 
 /// 해석 문장 문구. 상황마다 2~3개이고 [tagInsight]가 그중 하나를 고른다.
-/// 자리표시: {tag} 태그 이름, {m}·{d} 날짜, {x} 마지막 캡처 후 일수, {n} 장수·일수, {window} 기간("2주").
-/// 표기는 "캡처"("캡쳐"·"찍었어요" 쓰지 않음). "{n}장씩"·"가장"이 든 문구는 가장 많던 날이 2장 이상일 때만 쓴다.
+/// 자리표시: {tag} 태그 이름, {m}·{d} 가장 많던 날, {lastM}·{lastD} 마지막 캡처 날, {x} 마지막 캡처 후 일수, {n} 장수·일수, {window} 기간("2주").
+/// 표기는 "캡처"("캡쳐"·"찍었어요" 쓰지 않음).
+/// 조건은 문구 내용으로 판단한다: "{n}장씩"·"가장"은 가장 많던 날 2장 이상, "꾸준히"·"{n}일이나"는 캡처한 날 3일 이상.
+/// {lastM}이 든 문구는 기본 문구라 조건에 맞는 다른 문구가 없을 때만 쓴다.
 const insightPhrases = {
   'dormant': ['마지막 캡처가 {x}일 전이에요. 다시 꺼내 볼까요?', '{window} 넘게 소식이 없어요. 아직 좋아하죠?'],
   'quiet': [
@@ -300,6 +302,8 @@ const insightPhrases = {
     '{window} 동안 꾸준히 모았어요',
     '{window} 중 {n}일이나 캡처했어요. 진심이네요',
     '{m}월 {d}일에 가장 푹 빠져 있었어요',
+    '{lastM}월 {lastD}일에 마지막으로 캡처했어요',
+    '{lastM}월 {lastD}일에 눈여겨봤던 관심사예요',
   ],
 };
 
@@ -331,9 +335,12 @@ const insightPhrases = {
   }
   final peakDay = today.subtract(Duration(days: last - 1 - peak));
   final recent3 = sum(last - 3, last);
+  final activeDays = counts.where((c) => c > 0).length;
   final sinceLast = total == 0
       ? _calendarDays(lastCapture!, today)
       : last - 1 - counts.lastIndexWhere((c) => c > 0);
+
+  final lastDay = today.subtract(Duration(days: sinceLast));
 
   final (key, n) = switch (()) {
     _ when total == 0 => ('dormant', 0),
@@ -350,16 +357,21 @@ const insightPhrases = {
       counts[peak],
     ),
     _ when counts.last > 0 => ('today', 0),
-    _ => ('steady', counts.where((c) => c > 0).length),
+    _ => ('steady', activeDays),
   };
   final phrases = insightPhrases[key]!;
   // 1장인 날을 "한창"·"가장 푹 빠진 날"이라 부르기 어색해서 2장 이상일 때만
-  final usable = [
-    for (var i = 0; i < phrases.length; i++)
-      if (!(phrases[i].contains('{n}장씩') || phrases[i].contains('가장')) ||
-          counts[peak] >= 2)
-        i,
-  ];
+  bool fits(String p) {
+    if (p.contains('{n}장씩') || p.contains('가장')) return counts[peak] >= 2;
+    if (p.contains('꾸준히') || p.contains('{n}일이나')) return activeDays >= 3;
+    return !p.contains('{lastM}');
+  }
+
+  final indices = List.generate(phrases.length, (i) => i);
+  final fitting = indices.where((i) => fits(phrases[i])).toList();
+  final usable = fitting.isNotEmpty
+      ? fitting
+      : indices.where((i) => phrases[i].contains('{lastM}')).toList();
   final candidates = usable.length > 1
       ? [
           for (final i in usable)
@@ -371,6 +383,8 @@ const insightPhrases = {
     id: (key, index),
     text: phrases[index]
         .replaceAll('{tag}', tag)
+        .replaceAll('{lastM}', '${lastDay.month}')
+        .replaceAll('{lastD}', '${lastDay.day}')
         .replaceAll('{m}', '${peakDay.month}')
         .replaceAll('{d}', '${peakDay.day}')
         .replaceAll('{x}', '$sinceLast')

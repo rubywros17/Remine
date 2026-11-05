@@ -257,6 +257,54 @@ void main() {
         expect(lines(one).where((t) => t!.contains('가장')), isEmpty);
       });
 
+      group('그 외 문구 조건', () {
+        Set<String?> lines(List<int> c) => {
+          for (final pick in [0, 1, 2, 3, 4, 5])
+            tagInsight('뜨개질', c, _now, pick: pick)?.text,
+        };
+        const lastCaptureLines = {
+          '10월 22일에 마지막으로 캡처했어요',
+          '10월 22일에 눈여겨봤던 관심사예요',
+        };
+
+        test('1장: 마지막 캡처 날의 기본 문구만', () {
+          expect(lines(days({4: 1})), lastCaptureLines);
+        });
+
+        test('2일 × 1장: 기본 문구만, 날짜는 가장 많던 날이 아니라 마지막 캡처 날', () {
+          expect(lines(days({4: 1, 9: 1})), lastCaptureLines);
+        });
+
+        test('3일 이상: 꾸준히·N일이나만, 기본 문구는 안 나온다', () {
+          expect(lines(days({4: 1, 6: 1, 9: 1})), {
+            '2주 동안 꾸준히 모았어요',
+            '2주 중 3일이나 캡처했어요. 진심이네요',
+          });
+        });
+
+        test('3일 이상 + 가장 많던 날 2장: 가장 많던 날 문구도 나온다', () {
+          expect(lines(days({4: 1, 6: 2, 9: 1, 10: 1, 11: 1})), {
+            '2주 동안 꾸준히 모았어요',
+            '2주 중 5일이나 캡처했어요. 진심이네요',
+            '10월 20일에 가장 푹 빠져 있었어요',
+          });
+        });
+
+        test('기본 문구 안에서도 직전 문구는 피한다', () {
+          final seen = tagInsight('뜨개질', days({4: 1}), _now, pick: 0)!;
+          final next = tagInsight(
+            '뜨개질',
+            days({4: 1}),
+            _now,
+            pick: 0,
+            avoid: seen.id,
+          )!;
+          expect(next.id.$1, 'steady');
+          expect(next.id, isNot(seen.id));
+          expect(lastCaptureLines, contains(next.text));
+        });
+      });
+
       test('마지막 캡처로부터 지난 날짜 경계: 2·3·6·7·13·14일', () {
         String? at(int daysAgo) => tagInsight(
           '뜨개질',
