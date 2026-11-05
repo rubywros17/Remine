@@ -65,6 +65,9 @@ public class Screenshot {
 
     private LocalDateTime analyzedAt;
 
+    // 앱 휴지통에 넣은 시각. null이 아니면 관심사 집계에서 빠진다. ScreenshotTrashService가 일괄로 바꾼다.
+    private LocalDateTime trashedAt;
+
     public Screenshot(Device device, String localAssetId, LocalDateTime takenAt,
                       String sourceApp, String ocrText) {
         this.device = device;

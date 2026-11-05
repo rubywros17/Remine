@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -81,6 +82,24 @@ public interface ScreenshotRepository extends JpaRepository<Screenshot, Long> {
             order by t.category, t.rn
             """, nativeQuery = true)
     List<Object[]> findRecentAssetIdsByCategory(@Param("deviceId") Long deviceId, @Param("limit") int limit);
+
+    /** 이미 휴지통에 있는 캡처의 시각은 바꾸지 않는다(재전송해도 결과가 같게). */
+    @Modifying(clearAutomatically = true)
+    @Query("""
+            update Screenshot s set s.trashedAt = :at
+            where s.device.id = :deviceId and s.localAssetId in :localAssetIds and s.trashedAt is null
+            """)
+    int markTrashed(@Param("deviceId") Long deviceId,
+                    @Param("localAssetIds") Collection<String> localAssetIds,
+                    @Param("at") LocalDateTime at);
+
+    @Modifying(clearAutomatically = true)
+    @Query("""
+            update Screenshot s set s.trashedAt = null
+            where s.device.id = :deviceId and s.localAssetId in :localAssetIds and s.trashedAt is not null
+            """)
+    int clearTrashed(@Param("deviceId") Long deviceId,
+                     @Param("localAssetIds") Collection<String> localAssetIds);
 
     @Modifying(clearAutomatically = true)
     @Query("delete from Screenshot s where s.device.id = :deviceId and s.localAssetId in :localAssetIds")
