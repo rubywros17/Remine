@@ -95,6 +95,7 @@ cd server
 - Git: 기능 단위 브랜치(feat/...), 작업 단위로 커밋 나누기.
 - PR 본문·커밋에 Claude 서명 줄을 넣지 않는다.
 - 실제 Gemini를 부르는 실행은 장수·예상 비용을 먼저 묻는다.
+- dart format은 이번에 바꾼 파일에만 실행한다(lib·test 전체에 돌리지 않는다).
 - git push, rm, git reset, 브랜치 삭제처럼 되돌리기 어려운 명령은 실행 전에 확인받는다.
 - 키·비밀번호·토큰 값은 출력하지 않는다. 키 파일 위치: E:\dev\secrets\remine\ (레포 밖).
 - 커밋 금지: experiment의 images·ocr·labels.csv·runs*·compare.local*, errors.local*.md, 다른 앱 design-refs.
