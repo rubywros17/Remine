@@ -7,7 +7,7 @@ import 'package:remine/screens/analysis_screen.dart';
 import 'package:remine/widgets/app_button.dart';
 import 'package:remine/widgets/drawer_stage.dart';
 
-/// 첫 분석 화면의 카드 → 서랍 모션: 타이밍·큐 간격·동시 비행 수·모션 줄이기·배치.
+/// 첫 분석 화면의 카드 → 서랍 모션: 타이밍·큐 간격·동시 카드 수·완료 채우기·큰 숫자·모션 줄이기·배치.
 void main() {
   Future<SyncStatus> mount(
     WidgetTester tester, {
@@ -47,6 +47,34 @@ void main() {
       cards(tester)
           .where((c) => c.fly.status == AnimationStatus.forward)
           .length;
+
+  // 칸 합계(스테이지 안의 숫자 텍스트).
+  int binSum(WidgetTester tester) => tester
+      .widgetList<Text>(
+        find.descendant(
+          of: find.byType(DrawerStage),
+          matching: find.byWidgetPredicate(
+            (w) => w is Text && int.tryParse(w.data ?? '') != null,
+          ),
+        ),
+      )
+      .fold(0, (a, t) => a + int.parse(t.data!));
+
+  // 큰 숫자(numHero, 128).
+  int hero(WidgetTester tester) => int.parse(
+    tester
+        .widgetList<Text>(find.byType(Text))
+        .firstWhere((t) => t.style?.fontSize == 128)
+        .data!,
+  );
+
+  // 링: 칸 막대 위의 테두리 상자. 카드 이름표에는 테두리가 없다.
+  Finder rings() => find.byWidgetPredicate(
+    (w) =>
+        w is DecoratedBox &&
+        w.decoration is BoxDecoration &&
+        (w.decoration as BoxDecoration).border != null,
+  );
 
   testWidgets('카드는 등장·이름표·멈춤(680ms) 뒤 460ms 날아가 칸에 들어가고, 그때 숫자가 +1 된다', (
     tester,
@@ -94,18 +122,97 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('동시에 날아가는 카드는 2장을 넘지 않는다', (tester) async {
+  testWidgets('화면에 동시에 떠 있는 카드는 2장을 넘지 않고, 넘치는 장은 칸만 +1(링 유지) 된다', (
+    tester,
+  ) async {
     final status = await mount(tester);
     feed(status, 40);
     var most = 0;
-    for (var i = 0; i < 120; i++) {
-      await tester.pump(const Duration(milliseconds: 100));
-      final now = flying(tester);
+    var ringWithoutThirdCard = false;
+    await tester.pump();
+    for (var i = 0; i < 400; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      final now = cards(tester).length;
       if (now > most) most = now;
+      if (now == AnalysisStage.maxCards && rings().evaluate().isNotEmpty) {
+        ringWithoutThirdCard = true;
+      }
     }
-    expect(most, AnalysisStage.maxFlying);
+    expect(most, AnalysisStage.maxCards);
+    expect(ringWithoutThirdCard, isTrue);
     await tester.pumpAndSettle();
     expect(binNumber('40'), findsOneWidget, reason: '40장이 빠짐없이 들어갔다');
+  });
+
+  testWidgets('큰 숫자는 서버 진행 수가 아니라 칸 합계다', (tester) async {
+    final status = await mount(tester);
+    status.advance(100);
+    await tester.pump();
+    expect(hero(tester), 0, reason: '서버 진행 수를 그대로 쓰지 않는다');
+
+    feed(status, 3);
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(hero(tester), binSum(tester));
+    await tester.pumpAndSettle();
+    expect(hero(tester), 3);
+    expect(binSum(tester), 3);
+  });
+
+  testWidgets('완료: 남은 큐를 카드 없이 40ms 간격으로 채우고, 큰 숫자와 칸이 같이 끝난다', (tester) async {
+    final status = await mount(tester);
+    for (var i = 0; i < 30; i++) {
+      status.count(Category.values[i % Category.values.length], assetId: 'a$i');
+    }
+    status.advance(30);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 700));
+
+    status.finish();
+    await tester.pump();
+    expect(
+      find.text('/ 300장 꺼냈어요'),
+      findsOneWidget,
+      reason: '채우는 동안은 아직 완료가 아니다',
+    );
+    expect(find.text('홈에서 먼저 볼래요'), findsOneWidget);
+    final before = binSum(tester);
+    final cardsBefore = cards(tester).length;
+    await tester.pump(const Duration(milliseconds: 41));
+    await tester.pump();
+    expect(binSum(tester), greaterThan(before));
+    expect(
+      cards(tester).length,
+      lessThanOrEqualTo(cardsBefore),
+      reason: '새 카드 없음',
+    );
+
+    // 40ms × 큐 + 떠 있던 카드가 들어가는 시간 안에 끝난다.
+    for (var i = 0; i < 40; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(hero(tester), binSum(tester), reason: '항상 같이 움직인다');
+    }
+    await tester.pumpAndSettle();
+    expect(hero(tester), 30);
+    expect(binSum(tester), 30);
+    expect(find.text('장 꺼냈어요'), findsOneWidget);
+    expect(find.text('홈으로'), findsOneWidget);
+  });
+
+  testWidgets('칸 이름은 "문화"로 줄이고 카드 이름표는 그대로, 글자는 11px 이상이다', (tester) async {
+    final status = await mount(tester, size: const Size(360, 640));
+    status.count(Category.entertainment, assetId: 'a0');
+    status.advance(1);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text('문화'), findsOneWidget);
+    expect(find.text('문화생활'), findsOneWidget, reason: '카드 이름표');
+    final label = tester.widget<Text>(find.text('문화'));
+    final scale =
+        tester.getSize(find.text('문화')).height /
+        tester.renderObject<RenderBox>(find.text('문화')).size.height;
+    expect(label.style!.fontSize! * scale, greaterThanOrEqualTo(11));
+    await tester.pumpAndSettle();
   });
 
   testWidgets('숨김 캡처는 카드 없이 칸 숫자만 바로 오른다', (tester) async {
@@ -164,7 +271,7 @@ void main() {
 
       final labels = [
         for (final c in Category.values)
-          tester.getRect(find.text(c.label).first),
+          tester.getRect(find.text(drawerBinLabel(c))),
       ];
       expect(labels.map((r) => r.center.dy.round()).toSet(), hasLength(1));
 

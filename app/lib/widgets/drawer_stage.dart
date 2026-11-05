@@ -11,19 +11,32 @@ import 'capture_thumb.dart';
 
 /// 첫 분석 화면 가운데: 방금 분류된 캡처 카드가 나타났다가 7개 서랍 칸 중 자기 칸으로 들어간다.
 ///
-/// - [status]의 분류 기록을 큐에 넣고 [AnalysisStage.gap] 간격으로 한 장씩 띄운다. 그래서 칸 숫자는 큰 진행 숫자보다 조금 늦게 따라온다.
-/// - 숨김 캡처(썸네일 없음)와 모션 줄이기 설정에서는 카드 없이 칸과 숫자만 바로 갱신한다.
+/// - [status]의 분류 기록을 큐에 넣고 [AnalysisStage.gap] 간격으로 한 장씩 꺼낸다. 카드가 [AnalysisStage.maxCards]장 떠 있으면
+///   그 장은 카드 없이 칸만 +1 한다(링은 울린다).
+/// - 분석이 끝나면 남은 큐를 [AnalysisStage.drainGap] 간격으로 카드 없이 채운다.
+/// - 숨김 캡처(썸네일 없음)와 모션 줄이기 설정에서는 카드·링 없이 칸과 숫자만 바로 갱신한다.
+/// - 칸 합계와 "다 채웠는지"를 [onProgress]로 알린다. 화면의 큰 숫자는 이 값을 쓴다.
 /// - 부모가 준 높이를 전부 쓰고, 그 안에서 칸·카드 크기를 계산한다.
 class DrawerStage extends StatefulWidget {
-  const DrawerStage({super.key, required this.counts, this.status});
+  const DrawerStage({
+    super.key,
+    required this.counts,
+    this.status,
+    this.onProgress,
+  });
 
   /// [status]가 없을 때(개발용 가짜 값) 칸에 보여 줄 개수.
   final Map<Category, int> counts;
   final SyncStatus? status;
+  final void Function(int landed, bool settled)? onProgress;
 
   @override
   State<DrawerStage> createState() => _DrawerStageState();
 }
+
+/// 칸 아래 이름. 7칸이 좁아 이 화면에서만 두 글자로 줄인다(다른 화면과 카드 이름표는 [Category.label]).
+String drawerBinLabel(Category c) =>
+    c == Category.entertainment ? '문화' : c.label;
 
 class _Flight {
   _Flight(this.id, this.shot, this.tilt, TickerProvider vsync)
@@ -49,15 +62,15 @@ class _Flight {
 class _DrawerStageState extends State<DrawerStage>
     with TickerProviderStateMixin {
   final Map<Category, int> _shown = {};
-  final Map<Category, int> _landings = {}; // 칸마다 카드가 들어온 횟수(링을 울린다)
+  final Map<Category, int> _landings = {}; // 칸마다 링을 울린 횟수
   final Queue<ClassifiedShot> _queue = Queue();
   final List<_Flight> _cards = [];
-  final Queue<_Flight> _ready = Queue(); // 멈춤이 끝나 날아갈 차례를 기다리는 카드
 
+  int _runId = 0;
   int _seen = 0;
-  int _flying = 0;
   int _nextId = 0;
   Timer? _gap;
+  bool _draining = false;
   bool _reduced = false;
 
   @override
@@ -66,7 +79,9 @@ class _DrawerStageState extends State<DrawerStage>
     final status = widget.status;
     // 진행 중에 열어도 이미 분류된 것은 다시 날리지 않는다.
     _shown.addAll(status?.counts ?? widget.counts);
+    _runId = status?.runId ?? 0;
     _seen = status?.shots.length ?? 0;
+    _draining = status?.finished ?? false;
     status?.addListener(_onStatus);
   }
 
@@ -77,9 +92,9 @@ class _DrawerStageState extends State<DrawerStage>
   }
 
   void _onStatus() {
-    final shots = widget.status!.shots;
-    if (shots.length < _seen) _reset(); // 새 실행이 시작됐다
-    if (shots.length == _seen) return;
+    final status = widget.status!;
+    if (status.runId != _runId) _reset(status.runId);
+    final shots = status.shots;
     var bumped = false;
     for (var i = _seen; i < shots.length; i++) {
       final shot = shots[i];
@@ -91,29 +106,50 @@ class _DrawerStageState extends State<DrawerStage>
       }
     }
     _seen = shots.length;
+    if (status.finished && !_draining) {
+      _gap?.cancel(); // 지금 기다리는 간격을 버리고 바로 채우기 시작한다
+      _gap = null;
+    }
+    _draining = status.finished;
     if (bumped) setState(() {});
-    _spawnNext();
+    _next();
+    _report();
   }
 
-  void _reset() {
+  void _reset(int runId) {
     _gap?.cancel();
     _gap = null;
     _queue.clear();
-    _ready.clear();
     for (final c in _cards) {
       c.dispose();
     }
     _cards.clear();
-    _flying = 0;
+    _runId = runId;
     _seen = 0;
     _shown.clear();
     setState(() {});
   }
 
-  void _spawnNext() {
+  void _next() {
     if (_gap != null || _queue.isEmpty) return;
-    final fast = _queue.length > AnalysisStage.fastQueue;
+    final wait = _draining
+        ? AnalysisStage.drainGap
+        : _queue.length > AnalysisStage.fastQueue
+        ? AnalysisStage.fastGap
+        : AnalysisStage.gap;
     final shot = _queue.removeFirst();
+    if (_draining || _cards.length >= AnalysisStage.maxCards) {
+      _bump(shot.category);
+    } else {
+      _launch(shot);
+    }
+    _gap = Timer(wait, () {
+      _gap = null;
+      _next();
+    });
+  }
+
+  void _launch(ClassifiedShot shot) {
     final id = _nextId++;
     final flight = _Flight(
       id,
@@ -122,40 +158,38 @@ class _DrawerStageState extends State<DrawerStage>
       this,
     );
     flight.enter.addStatusListener((s) {
-      if (s != AnimationStatus.completed) return;
-      _ready.add(flight);
-      _launchReady();
+      if (s == AnimationStatus.completed) flight.fly.forward();
     });
     flight.fly.addStatusListener((s) {
       if (s == AnimationStatus.completed) _land(flight);
     });
     setState(() => _cards.add(flight));
     flight.enter.forward();
-    _gap = Timer(fast ? AnalysisStage.fastGap : AnalysisStage.gap, () {
-      _gap = null;
-      _spawnNext();
-    });
-  }
-
-  /// 동시에 날아가는 카드는 [AnalysisStage.maxFlying]장까지. 나머지는 자리에서 기다린다.
-  void _launchReady() {
-    while (_flying < AnalysisStage.maxFlying && _ready.isNotEmpty) {
-      _flying++;
-      _ready.removeFirst().fly.forward();
-    }
   }
 
   void _land(_Flight flight) {
-    final category = flight.shot.category;
-    _flying--;
+    _cards.remove(flight);
+    _bump(flight.shot.category);
+    // 이 콜백은 컨트롤러 안에서 불리고 카드 위젯도 아직 트리에 있으므로, 빠진 다음 프레임에 정리한다.
+    WidgetsBinding.instance.addPostFrameCallback((_) => flight.dispose());
+  }
+
+  /// 칸 +1 + 링 한 번.
+  void _bump(Category category) {
     setState(() {
-      _cards.remove(flight);
       _shown.update(category, (n) => n + 1, ifAbsent: () => 1);
       _landings.update(category, (n) => n + 1, ifAbsent: () => 1);
     });
-    // 이 콜백은 컨트롤러 안에서 불리고 카드 위젯도 아직 트리에 있으므로, 빠진 다음 프레임에 정리한다.
-    WidgetsBinding.instance.addPostFrameCallback((_) => flight.dispose());
-    _launchReady();
+    _report();
+  }
+
+  void _report() {
+    final status = widget.status;
+    if (status == null) return;
+    widget.onProgress?.call(
+      _shown.values.fold(0, (a, b) => a + b),
+      status.finished && _queue.isEmpty && _cards.isEmpty,
+    );
   }
 
   @override
@@ -248,7 +282,6 @@ class _DrawerStageState extends State<DrawerStage>
                     count: _shown[c] ?? 0,
                     barHeight: barHeight(c),
                     landings: _landings[c] ?? 0,
-                    labelSize: (cellWidth / 4).clamp(8.0, 12.0),
                     reduced: _reduced,
                   ),
                 ),
@@ -375,14 +408,13 @@ class DrawerFlightCard extends StatelessWidget {
   }
 }
 
-/// 서랍 한 칸: 위부터 숫자 · 막대 · 이름표. 막대 높이는 스프링으로 바뀌고, 카드가 들어오면 같은 색 링이 한 번 퍼진다.
+/// 서랍 한 칸: 위부터 숫자 · 막대 · 이름표. 막대 높이는 스프링으로 바뀌고, 한 장이 들어오면 같은 색 링이 한 번 퍼진다.
 class _Bin extends StatefulWidget {
   const _Bin({
     required this.category,
     required this.count,
     required this.barHeight,
     required this.landings,
-    required this.labelSize,
     required this.reduced,
   });
 
@@ -390,7 +422,6 @@ class _Bin extends StatefulWidget {
   final int count;
   final double barHeight;
   final int landings;
-  final double labelSize;
   final bool reduced;
 
   @override
@@ -486,10 +517,10 @@ class _BinState extends State<_Bin> with SingleTickerProviderStateMixin {
           child: FittedBox(
             fit: BoxFit.scaleDown,
             child: Text(
-              widget.category.label,
+              drawerBinLabel(widget.category),
               maxLines: 1,
               style: AppText.caption.copyWith(
-                fontSize: widget.labelSize,
+                fontSize: AnalysisStage.labelSize,
                 color: AppColors.white.withValues(alpha: 0.8),
               ),
             ),

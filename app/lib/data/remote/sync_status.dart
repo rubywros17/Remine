@@ -51,6 +51,7 @@ class SyncStatus extends ChangeNotifier {
   bool _running = false;
   bool _finished = false;
   final List<ClassifiedShot> _shots = [];
+  int _runId = 0;
   int _done = 0;
   int _total = 0;
   DateTime? _startedAt;
@@ -65,8 +66,11 @@ class SyncStatus extends ChangeNotifier {
   /// 이번 실행이 (성공이든 실패든) 끝났는지. 첫 분석 화면이 완료 상태를 보여 주는 데 쓴다.
   bool get finished => _finished;
 
-  /// 이번 실행에서 분류된 순서대로의 기록. 첫 분석 화면이 이 순서로 카드를 띄운다.
+  /// 이번 실행에서 분류된 순서대로의 기록. 첫 분석 화면이 이 순서로 카드를 띄운다. 실행이 끝나면 비운다.
   List<ClassifiedShot> get shots => UnmodifiableListView(_shots);
+
+  /// [begin]마다 바뀐다. 화면이 새 실행을 알아채는 데 쓴다.
+  int get runId => _runId;
 
   int get done => _done;
   int get total => _total;
@@ -106,6 +110,7 @@ class SyncStatus extends ChangeNotifier {
     _running = true;
     _finished = false;
     _shots.clear();
+    _runId++;
     _intervalMs = intervalMs;
     _waiting = 0;
     _done = 0;
@@ -141,7 +146,8 @@ class SyncStatus extends ChangeNotifier {
     _waiting = 0;
     _issue = issue;
     _failedCount = failedCount;
-    notifyListeners();
+    notifyListeners(); // 화면이 마지막 기록까지 가져간 뒤에 비운다
+    _shots.clear();
   }
 
   /// 목록·요약을 받으려던 결과. 실패하면 안내를 켜고, 성공하면 연결 문제 안내를 끈다.

@@ -268,7 +268,12 @@ abstract final class AnalysisStage {
   static const gap = Duration(milliseconds: 600);
   static const fastGap = Duration(milliseconds: 300);
   static const fastQueue = 20;
-  static const maxFlying = 2;
+
+  /// 분석이 끝난 뒤 남은 큐를 카드 없이 채우는 간격.
+  static const drainGap = Duration(milliseconds: 40);
+
+  /// 화면에 동시에 떠 있는 카드 수. 다 차 있으면 다음 결과는 카드 없이 칸만 오른다.
+  static const maxCards = 2;
 
   static const double appearOffsetY = -40;
   static const double appearScale = 0.88;
@@ -286,6 +291,7 @@ abstract final class AnalysisStage {
   static const double overshoot = 1.1; // 스프링이 튀어 오르는 만큼 남겨 둔다
   static const double numberHeight = 16;
   static const double labelHeight = 16;
+  static const double labelSize = 12; // 좁은 칸에서 줄어도 11 아래로 가지 않게 이름을 두 글자로 맞췄다
   static const double ringScale = 1.25;
   static const double ringWidth = 2;
 }

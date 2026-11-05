@@ -13,6 +13,7 @@ import '../widgets/small_widgets.dart';
 ///
 /// - 진행 중: [onHome]이 있으면 "홈에서 먼저 볼래요"로 분석 중에도 홈에 나갈 수 있다(분석은 계속된다).
 /// - 끝나면: 자동으로 넘어가지 않고 "N장 꺼냈어요" 완료 상태와 [홈으로] 버튼을 보여 준다.
+/// - 큰 숫자는 서버 진행 수가 아니라 칸 합계다. 완료 상태도 칸을 다 채운 뒤에 보여 준다([DrawerStage.onProgress]).
 ///
 /// 레이아웃: 상단 숫자와 하단 버튼 사이의 남는 높이를 [DrawerStage]가 쓴다. 그래도 모자라면 내용 전체가 함께 스크롤된다.
 class AnalysisScreen extends StatelessWidget {
@@ -46,25 +47,60 @@ class AnalysisScreen extends StatelessWidget {
     if (status == null) {
       return _Body(done: done, total: total, counts: _counts, onHome: onHome);
     }
+    // 다른 실행의 상태가 들어오면 큐·비행 중인 카드를 이어받지 않고 새로 시작한다.
+    return _LiveAnalysis(
+      key: ObjectKey(status),
+      status: status,
+      onHome: onHome,
+    );
+  }
+}
+
+class _LiveAnalysis extends StatefulWidget {
+  const _LiveAnalysis({super.key, required this.status, this.onHome});
+
+  final SyncStatus status;
+  final VoidCallback? onHome;
+
+  @override
+  State<_LiveAnalysis> createState() => _LiveAnalysisState();
+}
+
+class _LiveAnalysisState extends State<_LiveAnalysis> {
+  late int _landed = widget.status.counts.values.fold(0, (a, b) => a + b);
+  late bool _settled = widget.status.finished;
+
+  void _onProgress(int landed, bool settled) {
+    if (landed == _landed && settled == _settled) return;
+    setState(() {
+      _landed = landed;
+      _settled = settled;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final status = widget.status;
     // [Flutter 메모] ListenableBuilder는 ChangeNotifier가 알릴 때마다 builder만 다시 실행한다.
     return ListenableBuilder(
       listenable: status,
       builder: (context, _) {
         final eta = status.eta;
         return _Body(
-          done: status.done,
+          done: _landed,
           total: status.total,
           counts: status.counts,
           status: status,
-          finished: status.finished,
-          issueText: status.finished ? status.issueMessage : null,
+          onProgress: _onProgress,
+          finished: _settled,
+          issueText: _settled ? status.issueMessage : null,
           etaText: eta != null
               ? formatEta(eta)
               : status.running
               ? '남은 시간을 계산하고 있어요'
               : null,
           waitingText: status.waitingMessage,
-          onHome: onHome,
+          onHome: widget.onHome,
         );
       },
     );
@@ -77,6 +113,7 @@ class _Body extends StatelessWidget {
     required this.total,
     required this.counts,
     this.status,
+    this.onProgress,
     this.finished = false,
     this.issueText,
     this.etaText,
@@ -90,6 +127,7 @@ class _Body extends StatelessWidget {
 
   /// 없으면(개발용 가짜 진행값) 칸은 [counts]로 멈춰 있고 카드가 날지 않는다.
   final SyncStatus? status;
+  final void Function(int landed, bool settled)? onProgress;
   final bool finished;
   final String? issueText;
   final String? etaText;
@@ -160,11 +198,10 @@ class _Body extends StatelessWidget {
                       ),
                       const SizedBox(height: AppSpacing.s16),
                       Expanded(
-                        // 다른 실행의 상태가 들어오면 큐·비행 중인 카드를 이어받지 않고 새로 시작한다.
                         child: DrawerStage(
-                          key: ObjectKey(status),
                           status: status,
                           counts: counts,
+                          onProgress: onProgress,
                         ),
                       ),
                       const SizedBox(height: AppSpacing.s16),

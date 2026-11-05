@@ -10,6 +10,7 @@ import 'package:remine/models/category.dart';
 import 'package:remine/screens/analysis_screen.dart';
 import 'package:remine/screens/photo_viewer_screen.dart';
 import 'package:remine/screens/sync_gate.dart';
+import 'package:remine/widgets/drawer_stage.dart';
 
 import 'support/fake_device.dart';
 import 'support/fake_remote.dart';
@@ -86,7 +87,11 @@ void main() {
     testWidgets('진행 중: 실제 숫자, 안내 제목, 작은 보안 문구, 홈에서 먼저 보기', (tester) async {
       final status = SyncStatus()..begin(15, intervalMs: 4500);
       status.advance(5);
-      status.count(Category.shopping);
+      for (var i = 0; i < 3; i++) {
+        status.count(Category.shopping);
+      }
+      status.count(Category.place);
+      status.count(Category.place);
       await tester.pumpWidget(
         _app(AnalysisScreen(status: status, onHome: () {})),
       );
@@ -95,7 +100,7 @@ void main() {
       expect(find.text('/ 15장 꺼냈어요'), findsOneWidget);
       expect(find.text('지금까지 찾은 것'), findsNothing);
       for (final c in Category.values) {
-        expect(find.text(c.label), findsOneWidget, reason: '칸 7개');
+        expect(find.text(drawerBinLabel(c)), findsOneWidget, reason: '칸 7개');
       }
       expect(find.text('홈에서 먼저 볼래요'), findsOneWidget);
       expect(find.text('홈으로'), findsNothing);
@@ -107,6 +112,9 @@ void main() {
       var home = 0;
       final status = SyncStatus()..begin(15);
       status.advance(15);
+      for (var i = 0; i < 15; i++) {
+        status.count(i.isEven ? Category.shopping : Category.info);
+      }
       status.finish();
       await tester.pumpWidget(
         _app(AnalysisScreen(status: status, onHome: () => home++)),
@@ -182,6 +190,17 @@ void main() {
       ]);
       status.begin(1);
       expect(status.shots, isEmpty);
+    });
+
+    test('실행이 끝나면 기록을 비우고, 끝나는 순간의 알림에서는 아직 읽을 수 있다', () {
+      final status = SyncStatus()..begin(1);
+      status.count(Category.info, assetId: 'a0');
+      var seenAtFinish = -1;
+      status.addListener(() => seenAtFinish = status.shots.length);
+      status.finish();
+      expect(seenAtFinish, 1);
+      expect(status.shots, isEmpty);
+      expect(status.counts[Category.info], 1, reason: '칸 개수는 남는다');
     });
   });
 

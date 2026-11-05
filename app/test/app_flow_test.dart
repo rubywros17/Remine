@@ -6,6 +6,7 @@ import 'package:remine/data/fake_screenshot_repository.dart';
 import 'package:remine/models/category.dart';
 import 'package:remine/screens/analysis_screen.dart';
 import 'package:remine/screens/tag_screen.dart';
+import 'package:remine/widgets/drawer_stage.dart';
 import 'package:remine/widgets/home_widgets.dart';
 import 'package:remine/widgets/small_widgets.dart';
 import 'package:remine/widgets/thumb_placeholder.dart';
@@ -360,7 +361,7 @@ void main() {
       expect(find.text('DIGGING…'), findsOneWidget);
       expect(find.text(PrivacyNote.text), findsOneWidget);
       for (final c in Category.values) {
-        expect(find.text(c.label), findsOneWidget, reason: c.label);
+        expect(find.text(drawerBinLabel(c)), findsOneWidget, reason: c.label);
       }
     });
   });

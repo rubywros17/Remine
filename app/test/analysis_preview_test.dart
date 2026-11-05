@@ -40,6 +40,7 @@ void main() {
 
     await tester.pump(const Duration(seconds: 11));
     expect(status.finished, isTrue);
+    await tester.pumpAndSettle(); // 남은 큐를 칸에 채운다
     expect(status.counts.values.reduce((a, b) => a + b), 300);
     expect(find.text('300'), findsOneWidget);
     expect(find.text('장 꺼냈어요'), findsOneWidget);
