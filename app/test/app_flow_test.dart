@@ -47,7 +47,7 @@ void main() {
       expect(find.text('re:mine', findRichText: true), findsOneWidget);
       expect(find.text('MON 10.19'), findsOneWidget);
       expect(find.byType(HighlighterText), findsOneWidget);
-      expect(find.text('캐냈어요'), findsOneWidget);
+      expect(find.text('꺼냈어요'), findsOneWidget);
       // 관심사 카드
       expect(find.text('잊은 관심사'), findsOneWidget);
       expect(find.text('#니트가디건'), findsOneWidget);
