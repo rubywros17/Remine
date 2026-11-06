@@ -325,34 +325,34 @@ void defineLayoutMatrix({
           matching: find.byType(AnimatedContainer),
         );
         final badge = find.byKey(const ValueKey('count-badge-ENTERTAINMENT'));
+        // 글자·아이콘은 수정 전 크기 그대로(줄이지 않는다), 비율 축소 없음.
         expect(
-          find.descendant(of: badge, matching: find.text('999')),
-          findsOneWidget,
+          tester.widget<Text>(name).style!.fontSize,
+          CategoryTileSize.nameFontSize,
         );
-        // 이름은 한 줄이고, 이름·배지 모두 칸 안에 있다(잘리지 않음).
-        // 앱 폰트가 있고 폭이 360 이상이면 여백만 줄여서 들어가야 한다(한 줄 전체 축소 없음).
-        // 320폭·1.3배처럼 그보다 좁으면 마지막 수단으로 살짝 줄어든다.
-        if (realFonts && size.width >= 360) {
-          final fitted = find.ancestor(
-            of: name,
-            matching: find.byType(FittedBox),
-          );
-          final row = find.descendant(of: fitted, matching: find.byType(Row));
-          expect(
-            tester.getSize(fitted).width,
-            closeTo(tester.renderObject<RenderBox>(row.first).size.width, 0.5),
-            reason: '글자가 줄었다',
-          );
+        expect(find.byType(FittedBox), findsNothing);
+        // 320×480·1.3배는 여백을 다 줄여도 모자라 배지만 숨긴다.
+        final narrow = realFonts && size == const Size(320, 480) && scale > 1;
+        if (narrow) {
+          expect(badge, findsNothing, reason: '320×480·1.3배는 배지를 숨긴다');
         }
+        // 이름은 한 줄이고, 이름(과 배지)은 칸 안에 있다(잘리지 않음).
         // 15px 글자 한 줄 높이는 두 줄(15 × 배율 × 2)보다 낮다.
         expect(tester.getSize(name).height, lessThan(15 * scale * 2));
         final box = tester.getRect(tile);
         expect(tester.getRect(name).left, greaterThanOrEqualTo(box.left));
-        expect(
-          tester.getRect(badge).right,
-          lessThanOrEqualTo(box.right + 0.5),
-          reason: '배지가 칸 밖으로 ${tester.getRect(badge).right - box.right}px',
-        );
+        expect(tester.getRect(name).right, lessThanOrEqualTo(box.right + 0.5));
+        if (badge.evaluate().isNotEmpty) {
+          expect(
+            find.descendant(of: badge, matching: find.text('999')),
+            findsOneWidget,
+          );
+          expect(
+            tester.getRect(badge).right,
+            lessThanOrEqualTo(box.right + 0.5),
+            reason: '배지가 칸 밖으로 ${tester.getRect(badge).right - box.right}px',
+          );
+        }
       });
       _expectClean('수정 시트 문화생활 999 $label', errors);
     });

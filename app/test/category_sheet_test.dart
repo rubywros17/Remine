@@ -34,23 +34,36 @@ void main() {
       expect(countBadgeText(1000), '999+');
     });
 
-    test('모자라면 배지 여백 → 요소 간격 → 칸 안쪽 여백 순서로 줄인다', () {
-      // 기본 필요 폭: 10+8 + 8+20 + 이름 60 + 배지 20+12 + 간격 18 = 156
+    test('모자라면 배지 여백 → 요소 간격 → 칸 안쪽 여백, 그래도 모자라면 배지만 숨긴다', () {
+      // 기본 필요 폭: 10+8 + 점 8 + 아이콘 18 + 이름 60 + 배지 20+12 + 간격 18 = 154
       CategoryTileFit fit(double available) => fitCategoryTile(
         available: available,
         nameWidth: 60,
         badgeTextWidth: 20,
       );
 
-      expect(fit(200), (padLeft: 10.0, padRight: 8.0, gap: 6.0, badgePad: 6.0));
-      final a = fit(152); // 4px 모자람 → 배지 여백만
-      expect((a.badgePad, a.gap, a.padLeft), (4.0, 6.0, 10.0));
-      final b = fit(144); // 배지 여백 바닥(2) 뒤 간격
+      expect(fit(200), (
+        padLeft: 10.0,
+        padRight: 8.0,
+        gap: 6.0,
+        badgePad: 6.0,
+        showBadge: true,
+      ));
+      final a = fit(150); // 4px 모자람 → 배지 여백만
+      expect(
+        (a.badgePad, a.gap, a.padLeft, a.showBadge),
+        (4.0, 6.0, 10.0, true),
+      );
+      final b = fit(142); // 배지 여백 바닥(2) 뒤 간격
       expect((b.badgePad, b.gap, b.padLeft), (2.0, 6.0 - 4 / 3, 10.0));
-      final c = fit(120); // 간격 바닥(2) 뒤 칸 안쪽 여백
-      expect((c.badgePad, c.gap), (2.0, 2.0));
+      final c = fit(124); // 간격 바닥(2, 필요 134) 뒤 칸 안쪽 여백
+      expect((c.badgePad, c.gap, c.showBadge), (2.0, 2.0, true));
       expect(c.padLeft, lessThan(10));
-      expect(c.padRight, lessThan(8));
+      // 배지까지 최소(2+2+8+18+60+20+4+6=120)보다 좁으면 배지를 숨기고 여백을 다시 맞춘다.
+      final d = fit(119); // 배지 없이 기본 여백이면 116이라 충분
+      expect(d.showBadge, isFalse);
+      expect(d.padLeft, 10.0, reason: '배지가 빠져 여백은 기본값으로 충분');
+      expect(d.gap, 6.0);
     });
   });
 
@@ -83,8 +96,12 @@ void main() {
       return s;
     }
 
-    Future<void> show(WidgetTester tester, RemineStore s) async {
-      tester.view.physicalSize = const Size(390, 844);
+    Future<void> show(
+      WidgetTester tester,
+      RemineStore s, {
+      Size size = const Size(390, 844),
+    }) async {
+      tester.view.physicalSize = size;
       tester.view.devicePixelRatio = 1.0;
       addTearDown(tester.view.reset);
       await tester.pumpWidget(
@@ -125,6 +142,41 @@ void main() {
                 )
                 .decoration!
             as BoxDecoration;
+
+    for (final size in const [Size(360, 640), Size(390, 844)]) {
+      testWidgets('칸 크기·글자·아이콘은 수정 전 값 그대로 $size', (tester) async {
+        final s = (await tester.runAsync(store))!;
+        await show(tester, s, size: size);
+        for (final c in Category.values) {
+          final name = find.text(c.label);
+          expect(
+            tester.widget<Text>(name).style!.fontSize,
+            15,
+            reason: c.label,
+          );
+          expect(tester.widget<Text>(name).style!.fontWeight, FontWeight.w600);
+          expect(
+            tester.widget<Icon>(find.byIcon(categoryIcon(c))).size,
+            18,
+            reason: c.label,
+          );
+          final tile = find.ancestor(
+            of: name,
+            matching: find.byType(AnimatedContainer),
+          );
+          expect(tester.getSize(tile).height, 64, reason: c.label);
+          final box =
+              tester.widget<AnimatedContainer>(tile).decoration!
+                  as BoxDecoration;
+          expect(box.borderRadius, BorderRadius.circular(18));
+          expect(
+            (box.border! as Border).top.width,
+            c == Category.shopping ? 2 : 1,
+          );
+        }
+        expect(find.byType(FittedBox), findsNothing);
+      });
+    }
 
     testWidgets('배지 숫자는 홈 요약 값(휴지통 제외), 0장도 0', (tester) async {
       final s = (await tester.runAsync(store))!;

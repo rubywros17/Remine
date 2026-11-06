@@ -186,7 +186,8 @@ class _CategorySheetState extends State<CategorySheet> {
 }
 
 /// 칸 하나: [색 점 · 아이콘 · 이름 · 장수 배지]를 한 묶음으로 가운데 정렬한다. 이름은 말줄임하지 않는다.
-/// 폭이 모자라면 글자 크기 대신 배지 여백 → 요소 간격 → 칸 안쪽 여백 순서로 줄인다([fitCategoryTile]).
+/// 칸 높이·모서리·테두리·이름 글자·아이콘 크기는 수정 전(5095f48 이전) 값 그대로이고 줄이지 않는다.
+/// 폭이 모자라면 배지 여백 → 요소 간격 → 칸 안쪽 여백 순서로 줄이고, 그래도 모자라면 배지만 숨긴다([fitCategoryTile]).
 class _CategoryTile extends StatelessWidget {
   const _CategoryTile({
     required this.category,
@@ -202,14 +203,18 @@ class _CategoryTile extends StatelessWidget {
   final int? count;
   final VoidCallback onTap;
 
-  static const _border = 1.0;
-
   @override
   Widget build(BuildContext context) {
     final fg = selected ? AppColors.white : AppColors.ink;
-    final nameStyle = AppText.label.copyWith(fontSize: 15, color: fg);
+    final nameStyle = AppText.label.copyWith(
+      fontSize: CategoryTileSize.nameFontSize,
+      color: fg,
+    );
     final badgeStyle = AppText.numBadge(color: fg).copyWith(fontSize: 12);
     final badgeText = countBadgeText(count ?? 0);
+    final border = selected
+        ? CategoryTileSize.borderSelected
+        : CategoryTileSize.border;
     return PressableScale(
       onTap: onTap,
       label:
@@ -220,8 +225,9 @@ class _CategoryTile extends StatelessWidget {
           // 측정은 Text가 실제로 쓰는 스타일(테마 기본 스타일과 합친 것)로 한다.
           final base = DefaultTextStyle.of(context).style;
           final scaler = MediaQuery.textScalerOf(context);
+          // 테두리 1→2 전환 중에도 넘치지 않게 폭은 늘 두꺼운 테두리 기준으로 잡는다.
           final fit = fitCategoryTile(
-            available: box.maxWidth - _border * 2,
+            available: box.maxWidth - CategoryTileSize.borderSelected * 2,
             nameWidth: _textWidth(
               category.label,
               base.merge(nameStyle),
@@ -236,27 +242,36 @@ class _CategoryTile extends StatelessWidget {
           return AnimatedContainer(
             duration: AppMotion.duration(context, MotionDuration.fast),
             curve: AppMotion.standard,
-            constraints: const BoxConstraints(minHeight: 64),
-            padding: EdgeInsets.fromLTRB(fit.padLeft, 0, fit.padRight, 0),
+            constraints: const BoxConstraints(
+              minHeight: CategoryTileSize.minHeight,
+            ),
             decoration: BoxDecoration(
               color: selected ? AppColors.darkGray : AppColors.white,
               borderRadius: BorderRadius.circular(AppRadii.tile),
               border: Border.all(
                 color: selected ? AppColors.darkGray : AppColors.border,
-                width: _border,
+                width: border,
               ),
             ),
-            // 여백을 다 줄여도 모자라는 극단적인 경우(아주 좁은 창·대체 글꼴)에만 한 줄 전체를 비율대로 줄인다.
-            // 들어맞으면 scaleDown은 아무것도 하지 않는다.
-            child: Center(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
+            // 여백은 애니메이션하지 않는다(배지 숫자가 바뀌는 순간 옛 여백과 겹쳐 넘치지 않게).
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(
+                fit.padLeft - (CategoryTileSize.borderSelected - border),
+                0,
+                fit.padRight - (CategoryTileSize.borderSelected - border),
+                0,
+              ),
+              child: Center(
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     CategoryDot(category: category, size: 8),
                     SizedBox(width: fit.gap),
-                    Icon(categoryIcon(category), size: 20, color: fg),
+                    Icon(
+                      categoryIcon(category),
+                      size: CategoryTileSize.iconSize,
+                      color: fg,
+                    ),
                     SizedBox(width: fit.gap),
                     Text(
                       category.label,
@@ -265,31 +280,35 @@ class _CategoryTile extends StatelessWidget {
                       softWrap: false,
                       overflow: TextOverflow.visible,
                     ),
-                    SizedBox(width: fit.gap),
-                    Visibility(
-                      visible: count != null,
-                      maintainSize: true,
-                      maintainAnimation: true,
-                      maintainState: true,
-                      child: Container(
-                        key: ValueKey('count-badge-${category.code}'),
-                        height: 22,
-                        padding: EdgeInsets.symmetric(horizontal: fit.badgePad),
-                        alignment: Alignment.center,
-                        decoration: BoxDecoration(
-                          color: selected
-                              ? AppColors.countBadgeOnDark
-                              : AppColors.countBadge,
-                          borderRadius: BorderRadius.circular(AppRadii.pill),
-                        ),
-                        child: Text(
-                          badgeText,
-                          style: badgeStyle,
-                          maxLines: 1,
-                          softWrap: false,
+                    if (fit.showBadge) ...[
+                      SizedBox(width: fit.gap),
+                      Visibility(
+                        visible: count != null,
+                        maintainSize: true,
+                        maintainAnimation: true,
+                        maintainState: true,
+                        child: Container(
+                          key: ValueKey('count-badge-${category.code}'),
+                          height: 22,
+                          padding: EdgeInsets.symmetric(
+                            horizontal: fit.badgePad,
+                          ),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: selected
+                                ? AppColors.countBadgeOnDark
+                                : AppColors.countBadge,
+                            borderRadius: BorderRadius.circular(AppRadii.pill),
+                          ),
+                          child: Text(
+                            badgeText,
+                            style: badgeStyle,
+                            maxLines: 1,
+                            softWrap: false,
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
@@ -313,6 +332,15 @@ class _CategoryTile extends StatelessWidget {
   }
 }
 
+/// 칸 크기 값. 수정 전(5095f48 이전) 시트와 같고, 공간이 모자라도 줄이지 않는다.
+abstract final class CategoryTileSize {
+  static const double minHeight = 64;
+  static const double border = 1;
+  static const double borderSelected = 2;
+  static const double nameFontSize = 15;
+  static const double iconSize = 18;
+}
+
 /// 장수 배지 글자: 999를 넘으면 "999+".
 String countBadgeText(int count) => count > 999 ? '999+' : '$count';
 
@@ -322,36 +350,46 @@ typedef CategoryTileFit = ({
   double padRight,
   double gap,
   double badgePad,
+  bool showBadge,
 });
 
 /// 내용이 [available]에 들어가게 배지 여백(6→2) → 요소 간격(6→2) → 칸 안쪽 여백(10/8→2/2) 순서로 줄인다.
-/// 글자 크기는 줄이지 않는다. 다 줄여도 모자라면 최소값을 돌려준다(그때는 칸이 한 줄 전체를 줄여 담는다).
+/// 그래도 모자라면 배지를 숨기고(배지 몫의 간격도 뺀다) 여백을 다시 기본값부터 맞춘다.
+/// 글자·아이콘 크기는 건드리지 않는다. 배지를 숨겨도 모자라면 최소값을 돌려준다.
 CategoryTileFit fitCategoryTile({
   required double available,
   required double nameWidth,
   required double badgeTextWidth,
 }) {
-  const dot = 8.0, icon = 20.0, min = 2.0;
-  var padL = 10.0, padR = 8.0, gap = 6.0, badgePad = 6.0;
-  double over() =>
-      padL +
-      padR +
-      dot +
-      icon +
-      nameWidth +
-      badgeTextWidth +
-      badgePad * 2 +
-      gap * 3 -
-      available;
+  const dot = 8.0, icon = CategoryTileSize.iconSize, min = 2.0;
 
-  if (over() > 0) badgePad = (badgePad - over() / 2).clamp(min, badgePad);
-  if (over() > 0) gap = (gap - over() / 3).clamp(min, gap);
-  if (over() > 0) {
-    // 좌우를 같은 비율로 줄인다.
-    final room = (padL - min) + (padR - min);
-    final ratio = (over() / room).clamp(0.0, 1.0);
-    padL -= (padL - min) * ratio;
-    padR -= (padR - min) * ratio;
+  CategoryTileFit fit({required bool badge}) {
+    var padL = 10.0, padR = 8.0, gap = 6.0, badgePad = badge ? 6.0 : 0.0;
+    final gaps = badge ? 3 : 2;
+    final fixed = dot + icon + nameWidth + (badge ? badgeTextWidth : 0);
+    double over() =>
+        padL + padR + fixed + badgePad * 2 + gap * gaps - available;
+
+    if (badge && over() > 0) {
+      badgePad = (badgePad - over() / 2).clamp(min, badgePad);
+    }
+    if (over() > 0) gap = (gap - over() / gaps).clamp(min, gap);
+    if (over() > 0) {
+      // 좌우를 같은 비율로 줄인다.
+      final room = (padL - min) + (padR - min);
+      final ratio = (over() / room).clamp(0.0, 1.0);
+      padL -= (padL - min) * ratio;
+      padR -= (padR - min) * ratio;
+    }
+    return (
+      padLeft: padL,
+      padRight: padR,
+      gap: gap,
+      badgePad: badgePad,
+      showBadge: badge && over() <= 0.01,
+    );
   }
-  return (padLeft: padL, padRight: padR, gap: gap, badgePad: badgePad);
+
+  final withBadge = fit(badge: true);
+  return withBadge.showBadge ? withBadge : fit(badge: false);
 }
