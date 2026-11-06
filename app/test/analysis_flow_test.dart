@@ -287,6 +287,56 @@ void main() {
       expect(find.text('HOME'), findsOneWidget);
     });
 
+    group('첫 분석 이후 실행', () {
+      /// [n]장이 새로 생긴 상태로 앱을 연다. 서버 응답은 오지 않아 실행이 begin 직후에 머문다.
+      Future<SyncRig> openWith(WidgetTester tester, int n) async {
+        late final RecordingClient client;
+        client = RecordingClient(
+          responder: (r) => r.path == '/api/screenshots/analyze'
+              ? Completer<http.StreamedResponse>().future
+              : Future.value(client.defaultFor(r)),
+        );
+        final rig = (await tester.runAsync(() async {
+          final rig = await SyncRig.create(
+            photos: photosNamed({
+              for (var i = 0; i < n; i++)
+                'p$i': 'Screenshot_20261021_1010${10 + i}_Chrome.jpg',
+            }),
+            texts: {for (var i = 0; i < n; i++) 'p$i': '봄 니트 가디건 신상 할인 ' * 10},
+            client: client,
+          );
+          await rig.state.setFirstSyncDone();
+          return rig;
+        }))!;
+        await tester.pumpWidget(
+          _app(SyncGate(remote: rig.remote, child: const Text('HOME'))),
+        );
+        await tester.runAsync(() async {
+          for (var i = 0; i < 200 && rig.status.runId == 0; i++) {
+            await Future<void>.delayed(const Duration(milliseconds: 10));
+          }
+        });
+        await tester.pump();
+        expect(rig.status.total, n);
+        return rig;
+      }
+
+      testWidgets('새 캡처가 $analysisScreenMinShots장 이상이면 분석 화면, 문구는 이번 장수 기준', (
+        tester,
+      ) async {
+        await openWith(tester, analysisScreenMinShots);
+        expect(find.text('HOME'), findsNothing);
+        expect(find.text('/ $analysisScreenMinShots장 꺼냈어요'), findsOneWidget);
+        await tester.pump(const Duration(minutes: 6)); // 응답 없는 요청의 시간 제한을 흘려보낸다
+      });
+
+      testWidgets('그보다 적으면 홈에서 뒤로 정리한다', (tester) async {
+        await openWith(tester, analysisScreenMinShots - 1);
+        expect(find.text('HOME'), findsOneWidget);
+        await tester.pump(const Duration(minutes: 6));
+      });
+    });
+
     testWidgets('진행 중에도 "홈에서 먼저 볼래요"로 나갈 수 있다(동기화는 멈추지 않는다)', (tester) async {
       // 서버 응답이 오지 않아 동기화가 계속 진행 중인 상황.
       final rig = (await tester.runAsync(
