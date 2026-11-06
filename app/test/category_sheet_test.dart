@@ -8,6 +8,7 @@ import 'package:remine/data/remine_store.dart';
 import 'package:remine/models/category.dart';
 import 'package:remine/models/screenshot_item.dart';
 import 'package:remine/widgets/category_sheet.dart';
+import 'package:remine/widgets/home_widgets.dart' show CategoryDot;
 
 void main() {
   group('조사', () {
@@ -100,6 +101,7 @@ void main() {
       WidgetTester tester,
       RemineStore s, {
       Size size = const Size(390, 844),
+      Category auto = Category.shopping,
     }) async {
       tester.view.physicalSize = size;
       tester.view.devicePixelRatio = 1.0;
@@ -107,13 +109,13 @@ void main() {
       await tester.pumpWidget(
         RemineScope(
           store: s,
-          child: const MaterialApp(
+          child: MaterialApp(
             home: Scaffold(
               body: Align(
                 alignment: Alignment.bottomCenter,
                 child: CategorySheet(
                   current: Category.shopping,
-                  autoCategory: Category.shopping,
+                  autoCategory: auto,
                 ),
               ),
             ),
@@ -217,6 +219,118 @@ void main() {
         expect(find.text(button), findsOneWidget);
         expect(tileBox(tester, label).color, AppColors.darkGray);
       }
+    });
+
+    testWidgets('부제는 카테고리 이름만 굵고, 조사는 보통 굵기', (tester) async {
+      final s = (await tester.runAsync(store))!;
+      for (final c in [
+        Category.shopping,
+        Category.place,
+        Category.info,
+        Category.entertainment,
+        Category.etc,
+      ]) {
+        await show(tester, s, auto: c);
+        final rich = tester.widget<RichText>(
+          find.byWidgetPredicate(
+            (w) => w is RichText && w.text.toPlainText().startsWith('AI는 '),
+          ),
+        );
+        expect(rich.text.toPlainText(), 'AI는 ${withRo(c.label)} 분류했어요');
+        final bold = <String>[];
+        rich.text.visitChildren((span) {
+          if (span is TextSpan &&
+              span.text != null &&
+              span.style?.fontWeight == FontWeight.w700) {
+            bold.add(span.text!);
+          }
+          return true;
+        });
+        expect(bold, [c.label], reason: c.label);
+      }
+    });
+
+    testWidgets('색 점·아이콘·이름은 왼쪽부터, 배지는 오른쪽 끝(열마다 숫자 오른쪽이 같은 줄)', (
+      tester,
+    ) async {
+      await show(tester, (await tester.runAsync(store))!);
+      Rect tileOf(Category c) => tester.getRect(
+        find.ancestor(
+          of: find.text(c.label),
+          matching: find.byType(AnimatedContainer),
+        ),
+      );
+      Rect badgeOf(Category c) =>
+          tester.getRect(find.byKey(ValueKey('count-badge-${c.code}')));
+
+      final left = [
+        Category.shopping,
+        Category.place,
+        Category.chat,
+        Category.etc,
+      ];
+      final right = [Category.entertainment, Category.info, Category.schedule];
+      for (final column in [left, right]) {
+        final edge = badgeOf(column.first).right;
+        for (final c in column) {
+          expect(badgeOf(c).right, closeTo(edge, 0.5), reason: c.label);
+          // 오른쪽 끝: 칸 오른쪽에서 안쪽 여백(8) + 테두리(2)만큼 안.
+          expect(tileOf(c).right - badgeOf(c).right, closeTo(10, 0.5));
+          // 왼쪽부터: 색 점은 칸 왼쪽에서 안쪽 여백(10) + 테두리(2)만큼 안.
+          final dot = tester.getRect(
+            find.descendant(
+              of: find.ancestor(
+                of: find.text(c.label),
+                matching: find.byType(AnimatedContainer),
+              ),
+              matching: find.byType(CategoryDot),
+            ),
+          );
+          expect(dot.left - tileOf(c).left, closeTo(12, 0.5), reason: c.label);
+        }
+      }
+    });
+
+    testWidgets('다른 칸을 고르면 원래 칸은 차콜 1.5px 점선, 원래 칸을 고르면 점선 없음', (tester) async {
+      await show(tester, (await tester.runAsync(store))!);
+      final dashed = find.byKey(const ValueKey('original-dashed-SHOPPING'));
+      expect(dashed, findsNothing, reason: '처음에는 원래 칸이 선택돼 있다');
+
+      await tester.tap(find.text('정보'));
+      await tester.pumpAndSettle();
+      expect(dashed, findsOneWidget);
+      final painter =
+          tester.widget<CustomPaint>(dashed).foregroundPainter!
+              as DashedBorderPainter;
+      expect(painter.color, AppColors.darkGray);
+      expect(painter.width, 1.5);
+      final box =
+          tester
+                  .widget<AnimatedContainer>(
+                    find.descendant(
+                      of: dashed,
+                      matching: find.byType(AnimatedContainer),
+                    ),
+                  )
+                  .decoration!
+              as BoxDecoration;
+      expect(box.color, AppColors.white, reason: '원래 칸은 선택이 아니다');
+      expect((box.border! as Border).top.color, Colors.transparent);
+      expect(
+        find.byWidgetPredicate(
+          (w) =>
+              w is CustomPaint &&
+              w.key is ValueKey<String> &&
+              (w.key! as ValueKey<String>).value.startsWith('original-dashed'),
+        ),
+        findsOneWidget,
+        reason: '점선은 원래 칸 하나뿐',
+      );
+
+      await tester.tap(find.text('쇼핑'));
+      await tester.pumpAndSettle();
+      expect(dashed, findsNothing);
+      expect(tileBox(tester, '쇼핑').color, AppColors.darkGray);
     });
   });
 }

@@ -106,15 +106,19 @@ class _CategorySheetState extends State<CategorySheet> {
                             style: AppText.caption.copyWith(fontSize: 13),
                             children: [
                               const TextSpan(text: 'AI는 '),
+                              // 이름만 굵게, 조사(로/으로)는 보통 굵기.
                               TextSpan(
-                                text: withRo(widget.autoCategory.label),
+                                text: widget.autoCategory.label,
                                 style: AppText.caption.copyWith(
                                   fontSize: 13,
                                   fontWeight: FontWeight.w700,
                                   color: AppColors.ink,
                                 ),
                               ),
-                              const TextSpan(text: ' 분류했어요'),
+                              TextSpan(
+                                text:
+                                    '${withRo(widget.autoCategory.label).substring(widget.autoCategory.label.length)} 분류했어요',
+                              ),
                             ],
                           ),
                         ),
@@ -144,6 +148,8 @@ class _CategorySheetState extends State<CategorySheet> {
                           child: _CategoryTile(
                             category: c,
                             selected: c == _selected,
+                            // 다른 칸을 고른 동안 원래 칸은 점선 테두리로 표시한다.
+                            original: c == widget.current && c != _selected,
                             count: _counts?[c],
                             onTap: () => setState(() => _selected = c),
                           ),
@@ -185,19 +191,23 @@ class _CategorySheetState extends State<CategorySheet> {
   }
 }
 
-/// 칸 하나: [색 점 · 아이콘 · 이름 · 장수 배지]를 한 묶음으로 가운데 정렬한다. 이름은 말줄임하지 않는다.
+/// 칸 하나: [색 점 · 아이콘 · 이름]은 왼쪽부터, 장수 배지는 오른쪽 끝(모든 칸의 숫자가 세로로 같은 줄). 이름은 말줄임하지 않는다.
 /// 칸 높이·모서리·테두리·이름 글자·아이콘 크기는 수정 전(5095f48 이전) 값 그대로이고 줄이지 않는다.
 /// 폭이 모자라면 배지 여백 → 요소 간격 → 칸 안쪽 여백 순서로 줄이고, 그래도 모자라면 배지만 숨긴다([fitCategoryTile]).
 class _CategoryTile extends StatelessWidget {
   const _CategoryTile({
     required this.category,
     required this.selected,
+    required this.original,
     required this.count,
     required this.onTap,
   });
 
   final Category category;
   final bool selected;
+
+  /// 시트를 열 때의 카테고리인데 지금은 다른 칸이 선택돼 있다 → 차콜 점선 테두리.
+  final bool original;
 
   /// 아직 불러오지 못했으면 null(배지 자리는 비워 두고 크기만 잡는다).
   final int? count;
@@ -239,7 +249,7 @@ class _CategoryTile extends StatelessWidget {
               scaler,
             ),
           );
-          return AnimatedContainer(
+          final tile = AnimatedContainer(
             duration: AppMotion.duration(context, MotionDuration.fast),
             curve: AppMotion.standard,
             constraints: const BoxConstraints(
@@ -249,21 +259,27 @@ class _CategoryTile extends StatelessWidget {
               color: selected ? AppColors.darkGray : AppColors.white,
               borderRadius: BorderRadius.circular(AppRadii.tile),
               border: Border.all(
-                color: selected ? AppColors.darkGray : AppColors.border,
+                // 원래 칸은 실선 대신 위에 점선을 그린다(두께 자리는 그대로).
+                color: selected
+                    ? AppColors.darkGray
+                    : original
+                    ? Colors.transparent
+                    : AppColors.border,
                 width: border,
               ),
             ),
             // 여백은 애니메이션하지 않는다(배지 숫자가 바뀌는 순간 옛 여백과 겹쳐 넘치지 않게).
+            // 테두리가 얇은 칸은 그 차이만큼 여백을 더해, 선택 칸과 내용·배지 자리가 같게 한다.
             child: Padding(
               padding: EdgeInsets.fromLTRB(
-                fit.padLeft - (CategoryTileSize.borderSelected - border),
+                fit.padLeft + (CategoryTileSize.borderSelected - border),
                 0,
-                fit.padRight - (CategoryTileSize.borderSelected - border),
+                fit.padRight + (CategoryTileSize.borderSelected - border),
                 0,
               ),
-              child: Center(
+              child: Align(
+                alignment: Alignment.centerLeft,
                 child: Row(
-                  mainAxisSize: MainAxisSize.min,
                   children: [
                     CategoryDot(category: category, size: 8),
                     SizedBox(width: fit.gap),
@@ -282,6 +298,7 @@ class _CategoryTile extends StatelessWidget {
                     ),
                     if (fit.showBadge) ...[
                       SizedBox(width: fit.gap),
+                      const Spacer(), // 배지는 오른쪽 끝
                       Visibility(
                         visible: count != null,
                         maintainSize: true,
@@ -314,6 +331,16 @@ class _CategoryTile extends StatelessWidget {
               ),
             ),
           );
+          if (!original) return tile;
+          return CustomPaint(
+            key: ValueKey('original-dashed-${category.code}'),
+            foregroundPainter: const DashedBorderPainter(
+              color: AppColors.darkGray,
+              width: CategoryTileSize.originalDash,
+              radius: AppRadii.tile,
+            ),
+            child: tile,
+          );
         },
       ),
     );
@@ -339,6 +366,48 @@ abstract final class CategoryTileSize {
   static const double borderSelected = 2;
   static const double nameFontSize = 15;
   static const double iconSize = 18;
+
+  /// 원래 칸 점선 두께(다른 칸이 선택돼 있을 때).
+  static const double originalDash = 1.5;
+}
+
+/// 둥근 사각형 점선 테두리. Flutter에는 점선 Border가 없어 경로를 잘라 그린다.
+///
+/// [Flutter 메모] PathMetric은 경로를 길이로 다루게 해 준다. extractPath(시작, 끝)로 대시 한 토막씩 잘라 그린다.
+class DashedBorderPainter extends CustomPainter {
+  const DashedBorderPainter({
+    required this.color,
+    required this.width,
+    required this.radius,
+    this.dash = 5,
+    this.gap = 4,
+  });
+
+  final Color color;
+  final double width;
+  final double radius;
+  final double dash;
+  final double gap;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = (Offset.zero & size).deflate(width / 2);
+    final path = Path()
+      ..addRRect(RRect.fromRectAndRadius(rect, Radius.circular(radius)));
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = width
+      ..style = PaintingStyle.stroke;
+    for (final metric in path.computeMetrics()) {
+      for (var d = 0.0; d < metric.length; d += dash + gap) {
+        canvas.drawPath(metric.extractPath(d, d + dash), paint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(DashedBorderPainter old) =>
+      old.color != color || old.width != width || old.radius != radius;
 }
 
 /// 장수 배지 글자: 999를 넘으면 "999+".
