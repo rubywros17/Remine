@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../core/tokens.dart';
+import '../data/remine_store.dart';
 import '../data/remote/sync_status.dart';
 import '../models/category.dart';
 import '../widgets/app_button.dart';
@@ -70,12 +71,38 @@ class _LiveAnalysisState extends State<_LiveAnalysis> {
   late int _landed = widget.status.counts.values.fold(0, (a, b) => a + b);
   late bool _settled = widget.status.finished;
 
+  /// 완료 요약에 쓰는 전체 개수(홈 막대와 같은 데이터). 불러오기 전에는 null이라 요약을 그리지 않는다.
+  Map<Category, int>? _totals;
+  bool _totalsRequested = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_settled) _loadTotals();
+  }
+
   void _onProgress(int landed, bool settled) {
     if (landed == _landed && settled == _settled) return;
     setState(() {
       _landed = landed;
       _settled = settled;
     });
+    if (settled) _loadTotals();
+  }
+
+  /// 칸을 다 채운 뒤 한 번. 이번 실행 개수가 아니라 저장소 요약(휴지통 제외, 기기 분류 포함)이다.
+  /// 저장소가 없는 화면(개발용·테스트)은 이번 실행 개수로 대신한다.
+  Future<void> _loadTotals() async {
+    if (_totalsRequested) return;
+    _totalsRequested = true;
+    final store = RemineScope.maybeOf(context);
+    final totals = store == null
+        ? widget.status.counts
+        : {
+            for (final c in (await store.repository.summary()).categories)
+              c.category: c.count,
+          };
+    if (mounted) setState(() => _totals = totals);
   }
 
   @override
@@ -93,6 +120,7 @@ class _LiveAnalysisState extends State<_LiveAnalysis> {
           status: status,
           onProgress: _onProgress,
           finished: _settled,
+          summaryCounts: _totals,
           etaText: eta != null
               ? formatEta(eta)
               : status.running
@@ -115,6 +143,7 @@ class _Body extends StatelessWidget {
     this.status,
     this.onProgress,
     this.finished = false,
+    this.summaryCounts,
     this.etaText,
     this.progressText,
     this.issueText,
@@ -129,6 +158,9 @@ class _Body extends StatelessWidget {
   final SyncStatus? status;
   final void Function(int landed, bool settled)? onProgress;
   final bool finished;
+
+  /// 완료 요약의 카테고리별 개수(전체 기준).
+  final Map<Category, int>? summaryCounts;
   final String? etaText;
   final String? progressText;
   final String? issueText;
@@ -174,7 +206,7 @@ class _Body extends StatelessWidget {
                           ),
                           const SizedBox(height: AppSpacing.s16),
                           if (finished)
-                            AnalysisSummary(counts: counts)
+                            AnalysisSummary(counts: summaryCounts ?? const {})
                           else ...[
                             _ProgressSlot(
                               text: progressText,
@@ -304,8 +336,9 @@ class _Counter extends StatelessWidget {
 /// 첫 묶음이 끝나기 전 남은 시간 자리. 믿을 값이 없어 숫자를 보여 주지 않는다.
 const etaPendingText = '남은 시간 계산 중이에요';
 
-/// 칸에 들어가지 못한 장 안내. ponytail: 임시 문구, 이유별 문구가 확정되면 나눈다.
-String leftOutText(int total, int left) => '$total장 중 $left장은 이번 정리에서 빠졌어요';
+/// 칸에 들어가지 못한 장 안내. 서버가 이미 분석한 캡처(건너뜀)와 다음 실행에 다시 보낼 캡처(실패·마감)를 한 문장으로 묶는다.
+String leftOutText(int total, int left) =>
+    '$total장 중 $left장은 이미 정리했거나 다음에 다시 확인해요';
 
 /// 많은 순서로 상위 [limit]개(0장 제외). 동점이면 칸 순서상 앞의 것.
 List<MapEntry<Category, int>> topCategories(

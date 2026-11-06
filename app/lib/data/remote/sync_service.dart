@@ -133,9 +133,10 @@ class SyncService {
       final waiting = <GalleryPhoto>[];
       for (final photo in mine) {
         final e = await state.entry(photo.id);
+        // 기기에서 끝난 캡처도 다시 처리하지 않는다(바뀌면 다시 판정).
         final upToDate =
             e != null &&
-            e.status == SyncStatusCode.synced &&
+            e.status != SyncStatusCode.failed &&
             e.modifiedAt == photo.modifiedAt;
         if (!upToDate) waiting.add(photo);
       }
@@ -227,10 +228,12 @@ class SyncService {
   /// 예전에 보냈던 캡처가 지금 보니 Remine 자기 캡처면(판정 규칙이 생기기 전에 보낸 것) 서버에서 지운다.
   /// 지운 뒤 전송 기록을 없애서 다음 실행에는 다시 보내지 않는다. 실패하면 다음 실행에서 다시(분석은 계속).
   Future<void> _forgetOwn(int deviceId, List<GalleryPhoto> own) async {
-    final sent = [
-      for (final p in own)
-        if (await state.entry(p.id) != null) p.id,
-    ];
+    // 서버에 보낸 적 있는 것만. 기기에서 끝난 캡처(deviceOnly)의 id는 서버에 알리지 않는다.
+    final sent = <String>[];
+    for (final p in own) {
+      final e = await state.entry(p.id);
+      if (e != null && e.status != SyncStatusCode.deviceOnly) sent.add(p.id);
+    }
     if (sent.isEmpty) return;
     try {
       for (var i = 0; i < sent.length; i += _forgetChunk) {
@@ -379,7 +382,10 @@ class SyncService {
     for (final photo in chunk) {
       final verdict = await capture.verdicts.find(photo.id);
       final record = await capture.store.find(photo.id);
-      if (verdict?.route == LocalRoute.deviceOnly) tally.deviceOnly++;
+      if (verdict?.route == LocalRoute.deviceOnly) {
+        tally.deviceOnly++;
+        await state.putEntry(_entry(photo, SyncStatusCode.deviceOnly));
+      }
       if (verdict?.route == LocalRoute.deviceOnly &&
           verdict!.category != null) {
         status.count(
@@ -537,6 +543,7 @@ class SyncService {
         now: _now(),
       ),
     );
+    await state.putEntry(_entry(photo, SyncStatusCode.deviceOnly));
     status.count(category, assetId: photo.id);
   }
 

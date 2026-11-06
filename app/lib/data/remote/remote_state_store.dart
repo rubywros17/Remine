@@ -3,7 +3,15 @@ import 'package:sqflite/sqflite.dart';
 import '../device/local_db.dart';
 
 /// 서버 동기화 상태 한 줄: 캡처(asset id)가 서버에 어떻게 반영됐는지.
-enum SyncStatusCode { synced, failed }
+/// 동기화 기록 상태. 모두 기기 로컬 DB에만 있다.
+enum SyncStatusCode {
+  synced,
+  failed,
+
+  /// 기기에서 분류가 끝나 서버로 보내지 않은 캡처(민감·금융·메신저·글자 없음). 다음 실행에서 다시 처리하지 않으려는
+  /// 기록일 뿐, 이 상태의 asset id는 어떤 요청에도 싣지 않는다.
+  deviceOnly,
+}
 
 class SyncEntry {
   const SyncEntry({
