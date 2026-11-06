@@ -296,6 +296,9 @@ abstract final class AnalysisStage {
 
   /// 완료 순간 칸이 남는 공간까지 자라는 시간.
   static const binGrow = Duration(milliseconds: 600);
+  static const summaryFade = Duration(
+    milliseconds: 200,
+  ); // 완료 요약이 자리 안에서 나타나는 시간
   static const double flyEndScale = 0.2;
 
   /// 떠 있는 카드가 없을 때 빈 카드가 숨 쉬는 반주기(1.6초 주기, scale [breathScale]↔1).

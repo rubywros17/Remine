@@ -1,4 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:remine/core/tokens.dart';
+import 'package:remine/models/category_summary.dart';
+import 'package:remine/widgets/drawer_stage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:remine/data/device/privacy/local_verdict_store.dart';
 import 'package:remine/data/device/privacy/privacy_filter.dart';
@@ -122,4 +127,64 @@ void main() {
     expect(find.text('정보 5장'), findsNothing, reason: '이번 실행 개수를 쓰면 안 된다');
     expect(find.textContaining('정보 1장'), findsOneWidget);
   });
+
+  for (final size in const [Size(360, 640), Size(412, 915)]) {
+    testWidgets('요약이 늦게 와도 DONE 직후의 스테이지 자리가 그대로다 $size', (tester) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final repo = _LateSummaryRepository(now: () => now);
+      final status = SyncStatus()..begin(5);
+      for (var i = 0; i < 3; i++) {
+        status.count(Category.info);
+      }
+      await tester.pumpWidget(
+        RemineScope(
+          store: RemineStore(repo, now: () => now),
+          child: MaterialApp(
+            home: AnalysisScreen(status: status, onHome: () {}),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(seconds: 10)); // 카드가 다 날아가 칸에 들어간다
+
+      status
+        ..advance(5)
+        ..finish();
+      for (var i = 0; i < 50 && find.text('DONE').evaluate().isEmpty; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.text('DONE'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 1)); // 칸이 다 자란다
+      final atDone = tester.getRect(find.byType(DrawerStage));
+      expect(find.text('요즘 가장 많이 모은 건'), findsNothing, reason: '요약은 아직 안 왔다');
+
+      repo.gate.complete();
+      await tester.pump(); // 응답 도착 → setState
+      await tester.pump(); // 다시 그림(페이드 시작)
+      expect(tester.getRect(find.byType(DrawerStage)), atDone);
+      final fading = tester.widget<AnimatedOpacity>(
+        find.byKey(const ValueKey('summary-slot')),
+      );
+      expect(fading.opacity, 1);
+      expect(fading.duration, AnalysisStage.summaryFade);
+      await tester.pump(AnalysisStage.summaryFade);
+      expect(find.text('요즘 가장 많이 모은 건'), findsOneWidget);
+      expect(tester.getRect(find.byType(DrawerStage)), atDone);
+      expect(tester.takeException(), isNull);
+    });
+  }
+}
+
+/// 요약 응답이 [gate]가 열릴 때까지 늦게 오는 저장소.
+class _LateSummaryRepository extends FakeScreenshotRepository {
+  _LateSummaryRepository({super.now});
+
+  final gate = Completer<void>();
+
+  @override
+  Future<CategorySummary> summary() async {
+    await gate.future;
+    return super.summary();
+  }
 }

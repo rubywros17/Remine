@@ -206,7 +206,7 @@ class _Body extends StatelessWidget {
                           ),
                           const SizedBox(height: AppSpacing.s16),
                           if (finished)
-                            AnalysisSummary(counts: summaryCounts ?? const {})
+                            _SummarySlot(counts: summaryCounts)
                           else ...[
                             _ProgressSlot(
                               text: progressText,
@@ -363,6 +363,54 @@ String _copulaFor(String word) {
   return code >= 0 && code <= 11171 && code % 28 != 0 ? '이에요' : '예요';
 }
 
+/// 완료 요약 자리. DONE이 되는 순간 가장 긴 요약 높이를 먼저 잡아 두고(비어 있음), 전체 개수가 오면
+/// 그 안에서 페이드인한다. 요약이 늦게 와도 아래 스테이지 크기가 바뀌지 않는다.
+class _SummarySlot extends StatelessWidget {
+  const _SummarySlot({required this.counts});
+
+  /// 아직 불러오지 못했으면 null.
+  final Map<Category, int>? counts;
+
+  @override
+  Widget build(BuildContext context) {
+    // 자리 높이: 요약과 같은 글자 스타일의 세 줄(제목 · 강조 · 상위 3개). 글자 크기 설정을 따라간다.
+    final title = AppText.sectionTitle;
+    return Stack(
+      children: [
+        ExcludeSemantics(
+          child: Opacity(
+            opacity: 0,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(' ', style: title),
+                const SizedBox(height: AppSpacing.s4),
+                Text(' ', style: title),
+                const SizedBox(height: AppSpacing.s8),
+                const Text(' ', style: AppText.caption),
+              ],
+            ),
+          ),
+        ),
+        // 아주 큰 글자에서 강조 줄이 접혀 자리보다 길어지면 아래가 잘린다(스테이지는 그대로).
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: AnimatedOpacity(
+            key: const ValueKey('summary-slot'),
+            opacity: counts == null ? 0 : 1,
+            duration: AppMotion.reduced(context)
+                ? Duration.zero
+                : AnalysisStage.summaryFade,
+            child: AnalysisSummary(counts: counts ?? const {}),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 /// 완료 요약: "요즘 가장 많이 모은 건 / [카테고리]이에요" + 상위 3개. 한 장도 없으면 그리지 않는다.
 class AnalysisSummary extends StatelessWidget {
   const AnalysisSummary({super.key, required this.counts});
@@ -408,6 +456,8 @@ class AnalysisSummary extends StatelessWidget {
           const SizedBox(height: AppSpacing.s8),
           Text(
             line,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: AppText.caption.copyWith(
               color: AppColors.white.withValues(alpha: 0.55),
             ),
