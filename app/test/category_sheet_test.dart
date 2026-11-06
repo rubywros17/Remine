@@ -36,7 +36,7 @@ void main() {
     });
 
     test('모자라면 배지 여백 → 요소 간격 → 칸 안쪽 여백, 그래도 모자라면 배지만 숨긴다', () {
-      // 기본 필요 폭: 10+8 + 점 8 + 아이콘 18 + 이름 60 + 배지 20+12 + 간격 18 = 154
+      // 기본 필요 폭: 18+16 + 점 8 + 아이콘 18 + 이름 60 + 배지 20+12 + 간격 18 = 170
       CategoryTileFit fit(double available) => fitCategoryTile(
         available: available,
         nameWidth: 60,
@@ -44,27 +44,62 @@ void main() {
       );
 
       expect(fit(200), (
-        padLeft: 10.0,
-        padRight: 8.0,
+        padLeft: 18.0,
+        padRight: 16.0,
         gap: 6.0,
         badgePad: 6.0,
         showBadge: true,
       ));
-      final a = fit(150); // 4px 모자람 → 배지 여백만
+      final a = fit(166); // 4px 모자람 → 배지 여백만
       expect(
         (a.badgePad, a.gap, a.padLeft, a.showBadge),
-        (4.0, 6.0, 10.0, true),
+        (4.0, 6.0, 18.0, true),
       );
-      final b = fit(142); // 배지 여백 바닥(2) 뒤 간격
-      expect((b.badgePad, b.gap, b.padLeft), (2.0, 6.0 - 4 / 3, 10.0));
-      final c = fit(124); // 간격 바닥(2, 필요 134) 뒤 칸 안쪽 여백
+      final b = fit(158); // 배지 여백 바닥(2, 필요 162) 뒤 간격
+      expect((b.badgePad, b.gap, b.padLeft), (2.0, 6.0 - 4 / 3, 18.0));
+      final c = fit(140); // 간격 바닥(2, 필요 150) 뒤 칸 안쪽 여백
       expect((c.badgePad, c.gap, c.showBadge), (2.0, 2.0, true));
-      expect(c.padLeft, lessThan(10));
-      // 배지까지 최소(2+2+8+18+60+20+4+6=120)보다 좁으면 배지를 숨기고 여백을 다시 맞춘다.
-      final d = fit(119); // 배지 없이 기본 여백이면 116이라 충분
-      expect(d.showBadge, isFalse);
-      expect(d.padLeft, 10.0, reason: '배지가 빠져 여백은 기본값으로 충분');
-      expect(d.gap, 6.0);
+      expect(c.padLeft, lessThan(18));
+      expect(c.padRight, lessThan(16));
+      // 배지까지 최소(2+2+8+18+60+20+4+6=120)보다 좁으면 배지를 숨긴다.
+      expect(fit(119).showBadge, isFalse);
+    });
+
+    test('7칸 공통: 가장 빠듯한 칸 기준으로 모두 같은 여백, 안 들어가는 칸만 배지 숨김', () {
+      Map<Category, CategoryTileFit> fits(double available) => fitCategoryTiles(
+        available: available,
+        widths: {
+          for (final c in Category.values)
+            c: c == Category.entertainment
+                ? (name: 60.0, badge: 20.0) // 문화생활 + 세 자리
+                : (name: 30.0, badge: 7.0),
+        },
+      );
+      ({double l, double r, double g, double b}) pads(CategoryTileFit f) =>
+          (l: f.padLeft, r: f.padRight, g: f.gap, b: f.badgePad);
+
+      // 넉넉하면 기본값 그대로.
+      expect(pads(fits(200)[Category.shopping]!), (
+        l: 18.0,
+        r: 16.0,
+        g: 6.0,
+        b: 6.0,
+      ));
+      // 문화생활만 빠듯해도 7칸 모두 같이 줄인다.
+      final tight = fits(140);
+      final first = pads(tight[Category.entertainment]!);
+      expect(first.l, lessThan(18));
+      for (final f in tight.values) {
+        expect(pads(f), first);
+        expect(f.showBadge, isTrue);
+      }
+      // 문화생활은 최소로도 안 들어가면 그 칸 배지만 숨기고, 여백은 공통(최소) 값.
+      final narrow = fits(115);
+      expect(narrow[Category.entertainment]!.showBadge, isFalse);
+      expect(narrow[Category.shopping]!.showBadge, isTrue);
+      expect(narrow.values.map(pads).toSet(), {
+        (l: 2.0, r: 2.0, g: 2.0, b: 2.0),
+      });
     });
   });
 
@@ -250,46 +285,54 @@ void main() {
       }
     });
 
-    testWidgets('색 점·아이콘·이름은 왼쪽부터, 배지는 오른쪽 끝(열마다 숫자 오른쪽이 같은 줄)', (
-      tester,
-    ) async {
-      await show(tester, (await tester.runAsync(store))!);
-      Rect tileOf(Category c) => tester.getRect(
-        find.ancestor(
-          of: find.text(c.label),
-          matching: find.byType(AnimatedContainer),
-        ),
-      );
-      Rect badgeOf(Category c) =>
-          tester.getRect(find.byKey(ValueKey('count-badge-${c.code}')));
+    for (final size in const [Size(412, 891), Size(360, 640)]) {
+      testWidgets('7칸 여백 동일, 색 점은 왼쪽부터, 배지 오른쪽 끝은 열마다 같은 줄 $size', (
+        tester,
+      ) async {
+        await show(tester, (await tester.runAsync(store))!, size: size);
+        Rect tileOf(Category c) => tester.getRect(
+          find.ancestor(
+            of: find.text(c.label),
+            matching: find.byType(AnimatedContainer),
+          ),
+        );
+        Rect badgeOf(Category c) =>
+            tester.getRect(find.byKey(ValueKey('count-badge-${c.code}')));
 
-      final left = [
-        Category.shopping,
-        Category.place,
-        Category.chat,
-        Category.etc,
-      ];
-      final right = [Category.entertainment, Category.info, Category.schedule];
-      for (final column in [left, right]) {
-        final edge = badgeOf(column.first).right;
-        for (final c in column) {
-          expect(badgeOf(c).right, closeTo(edge, 0.5), reason: c.label);
-          // 오른쪽 끝: 칸 오른쪽에서 안쪽 여백(8) + 테두리(2)만큼 안.
-          expect(tileOf(c).right - badgeOf(c).right, closeTo(10, 0.5));
-          // 왼쪽부터: 색 점은 칸 왼쪽에서 안쪽 여백(10) + 테두리(2)만큼 안.
-          final dot = tester.getRect(
-            find.descendant(
-              of: find.ancestor(
-                of: find.text(c.label),
-                matching: find.byType(AnimatedContainer),
+        final left = [
+          Category.shopping,
+          Category.place,
+          Category.chat,
+          Category.etc,
+        ];
+        final right = [
+          Category.entertainment,
+          Category.info,
+          Category.schedule,
+        ];
+        final rights = <String>{}, lefts = <String>{};
+        for (final column in [left, right]) {
+          final edge = badgeOf(column.first).right;
+          for (final c in column) {
+            expect(badgeOf(c).right, closeTo(edge, 0.5), reason: c.label);
+            // 7칸 모두 같은 여백: 칸 오른쪽~배지, 칸 왼쪽~색 점 거리가 모두 같다.
+            rights.add((tileOf(c).right - badgeOf(c).right).toStringAsFixed(1));
+            final dot = tester.getRect(
+              find.descendant(
+                of: find.ancestor(
+                  of: find.text(c.label),
+                  matching: find.byType(AnimatedContainer),
+                ),
+                matching: find.byType(CategoryDot),
               ),
-              matching: find.byType(CategoryDot),
-            ),
-          );
-          expect(dot.left - tileOf(c).left, closeTo(12, 0.5), reason: c.label);
+            );
+            lefts.add((dot.left - tileOf(c).left).toStringAsFixed(1));
+          }
         }
-      }
-    });
+        expect(rights, hasLength(1), reason: '칸마다 오른쪽 여백이 다르다: $rights');
+        expect(lefts, hasLength(1), reason: '칸마다 왼쪽 여백이 다르다: $lefts');
+      });
+    }
 
     testWidgets('다른 칸을 고르면 원래 칸은 차콜 1.5px 점선, 원래 칸을 고르면 점선 없음', (tester) async {
       await show(tester, (await tester.runAsync(store))!);

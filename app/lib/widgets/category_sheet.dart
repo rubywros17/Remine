@@ -72,6 +72,38 @@ class _CategorySheetState extends State<CategorySheet> {
     });
   }
 
+  /// 7칸이 같은 여백·간격을 쓰게 한 번에 맞춘다(배지가 열마다 세로로 같은 줄에 오게).
+  /// 측정은 Text가 실제로 쓰는 스타일(테마 기본 스타일과 합친 것)로 한다.
+  Map<Category, CategoryTileFit> _fitTiles(BuildContext context, double width) {
+    final base = DefaultTextStyle.of(context).style;
+    final scaler = MediaQuery.textScalerOf(context);
+    final name = base.merge(_CategoryTile.nameStyle(AppColors.ink));
+    final badge = base.merge(_CategoryTile.badgeStyle(AppColors.ink));
+    return fitCategoryTiles(
+      // 테두리 1→2 전환 중에도 넘치지 않게 폭은 늘 두꺼운 테두리 기준으로 잡는다.
+      available: width - CategoryTileSize.borderSelected * 2,
+      widths: {
+        for (final c in Category.values)
+          c: (
+            name: _textWidth(c.label, name, scaler),
+            badge: _textWidth(countBadgeText(_counts?[c] ?? 0), badge, scaler),
+          ),
+      },
+    );
+  }
+
+  static double _textWidth(String s, TextStyle style, TextScaler scaler) {
+    final p = TextPainter(
+      text: TextSpan(text: s, style: style),
+      textDirection: TextDirection.ltr,
+      textScaler: scaler,
+      maxLines: 1,
+    )..layout();
+    final w = p.width;
+    p.dispose();
+    return w;
+  }
+
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
@@ -138,6 +170,7 @@ class _CategorySheetState extends State<CategorySheet> {
               LayoutBuilder(
                 builder: (context, constraints) {
                   final width = (constraints.maxWidth - AppSpacing.s12) / 2;
+                  final fits = _fitTiles(context, width);
                   return Wrap(
                     spacing: AppSpacing.s12,
                     runSpacing: AppSpacing.s12,
@@ -151,6 +184,7 @@ class _CategorySheetState extends State<CategorySheet> {
                             // 다른 칸을 고른 동안 원래 칸은 점선 테두리로 표시한다.
                             original: c == widget.current && c != _selected,
                             count: _counts?[c],
+                            fit: fits[c]!,
                             onTap: () => setState(() => _selected = c),
                           ),
                         ),
@@ -193,15 +227,27 @@ class _CategorySheetState extends State<CategorySheet> {
 
 /// 칸 하나: [색 점 · 아이콘 · 이름]은 왼쪽부터, 장수 배지는 오른쪽 끝(모든 칸의 숫자가 세로로 같은 줄). 이름은 말줄임하지 않는다.
 /// 칸 높이·모서리·테두리·이름 글자·아이콘 크기는 수정 전(5095f48 이전) 값 그대로이고 줄이지 않는다.
-/// 폭이 모자라면 배지 여백 → 요소 간격 → 칸 안쪽 여백 순서로 줄이고, 그래도 모자라면 배지만 숨긴다([fitCategoryTile]).
+/// 여백·간격은 시트가 7칸 공통으로 정해 [fit]으로 넘긴다([fitCategoryTiles]).
 class _CategoryTile extends StatelessWidget {
   const _CategoryTile({
     required this.category,
     required this.selected,
     required this.original,
     required this.count,
+    required this.fit,
     required this.onTap,
   });
+
+  /// 7칸 공통 여백·간격과 이 칸의 배지 표시 여부.
+  final CategoryTileFit fit;
+
+  static TextStyle nameStyle(Color color) => AppText.label.copyWith(
+    fontSize: CategoryTileSize.nameFontSize,
+    color: color,
+  );
+
+  static TextStyle badgeStyle(Color color) =>
+      AppText.numBadge(color: color).copyWith(fontSize: 12);
 
   final Category category;
   final bool selected;
@@ -216,11 +262,8 @@ class _CategoryTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fg = selected ? AppColors.white : AppColors.ink;
-    final nameStyle = AppText.label.copyWith(
-      fontSize: CategoryTileSize.nameFontSize,
-      color: fg,
-    );
-    final badgeStyle = AppText.numBadge(color: fg).copyWith(fontSize: 12);
+    final nameStyle = _CategoryTile.nameStyle(fg);
+    final badgeStyle = _CategoryTile.badgeStyle(fg);
     final badgeText = countBadgeText(count ?? 0);
     final border = selected
         ? CategoryTileSize.borderSelected
@@ -230,25 +273,8 @@ class _CategoryTile extends StatelessWidget {
       label:
           '${category.label}${count == null ? '' : ' $count장'}'
           '${selected ? ', 선택됨' : ''}',
-      child: LayoutBuilder(
-        builder: (context, box) {
-          // 측정은 Text가 실제로 쓰는 스타일(테마 기본 스타일과 합친 것)로 한다.
-          final base = DefaultTextStyle.of(context).style;
-          final scaler = MediaQuery.textScalerOf(context);
-          // 테두리 1→2 전환 중에도 넘치지 않게 폭은 늘 두꺼운 테두리 기준으로 잡는다.
-          final fit = fitCategoryTile(
-            available: box.maxWidth - CategoryTileSize.borderSelected * 2,
-            nameWidth: _textWidth(
-              category.label,
-              base.merge(nameStyle),
-              scaler,
-            ),
-            badgeTextWidth: _textWidth(
-              badgeText,
-              base.merge(badgeStyle),
-              scaler,
-            ),
-          );
+      child: Builder(
+        builder: (context) {
           final tile = AnimatedContainer(
             duration: AppMotion.duration(context, MotionDuration.fast),
             curve: AppMotion.standard,
@@ -345,18 +371,6 @@ class _CategoryTile extends StatelessWidget {
       ),
     );
   }
-
-  static double _textWidth(String s, TextStyle style, TextScaler scaler) {
-    final p = TextPainter(
-      text: TextSpan(text: s, style: style),
-      textDirection: TextDirection.ltr,
-      textScaler: scaler,
-      maxLines: 1,
-    )..layout();
-    final w = p.width;
-    p.dispose();
-    return w;
-  }
 }
 
 /// 칸 크기 값. 수정 전(5095f48 이전) 시트와 같고, 공간이 모자라도 줄이지 않는다.
@@ -413,7 +427,7 @@ class DashedBorderPainter extends CustomPainter {
 /// 장수 배지 글자: 999를 넘으면 "999+".
 String countBadgeText(int count) => count > 999 ? '999+' : '$count';
 
-/// 칸 안 여백·간격. 기본은 안쪽 왼쪽 10 · 오른쪽 8, 요소 간격 6, 배지 좌우 6.
+/// 칸 안 여백·간격. 기본은 안쪽 왼쪽 18 · 오른쪽 16, 요소 간격 6, 배지 좌우 6.
 typedef CategoryTileFit = ({
   double padLeft,
   double padRight,
@@ -422,7 +436,7 @@ typedef CategoryTileFit = ({
   bool showBadge,
 });
 
-/// 내용이 [available]에 들어가게 배지 여백(6→2) → 요소 간격(6→2) → 칸 안쪽 여백(10/8→2/2) 순서로 줄인다.
+/// 내용이 [available]에 들어가게 배지 여백(6→2) → 요소 간격(6→2) → 칸 안쪽 여백(18/16→2/2) 순서로 줄인다.
 /// 그래도 모자라면 배지를 숨기고(배지 몫의 간격도 뺀다) 여백을 다시 기본값부터 맞춘다.
 /// 글자·아이콘 크기는 건드리지 않는다. 배지를 숨겨도 모자라면 최소값을 돌려준다.
 CategoryTileFit fitCategoryTile({
@@ -430,14 +444,20 @@ CategoryTileFit fitCategoryTile({
   required double nameWidth,
   required double badgeTextWidth,
 }) {
-  const dot = 8.0, icon = CategoryTileSize.iconSize, min = 2.0;
-
   CategoryTileFit fit({required bool badge}) {
-    var padL = 10.0, padR = 8.0, gap = 6.0, badgePad = badge ? 6.0 : 0.0;
+    var padL = 18.0, padR = 16.0, gap = 6.0, badgePad = badge ? 6.0 : 0.0;
     final gaps = badge ? 3 : 2;
-    final fixed = dot + icon + nameWidth + (badge ? badgeTextWidth : 0);
     double over() =>
-        padL + padR + fixed + badgePad * 2 + gap * gaps - available;
+        _tileNeed(
+          nameWidth,
+          badge ? badgeTextWidth : null,
+          padL,
+          padR,
+          gap,
+          badgePad,
+        ) -
+        available;
+    const min = _minSpace;
 
     if (badge && over() > 0) {
       badgePad = (badgePad - over() / 2).clamp(min, badgePad);
@@ -461,4 +481,72 @@ CategoryTileFit fitCategoryTile({
 
   final withBadge = fit(badge: true);
   return withBadge.showBadge ? withBadge : fit(badge: false);
+}
+
+const _minSpace = 2.0;
+
+/// 칸 내용에 필요한 폭. [badgeTextWidth]가 null이면 배지 없이.
+double _tileNeed(
+  double nameWidth,
+  double? badgeTextWidth,
+  double padL,
+  double padR,
+  double gap,
+  double badgePad,
+) {
+  const dot = 8.0, icon = CategoryTileSize.iconSize;
+  final badge = badgeTextWidth != null;
+  return padL +
+      padR +
+      dot +
+      icon +
+      nameWidth +
+      (badge ? badgeTextWidth + badgePad * 2 : 0) +
+      gap * (badge ? 3 : 2);
+}
+
+/// 7칸 공통 맞춤. 가장 빠듯한 칸(이름 + 배지 폭이 가장 큰 칸)에 [fitCategoryTile]의 줄이는 순서를 적용하고,
+/// 그 여백·간격을 모든 칸이 같이 쓴다(칸마다 다른 여백 금지 → 배지가 열마다 같은 줄).
+/// 공통 값으로도 배지가 안 들어가는 칸만 배지를 숨긴다(여백은 그대로 공통 값).
+Map<Category, CategoryTileFit> fitCategoryTiles({
+  required double available,
+  required Map<Category, ({double name, double badge})> widths,
+}) {
+  final tightest = widths.values.reduce(
+    (a, b) => a.name + a.badge >= b.name + b.badge ? a : b,
+  );
+  final shared = fitCategoryTile(
+    available: available,
+    nameWidth: tightest.name,
+    badgeTextWidth: tightest.badge,
+  );
+  // 가장 빠듯한 칸도 배지를 숨겨야 하면, 배지를 둔 채 다 줄인 값(최소)을 공통으로 쓴다.
+  final pads = shared.showBadge
+      ? shared
+      : (
+          padLeft: _minSpace,
+          padRight: _minSpace,
+          gap: _minSpace,
+          badgePad: _minSpace,
+          showBadge: false,
+        );
+  return {
+    for (final MapEntry(key: c, value: w) in widths.entries)
+      c: (
+        padLeft: pads.padLeft,
+        padRight: pads.padRight,
+        gap: pads.gap,
+        badgePad: pads.badgePad,
+        showBadge:
+            _tileNeed(
+              w.name,
+              w.badge,
+              pads.padLeft,
+              pads.padRight,
+              pads.gap,
+              pads.badgePad,
+            ) <=
+            available + 0.01,
+      ),
+  };
 }
