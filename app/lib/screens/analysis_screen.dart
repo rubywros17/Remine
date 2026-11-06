@@ -376,10 +376,62 @@ class _SummarySlot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 자리 높이: 요약과 같은 글자 스타일의 세 줄(제목 · 강조 · 상위 3개). 글자 크기 설정을 따라간다.
-    // 글자 1.3배 이상이면 강조 줄("문화생활이에요")이 접힐 수 있어 한 줄을 더 잡는다.
+    // 자리 높이: 요약과 같은 글자 스타일의 줄들(제목 · 강조 · 상위 3개). 글자 크기 설정을 따라간다.
+    // 좁은 화면·대체 글꼴에서는 제목이나 가장 긴 강조 줄("문화생활이에요")이 접히므로 그 줄 수를 재서 잡는다.
+    // 글자 1.3배 이상이면 강조 줄은 항상 두 줄로 잡는다.
     final title = AppText.sectionTitle;
-    final wide = MediaQuery.textScalerOf(context).scale(1) >= _wideScale;
+    final scaler = MediaQuery.textScalerOf(context);
+    // 측정은 Text가 실제로 쓰는 스타일(테마 기본 스타일과 합친 것)로 한다.
+    final measured = DefaultTextStyle.of(context).style.merge(title);
+    // 화면이 IntrinsicHeight 안이라 LayoutBuilder를 못 쓴다 → 화면 폭에서 안전 영역·좌우 여백을 뺀다.
+    final insets = MediaQuery.paddingOf(context);
+    final width =
+        MediaQuery.sizeOf(context).width -
+        insets.left -
+        insets.right -
+        AppSpacing.screenPadding * 2;
+    final titleLines = _lines(summaryTitle, measured, scaler, width);
+    final widest =
+        _width(Category.entertainment.label, measured, scaler) +
+        16 + // 이름 하이라이트 좌우 여백
+        _width('이에요', measured, scaler);
+    final highlightLines = scaler.scale(1) >= _wideScale || widest > width
+        ? 2
+        : 1;
+    return _slot(context, title, titleLines, highlightLines);
+  }
+
+  static TextPainter _paint(
+    String s,
+    TextStyle style,
+    TextScaler scaler,
+    double maxWidth,
+  ) => TextPainter(
+    text: TextSpan(text: s, style: style),
+    textDirection: TextDirection.ltr,
+    textScaler: scaler,
+  )..layout(maxWidth: maxWidth);
+
+  static int _lines(String s, TextStyle style, TextScaler scaler, double w) {
+    final p = _paint(s, style, scaler, w);
+    final n = p.computeLineMetrics().length;
+    p.dispose();
+    return n;
+  }
+
+  static double _width(String s, TextStyle style, TextScaler scaler) {
+    final p = _paint(s, style, scaler, double.infinity);
+    final w = p.width;
+    p.dispose();
+    return w;
+  }
+
+  Widget _slot(
+    BuildContext context,
+    TextStyle title,
+    int titleLines,
+    int highlightLines,
+  ) {
     return Stack(
       key: const ValueKey('summary-slot-box'),
       children: [
@@ -389,10 +441,10 @@ class _SummarySlot extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Text(' ', style: title),
+                for (var i = 0; i < titleLines; i++) Text(' ', style: title),
                 const SizedBox(height: AppSpacing.s4),
-                Text(' ', style: title),
-                if (wide) Text(' ', style: title),
+                for (var i = 0; i < highlightLines; i++)
+                  Text(' ', style: title),
                 const SizedBox(height: AppSpacing.s8),
                 const Text(' ', style: AppText.caption),
               ],
@@ -418,6 +470,9 @@ class _SummarySlot extends StatelessWidget {
   }
 }
 
+/// 완료 요약 제목.
+const summaryTitle = '요즘 가장 많이 모은 건';
+
 /// 완료 요약: "요즘 가장 많이 모은 건 / [카테고리]이에요" + 상위 3개. 한 장도 없으면 그리지 않는다.
 class AnalysisSummary extends StatelessWidget {
   const AnalysisSummary({super.key, required this.counts});
@@ -438,7 +493,7 @@ class AnalysisSummary extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('요즘 가장 많이 모은 건', style: title),
+          Text(summaryTitle, style: title),
           const SizedBox(height: AppSpacing.s4),
           Wrap(
             crossAxisAlignment: WrapCrossAlignment.center,
