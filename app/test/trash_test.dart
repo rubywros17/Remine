@@ -390,21 +390,22 @@ void main() {
       store = InMemoryTrashStore();
     });
 
-    testWidgets('비어 있으면 안내만 나온다', (tester) async {
+    testWidgets('비어 있으면 안내만 나오고 [전체 선택]도 숨긴다', (tester) async {
       await show(tester);
       expect(find.text('휴지통 0장'), findsOneWidget);
       expect(find.text('삭제한 스크린샷이 없어요'), findsOneWidget);
-      expect(find.text('갤러리에서도 삭제'), findsNothing);
+      expect(find.text('전체 선택'), findsNothing);
+      expect(find.text('갤러리에서도 삭제'), findsNothing, reason: '위쪽 삭제 버튼은 없앴다');
     });
 
-    testWidgets('버린 날짜 최신순, 고르면 되살리기와 삭제 버튼이 나온다', (tester) async {
+    testWidgets('버린 날짜 최신순, 고르면 하단 바에 [복구]·[삭제 N장]', (tester) async {
       await store.add(_shot('old'));
       await store.add(_shot('new', minutes: 5));
       await show(tester);
 
       expect(find.text('휴지통 2장'), findsOneWidget);
       expect(find.text(trashGalleryNote), findsOneWidget);
-      expect(find.text('되살리기'), findsNothing);
+      expect(find.text('복구'), findsNothing);
       expect(
         tester.getTopLeft(find.byKey(const ValueKey('trash-new'))).dx,
         lessThan(tester.getTopLeft(find.byKey(const ValueKey('trash-old'))).dx),
@@ -412,43 +413,72 @@ void main() {
 
       await tester.tap(find.byKey(const ValueKey('trash-old')));
       await tester.pump();
-      expect(find.text('되살리기'), findsOneWidget);
-      expect(find.text('갤러리에서 삭제'), findsOneWidget);
+      expect(find.text('복구'), findsOneWidget);
+      expect(find.text('삭제 1장'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('trash-new')));
+      await tester.pump();
+      expect(find.text('삭제 2장'), findsOneWidget);
     });
 
-    testWidgets('되살리면 고른 장만 빠진다', (tester) async {
+    testWidgets('[전체 선택] → 모두 고르면 [선택 해제], 누르면 다시 비운다', (tester) async {
+      await store.add(_shot('a1'));
+      await store.add(_shot('a2', minutes: 1));
+      await show(tester);
+
+      await tester.tap(find.text('전체 선택'));
+      await tester.pump();
+      expect(find.text('선택 해제'), findsOneWidget);
+      expect(find.text('전체 선택'), findsNothing);
+      expect(find.text('삭제 2장'), findsOneWidget);
+
+      await tester.tap(find.text('선택 해제'));
+      await tester.pump();
+      expect(find.text('전체 선택'), findsOneWidget);
+      expect(find.text('복구'), findsNothing, reason: '고른 게 없으면 하단 바도 없다');
+
+      // 하나씩 다 골라도 [선택 해제]가 된다.
+      await tester.tap(find.byKey(const ValueKey('trash-a1')));
+      await tester.tap(find.byKey(const ValueKey('trash-a2')));
+      await tester.pump();
+      expect(find.text('선택 해제'), findsOneWidget);
+    });
+
+    testWidgets('[복구]는 고른 장만 되살린다', (tester) async {
       await store.add(_shot('a1'));
       await store.add(_shot('a2', minutes: 1));
       await show(tester);
       await tester.tap(find.byKey(const ValueKey('trash-a1')));
       await tester.pump();
 
-      await tapText(tester, '되살리기');
+      await tapText(tester, '복구');
 
       expect(find.text('휴지통 1장'), findsOneWidget);
       expect((await store.all()).single.assetId, 'a2');
-      expect(find.text('되살리기'), findsNothing);
+      expect(find.text('복구'), findsNothing);
     });
 
-    testWidgets('상단 버튼은 고른 게 없으면 전체를 한 번에 요청한다', (tester) async {
+    testWidgets('[전체 선택] 후 [삭제 N장]은 전체를 한 번에 요청한다', (tester) async {
       await store.add(_shot('a1'));
       await store.add(_shot('a2', minutes: 1));
       await show(tester);
 
-      await tapText(tester, '갤러리에서도 삭제');
+      await tester.tap(find.text('전체 선택'));
+      await tester.pump();
+      await tapText(tester, '삭제 2장');
 
-      expect(reader.trashRequests.single, ['a2', 'a1']);
+      expect(reader.trashRequests.single, ['a2', 'a1'], reason: '시스템 확인창 1회');
       expect(find.text('삭제한 스크린샷이 없어요'), findsOneWidget);
     });
 
-    testWidgets('상단 버튼은 고른 게 있으면 고른 장만 요청한다', (tester) async {
+    testWidgets('[삭제 N장]은 고른 장만 요청한다', (tester) async {
       await store.add(_shot('a1'));
       await store.add(_shot('a2', minutes: 1));
       await show(tester);
       await tester.tap(find.byKey(const ValueKey('trash-a1')));
       await tester.pump();
 
-      await tapText(tester, '갤러리에서도 삭제');
+      await tapText(tester, '삭제 1장');
 
       expect(reader.trashRequests.single, ['a1']);
       expect((await store.all()).single.assetId, 'a2');
@@ -458,24 +488,26 @@ void main() {
       reader.allowTrash = false;
       await store.add(_shot('a1'));
       await show(tester);
+      await tester.tap(find.byKey(const ValueKey('trash-a1')));
+      await tester.pump();
 
-      await tapText(tester, '갤러리에서도 삭제');
+      await tapText(tester, '삭제 1장');
 
       expect(find.text('휴지통 1장'), findsOneWidget);
       expect(await store.all(), hasLength(1));
     });
 
-    testWidgets('Android 10 이하는 삭제 버튼 없이 되살리기만 된다', (tester) async {
+    testWidgets('Android 10 이하는 [삭제] 없이 [복구]만 된다', (tester) async {
       reader.trashSupported = false;
       await store.add(_shot('a1'));
       await show(tester);
-      expect(find.text('갤러리에서도 삭제'), findsNothing);
       expect(find.text(trashGalleryNote), findsNothing);
+      expect(find.text('전체 선택'), findsOneWidget);
 
       await tester.tap(find.byKey(const ValueKey('trash-a1')));
       await tester.pump();
-      expect(find.text('되살리기'), findsOneWidget);
-      expect(find.text('갤러리에서 삭제'), findsNothing);
+      expect(find.text('복구'), findsOneWidget);
+      expect(find.textContaining('삭제 '), findsNothing);
     });
 
     for (final (size, scale) in const [

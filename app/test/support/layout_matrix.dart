@@ -13,6 +13,7 @@ import 'package:remine/data/device/gallery_reader.dart';
 import 'package:remine/data/device/privacy/local_verdict_store.dart';
 import 'package:remine/data/device/privacy/privacy_filter.dart';
 import 'package:remine/data/device/settings_store.dart';
+import 'package:remine/data/device/trash_store.dart';
 import 'package:remine/models/category.dart';
 import 'package:remine/screens/debug_ocr_screen.dart';
 import 'package:remine/widgets/drawer_stage.dart';
@@ -352,6 +353,37 @@ void defineLayoutMatrix({
         expect(find.byType(Switch), findsOneWidget, reason: '설정 화면이 아님');
       });
       _expectClean('설정 $label', errors);
+    });
+
+    testWidgets('휴지통(전체 선택 + 하단 [복구]·[삭제 N장]) · $label', (tester) async {
+      final errors = await _errorsDuring(() async {
+        final store = InMemoryTrashStore();
+        for (var i = 0; i < 12; i++) {
+          await store.add(
+            TrashedShot(
+              assetId: 't$i',
+              category: Category.values[i % Category.values.length],
+              takenAt: _now,
+              trashedAt: _now.add(Duration(minutes: i)),
+              onServer: false,
+            ),
+          );
+        }
+        await _pump(
+          tester,
+          size,
+          scale,
+          device: fakeServices(FakeGalleryReader(), trash: store),
+        );
+        await _tap(tester, find.byIcon(LucideIcons.settings));
+        await _tap(tester, find.text('휴지통'));
+        await tester.runAsync(pumpEventQueue);
+        await tester.pump();
+        await _tap(tester, find.text('전체 선택'));
+        expect(find.text('선택 해제'), findsOneWidget);
+        expect(find.text('삭제 12장'), findsOneWidget);
+      });
+      _expectClean('휴지통 $label', errors);
     });
 
     testWidgets('첫 분석 · 실제 진행(큰 숫자·예상 시간·홈 버튼) · $label', (tester) async {

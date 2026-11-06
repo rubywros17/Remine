@@ -10,9 +10,10 @@ import '../widgets/selectable_thumb.dart';
 import '../widgets/small_widgets.dart';
 
 /// 안내 문구. 앱 휴지통과 갤러리 휴지통이 다르다는 것을 알려 준다.
-const trashGalleryNote = '갤러리에서 삭제하면 갤러리 휴지통으로 이동해요';
+const trashGalleryNote = '삭제하면 갤러리 휴지통으로 이동해요';
 
-/// 설정 > 휴지통: 스와이프로 버린 캡처를 버린 날짜순으로 보여 준다. 카드를 고르면 되살리거나 갤러리에서 지울 수 있다.
+/// 설정 > 휴지통: 스와이프로 버린 캡처를 버린 날짜순으로 보여 준다. [전체 선택]이나 탭으로 고르면
+/// 아래 바에서 [복구](앱으로 되살림)하거나 [삭제 N장](갤러리 휴지통으로 이동)할 수 있다.
 class TrashScreen extends StatefulWidget {
   const TrashScreen({super.key, required this.trash});
 
@@ -67,8 +68,12 @@ class _TrashScreenState extends State<TrashScreen> {
   Future<void> _restore() =>
       _run(() => widget.trash.restore(_selected.toList()));
 
-  Future<void> _delete(List<String> ids) =>
-      _run(() => widget.trash.deleteFromGallery(ids));
+  /// 고른 장을 갤러리 휴지통으로 옮긴다(시스템 확인창 1회).
+  Future<void> _delete() =>
+      _run(() => widget.trash.deleteFromGallery(_selected.toList()));
+
+  bool _allSelected(List<TrashedShot> shots) =>
+      _selected.length == shots.length;
 
   @override
   Widget build(BuildContext context) {
@@ -100,7 +105,7 @@ class _TrashScreenState extends State<TrashScreen> {
                 ],
               ),
             ),
-            if (shots != null && shots.isNotEmpty && _canDelete) ...[
+            if (shots != null && shots.isNotEmpty) ...[
               Padding(
                 padding: const EdgeInsets.fromLTRB(
                   AppSpacing.screenPadding,
@@ -108,28 +113,36 @@ class _TrashScreenState extends State<TrashScreen> {
                   AppSpacing.screenPadding,
                   0,
                 ),
-                child: AppButton(
-                  label: '갤러리에서도 삭제',
-                  onTap: _busy
-                      ? null
-                      : () => _delete(
-                          _selected.isNotEmpty
-                              ? _selected.toList()
-                              : [for (final s in shots) s.assetId],
-                        ),
-                ),
+                child: _allSelected(shots)
+                    ? AppButton(
+                        label: '선택 해제',
+                        outlined: true,
+                        onTap: _busy ? null : () => setState(_selected.clear),
+                      )
+                    : AppButton(
+                        label: '전체 선택',
+                        outlined: true,
+                        onTap: _busy
+                            ? null
+                            : () => setState(
+                                () => _selected.addAll(
+                                  shots.map((s) => s.assetId),
+                                ),
+                              ),
+                      ),
               ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppSpacing.screenPadding,
-                  AppSpacing.s8,
-                  AppSpacing.screenPadding,
-                  AppSpacing.s12,
+              if (_canDelete)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    AppSpacing.screenPadding,
+                    AppSpacing.s8,
+                    AppSpacing.screenPadding,
+                    0,
+                  ),
+                  child: Text(trashGalleryNote, style: AppText.caption),
                 ),
-                child: Text(trashGalleryNote, style: AppText.caption),
-              ),
-            ] else
-              const SizedBox(height: AppSpacing.s12),
+            ],
+            const SizedBox(height: AppSpacing.s12),
             Expanded(child: _grid(shots)),
             if (_selected.isNotEmpty) _selectionBar(),
           ],
@@ -211,15 +224,15 @@ class _TrashScreenState extends State<TrashScreen> {
               alignment: WrapAlignment.center,
               children: [
                 AppButton(
-                  label: '되살리기',
+                  label: '복구',
                   outlined: true,
                   onTap: _busy ? null : _restore,
                 ),
+                // Android 10 이하는 갤러리 휴지통이 없어 복구만 된다.
                 if (_canDelete)
                   AppButton(
-                    label: '갤러리에서 삭제',
-                    outlined: true,
-                    onTap: _busy ? null : () => _delete(_selected.toList()),
+                    label: '삭제 ${_selected.length}장',
+                    onTap: _busy ? null : _delete,
                   ),
               ],
             ),
