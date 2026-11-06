@@ -393,7 +393,7 @@ void main() {
     testWidgets('비어 있으면 안내만 나온다', (tester) async {
       await show(tester);
       expect(find.text('휴지통 0장'), findsOneWidget);
-      expect(find.text('버린 캡처가 없어요'), findsOneWidget);
+      expect(find.text('삭제한 스크린샷이 없어요'), findsOneWidget);
       expect(find.text('갤러리에서도 삭제'), findsNothing);
     });
 
@@ -438,7 +438,7 @@ void main() {
       await tapText(tester, '갤러리에서도 삭제');
 
       expect(reader.trashRequests.single, ['a2', 'a1']);
-      expect(find.text('버린 캡처가 없어요'), findsOneWidget);
+      expect(find.text('삭제한 스크린샷이 없어요'), findsOneWidget);
     });
 
     testWidgets('상단 버튼은 고른 게 있으면 고른 장만 요청한다', (tester) async {

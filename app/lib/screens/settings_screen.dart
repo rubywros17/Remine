@@ -5,7 +5,6 @@ import '../core/tokens.dart';
 import '../data/device/device_trash.dart';
 import '../data/device/settings_store.dart';
 import '../data/remote/remote_services.dart';
-import '../widgets/pressable_scale.dart';
 import '../widgets/small_widgets.dart';
 import 'trash_screen.dart';
 
@@ -129,7 +128,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: AppSpacing.s16),
+            const SizedBox(height: AppSpacing.s8),
             _SwitchRow(
               title: '이미지 분석',
               body:
@@ -140,7 +139,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onChanged: _set,
             ),
             if (_hasPush) ...[
-              const SizedBox(height: AppSpacing.s24),
+              const SizedBox(height: AppSpacing.s4),
               _SwitchRow(
                 title: '알림 받기',
                 body:
@@ -151,7 +150,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ],
             if (widget.trash != null) ...[
-              const SizedBox(height: AppSpacing.s24),
+              const SizedBox(height: AppSpacing.s4),
               _TrashRow(trash: widget.trash!),
             ],
           ],
@@ -168,29 +167,12 @@ class _TrashRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PressableScale(
-      label: '휴지통',
+    return _SettingsRow(
+      title: '휴지통',
+      body: '버린 캡처를 되살리거나 갤러리에서 지워요.',
       onTap: () =>
           Navigator.of(context)
               .push(appRoute(context, (_) => TrashScreen(trash: trash))),
-      child: Padding(
-        padding: const EdgeInsets.only(left: 14),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('휴지통', style: AppText.cardTitle),
-                  const SizedBox(height: AppSpacing.s4),
-                  Text('버린 캡처를 되살리거나 갤러리에서 지워요.', style: AppText.caption),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 }
@@ -210,27 +192,67 @@ class _SwitchRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 14),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title, style: AppText.cardTitle),
-                const SizedBox(height: AppSpacing.s4),
-                Text(body, style: AppText.caption),
+    // 줄 어디를 눌러도 스위치가 바뀐다(ListTile과 같은 동작).
+    return _SettingsRow(
+      title: title,
+      body: body,
+      onTap: () => onChanged(!value),
+      trailing: Semantics(
+        label: title,
+        child: Switch(value: value, onChanged: onChanged),
+      ),
+    );
+  }
+}
+
+/// 설정 한 줄: 제목 · 설명 (+ 오른쪽 위젯). 누르면 셀라돈 톤 하이라이트·물결이 보인다.
+///
+/// [Flutter 메모] InkWell은 가장 가까운 Material 위에 물결을 그린다. 배경이 없는 투명 Material을 바로 위에 둔다.
+class _SettingsRow extends StatelessWidget {
+  const _SettingsRow({
+    required this.title,
+    required this.body,
+    required this.onTap,
+    this.trailing,
+  });
+
+  final String title;
+  final String body;
+  final VoidCallback onTap;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final radius = BorderRadius.circular(AppRadii.tile);
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: radius,
+        highlightColor: AppColors.pressHighlight,
+        splashColor: AppColors.pressSplash,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 0, 10),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: AppText.cardTitle),
+                    const SizedBox(height: AppSpacing.s4),
+                    Text(body, style: AppText.caption),
+                  ],
+                ),
+              ),
+              if (trailing != null) ...[
+                const SizedBox(width: AppSpacing.s12),
+                trailing!,
               ],
-            ),
+            ],
           ),
-          const SizedBox(width: AppSpacing.s12),
-          Semantics(
-            label: title,
-            child: Switch(value: value, onChanged: onChanged),
-          ),
-        ],
+        ),
       ),
     );
   }
