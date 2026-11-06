@@ -808,8 +808,9 @@ class _BinState extends State<_Bin> with SingleTickerProviderStateMixin {
               ? AnalysisStage.binGrow
               : AnalysisStage.binSpring,
           curve: Curves.easeOutBack,
+          // 위쪽 상한: 칸 영역이 줄면(완료 요약이 늦게 들어올 때) 옛 높이에서 내려오는 동안 넘치지 않게 한다.
           builder: (context, height, _) => SizedBox(
-            height: height < 0 ? 0 : height,
+            height: height.clamp(0, widget.barHeight * AnalysisStage.overshoot),
             width: double.infinity,
             child: Stack(
               clipBehavior: Clip.none,
