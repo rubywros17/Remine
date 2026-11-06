@@ -444,7 +444,7 @@ class _Watermark extends StatelessWidget {
   );
 }
 
-/// 콜라주 위에 비스듬히 붙은 원형 스티커 "19 / SHOTS". 흰색, 잊은 관심사는 레몬.
+/// 콜라주 위에 비스듬히 붙은 원형 스티커 "19 / SHOTS". 셀라돈(카드 강조색, 글자 대비 9.6:1), 잊은 관심사는 레몬.
 class _ShotsSticker extends StatelessWidget {
   const _ShotsSticker({required this.count, required this.forgotten});
 
@@ -461,7 +461,7 @@ class _ShotsSticker extends StatelessWidget {
         height: AppInterestCard.shotsSize,
         padding: const EdgeInsets.all(9),
         decoration: BoxDecoration(
-          color: forgotten ? AppColors.lemon : AppColors.white,
+          color: forgotten ? AppColors.lemon : AppColors.celadon,
           shape: BoxShape.circle,
           boxShadow: const [
             BoxShadow(color: AppColors.cardShadow, blurRadius: 6),
