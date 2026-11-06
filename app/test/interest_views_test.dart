@@ -120,12 +120,12 @@ void main() {
       rig.status.finish();
       await tester.pump();
       expect(
-        find.text('홈으로'),
+        find.text('홈에서 둘러보기'),
         findsOneWidget,
         reason: '보는 중에 끝나면 그 자리에서 완료 상태',
       );
-      await tester.ensureVisible(find.text('홈으로'));
-      await tester.tap(find.text('홈으로'));
+      await tester.ensureVisible(find.text('홈에서 둘러보기'));
+      await tester.tap(find.text('홈에서 둘러보기'));
       await tester.pumpAndSettle();
       expect(find.textContaining('새 캡처를 정리하는 중이에요'), findsNothing);
     });

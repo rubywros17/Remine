@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:remine/app.dart';
+import 'package:remine/core/tokens.dart';
 import 'package:remine/data/device/gallery_reader.dart';
 import 'package:remine/data/device/privacy/local_verdict_store.dart';
 import 'package:remine/data/device/privacy/privacy_filter.dart';
@@ -87,10 +88,7 @@ void main() {
       ),
     );
     await tester.pumpWidget(
-      RemineApp(
-        now: () => DateTime(2026, 10, 19, 12),
-        device: services,
-      ),
+      RemineApp(now: () => DateTime(2026, 10, 19, 12), device: services),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('대화'));
@@ -102,7 +100,7 @@ void main() {
     expect(find.byIcon(LucideIcons.pencil), findsNothing);
     await tester.tap(find.byKey(const ValueKey('category-chip--1')));
     await tester.pumpAndSettle();
-    expect(find.text('이거 어디 서랍이야?'), findsNothing); // 수정 시트가 열리지 않는다
+    expect(find.text('어느 서랍에 넣을까요?'), findsNothing); // 수정 시트가 열리지 않는다
     expect(tester.takeException(), isNull);
   });
 
@@ -119,17 +117,41 @@ void main() {
     expect(await s.imageConsent(), isTrue);
   });
 
+  testWidgets('설정 줄은 눌림 피드백(셀라돈 톤)이 있고, 줄을 눌러도 스위치가 바뀐다', (tester) async {
+    final s = InMemorySettingsStore(false);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SettingsScreen(
+          settings: s,
+          trash: fakeServices(FakeGalleryReader()).trash,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final rows = tester.widgetList<InkWell>(find.byType(InkWell)).toList();
+    expect(rows, hasLength(2), reason: '이미지 분석 · 휴지통');
+    for (final r in rows) {
+      expect(r.highlightColor, AppColors.pressHighlight);
+      expect(r.splashColor, AppColors.pressSplash);
+    }
+    // 안내 글은 문장마다 줄을 바꾼다.
+    expect(find.textContaining('함께 보내요.\n서버에'), findsOneWidget);
+
+    await tester.tap(find.text('이미지 분석'));
+    await tester.pumpAndSettle();
+    expect(await s.imageConsent(), isTrue);
+
+    await tester.tap(find.text('휴지통'));
+    await tester.pumpAndSettle();
+    expect(find.text('휴지통 0장'), findsOneWidget);
+    expect(find.text('삭제한 스크린샷이 없어요'), findsOneWidget);
+  });
+
   testWidgets('분석 제외 화면은 숨긴 캡처를 사유 이름과 함께 보여 준다', (tester) async {
     final verdicts = InMemoryLocalVerdictStore();
     final now = DateTime(2026, 10, 19);
     Future<void> put(String id, LocalVerdict v) => verdicts.save(
-      StoredVerdict.of(
-        v,
-        assetId: id,
-        takenAt: now,
-        modifiedAt: 1,
-        now: now,
-      ),
+      StoredVerdict.of(v, assetId: id, takenAt: now, modifiedAt: 1, now: now),
     );
     await put('a', judgeByText('카드 4111 1111 1111 1111'));
     await put('b', judgeByApp('Screenshot_20261019_120000_KakaoBank.jpg')!);

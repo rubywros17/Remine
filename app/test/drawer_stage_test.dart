@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:remine/core/tokens.dart';
@@ -5,6 +7,7 @@ import 'package:remine/data/remote/sync_status.dart';
 import 'package:remine/models/category.dart';
 import 'package:remine/screens/analysis_screen.dart';
 import 'package:remine/widgets/app_button.dart';
+import 'package:remine/widgets/capture_thumb.dart';
 import 'package:remine/widgets/drawer_stage.dart';
 
 /// 첫 분석 화면의 카드 → 서랍 모션: 타이밍·큐 간격·동시 카드 수·완료 채우기·큰 숫자·모션 줄이기·배치.
@@ -201,8 +204,8 @@ void main() {
     await flush(tester);
     expect(hero(tester), 30);
     expect(binSum(tester), 30);
-    expect(find.text('장 꺼냈어요'), findsOneWidget);
-    expect(find.text('홈으로'), findsOneWidget);
+    expect(find.text('장 정리했어요'), findsOneWidget);
+    expect(find.text('홈에서 둘러보기'), findsOneWidget);
   });
 
   group('진행 영역·간격', () {
@@ -245,10 +248,9 @@ void main() {
 
         status.finish(issue: SyncIssue.partial, failedCount: 2);
         await flush(tester, seconds: 5);
-        expect(find.text('장 꺼냈어요'), findsOneWidget);
+        expect(find.text('장 정리했어요'), findsOneWidget);
         expect(find.text('2장은 다음에 다시 분류해요'), findsOneWidget);
         expect(find.byType(LinearProgressIndicator), findsNothing);
-        same('완료');
       });
     }
 
@@ -344,7 +346,9 @@ void main() {
       for (var i = 0; i < 60; i++) {
         await tester.pump(const Duration(milliseconds: 100));
         expect(
-          cards(tester).length + find.byType(DrawerIdleCard).evaluate().length,
+          cards(tester).length +
+              find.byType(DrawerIdleCard).evaluate().length +
+              find.byType(DrawerCardStack).evaluate().length,
           greaterThan(0),
           reason: '${i * 100}ms',
         );
@@ -409,6 +413,313 @@ void main() {
       }
       expect(visibleFrames, greaterThan(0));
     });
+  });
+
+  group('대기 카드 묶음', () {
+    // 회전까지 반영한 네 모서리의 위·아래 끝.
+    (double, double) extent(WidgetTester t, Element e) {
+      final box = e.renderObject! as RenderBox;
+      final s = box.size;
+      final ys = [
+        box.localToGlobal(Offset.zero).dy,
+        box.localToGlobal(Offset(s.width, 0)).dy,
+        box.localToGlobal(Offset(0, s.height)).dy,
+        box.localToGlobal(Offset(s.width, s.height)).dy,
+      ];
+      return (ys.reduce(math.min), ys.reduce(math.max));
+    }
+
+    void expectClear(WidgetTester t, Finder cardFinder) {
+      final hintBottom = t.getRect(find.text(keepScreenOnHint)).bottom;
+      final numbers = find.descendant(
+        of: find.byType(DrawerStage),
+        matching: find.byWidgetPredicate(
+          (w) => w is Text && int.tryParse(w.data ?? '') != null,
+        ),
+      );
+      final numberTop = numbers
+          .evaluate()
+          .map((e) => t.getRect(find.byWidget(e.widget).first).top)
+          .reduce(math.min);
+      expect(cardFinder.evaluate(), isNotEmpty);
+      for (final e in cardFinder.evaluate()) {
+        final (top, bottom) = extent(t, e);
+        expect(top, greaterThanOrEqualTo(hintBottom), reason: '위 문구');
+        expect(bottom, lessThanOrEqualTo(numberTop), reason: '칸 숫자');
+      }
+    }
+
+    for (final size in const [Size(360, 640), Size(412, 915)]) {
+      testWidgets('기운 뒤 카드까지 문구·칸 숫자와 겹치지 않는다 $size', (tester) async {
+        final status = await mount(tester, size: size);
+        // 칸을 최대 높이까지 키운다(숫자가 가장 위로 올라온 상태).
+        for (final c in Category.values) {
+          for (var i = 0; i < 30; i++) {
+            status.count(c);
+          }
+        }
+        status.advance(10);
+        status.setWaiting(16, assetIds: ['a0', 'a1', 'a2', 'a3']);
+        await tester.pump(const Duration(seconds: 1));
+        expect(find.byType(CaptureThumb), findsNWidgets(3), reason: '3장만');
+        expectClear(tester, find.byType(CaptureThumb));
+
+        // 큐에서 나와 ±5°로 머무는 카드도(묶음에 없던 캡처).
+        status.setWaiting(0);
+        status.count(Category.shopping, assetId: 'z1');
+        status.advance(1);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(cards(tester), hasLength(1));
+        expectClear(
+          tester,
+          find.descendant(
+            of: find.byType(DrawerFlightCard),
+            matching: find.byType(CaptureThumb),
+          ),
+        );
+      });
+    }
+
+    testWidgets('결과가 오면 맨 앞 카드가 제자리에서 이름표를 받고, 뒤 카드가 앞으로 온다', (tester) async {
+      final status = await mount(tester);
+      status.setWaiting(3, assetIds: ['a0', 'a1', 'a2']);
+      await tester.pump();
+      expect(find.byKey(const ValueKey('scan-line')), findsOneWidget);
+      expect(
+        tester.widget<DrawerCardStack>(find.byType(DrawerCardStack)).assetIds,
+        ['a0', 'a1', 'a2'],
+      );
+
+      status.setWaiting(0);
+      feed(status, 3); // a0, a1, a2
+      await tester.pump();
+      final card = cards(tester).single;
+      expect(card.shot.assetId, 'a0');
+      expect(
+        card.enter.value,
+        closeTo(DrawerFlightCard.appearEnd, 0.01),
+        reason: '등장 없이 이름표부터',
+      );
+      expect(
+        tester.widget<DrawerCardStack>(find.byType(DrawerCardStack)).assetIds,
+        ['a1', 'a2'],
+      );
+    });
+
+    testWidgets('썸네일이 없으면 빈 카드, 모션 줄이기면 스캔 선 없는 정지 카드', (tester) async {
+      final status = await mount(tester);
+      status.setWaiting(3); // 보여 줄 id 없음
+      await tester.pump();
+      expect(find.byType(DrawerCardStack), findsNothing);
+      expect(find.byType(DrawerIdleCard), findsOneWidget);
+    });
+
+    testWidgets('모션 줄이기: 스캔 선 없이 정지 카드만', (tester) async {
+      final status = await mount(tester, reduced: true);
+      status.setWaiting(3, assetIds: ['a0', 'a1', 'a2']);
+      await tester.pumpAndSettle();
+      expect(find.byType(DrawerCardStack), findsOneWidget);
+      expect(find.byKey(const ValueKey('scan-line')), findsNothing);
+    });
+
+    test('묶음 표시는 3장까지만 들고, 응답이 오거나 끝나면 비운다', () {
+      final status = SyncStatus()..begin(10);
+      status.setWaiting(5, assetIds: ['a', 'b', 'c', 'd', 'e']);
+      expect(status.batchFaces, ['a', 'b', 'c']);
+      status.setWaiting(0);
+      expect(status.batchFaces, isEmpty);
+      status.setWaiting(2, assetIds: ['x']);
+      status.finish();
+      expect(status.batchFaces, isEmpty);
+    });
+  });
+
+  group('이름표 색', () {
+    for (final c in Category.values) {
+      testWidgets('${c.label}: 칸 색과 같고 글자 대비가 충분하다', (tester) async {
+        final status = await mount(tester);
+        status.count(c, assetId: 'a0');
+        status.advance(1);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+
+        final tag = tester.widget<DecoratedBox>(
+          find.byKey(const ValueKey('flight-tag')),
+        );
+        final color = (tag.decoration as BoxDecoration).color!;
+        expect(color, AppCategoryColors.of(c));
+
+        final text = tester.widget<Text>(
+          find.descendant(
+            of: find.byKey(const ValueKey('flight-tag')),
+            matching: find.byType(Text),
+          ),
+        );
+        expect(text.style!.color, const Color(0xFF111111));
+        final light = color.computeLuminance() + 0.05;
+        final dark = const Color(0xFF111111).computeLuminance() + 0.05;
+        expect(light / dark, greaterThanOrEqualTo(4.5), reason: 'WCAG AA');
+      });
+    }
+  });
+
+  group('남은 시간', () {
+    testWidgets('첫 묶음 전에는 계산 중, 이후에는 실측값', (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      var now = DateTime(2026, 11, 5, 12);
+      final status = SyncStatus(now: () => now)..begin(100);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AnalysisScreen(status: status, onHome: () {}),
+        ),
+      );
+      expect(find.text(etaPendingText), findsOneWidget);
+
+      now = now.add(const Duration(minutes: 1));
+      feed(status, 20); // 20장 1분 → 80장 4분
+      await tester.pump();
+      expect(find.text(etaPendingText), findsNothing);
+      expect(find.text('약 4분 남았어요'), findsOneWidget);
+      await flush(tester, seconds: 1);
+    });
+  });
+
+  group('완료 요약', () {
+    test('많은 순서 상위 3개, 동점은 칸 순서, 0장은 뺀다', () {
+      final top = topCategories({
+        Category.etc: 7,
+        Category.info: 12,
+        Category.shopping: 12,
+        Category.chat: 7,
+        Category.place: 1,
+        Category.schedule: 0,
+      });
+      expect(top.map((e) => e.key), [
+        Category.shopping,
+        Category.info,
+        Category.chat,
+      ]);
+      expect(topCategories({Category.etc: 0}), isEmpty);
+    });
+
+    Future<SyncStatus> finished(
+      WidgetTester tester,
+      Map<Category, int> counts, {
+      int total = 30,
+      Size size = const Size(390, 844),
+    }) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final status = SyncStatus()..begin(total);
+      counts.forEach((c, n) {
+        for (var i = 0; i < n; i++) {
+          status.count(c);
+        }
+      });
+      status.advance(total);
+      status.finish();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AnalysisScreen(status: status, onHome: () {}),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return status;
+    }
+
+    testWidgets('최다 카테고리를 칸 색으로 강조하고 상위 3개를 보여 준다', (tester) async {
+      await finished(tester, {
+        Category.shopping: 15,
+        Category.info: 12,
+        Category.chat: 3,
+      });
+      expect(find.text('요즘 가장 많이 모은 건'), findsOneWidget);
+      expect(find.text('쇼핑 15장 · 정보 12장 · 대화 3장'), findsOneWidget);
+      expect(find.text('이에요'), findsOneWidget);
+      final box = tester.widget<DecoratedBox>(
+        find.byKey(const ValueKey('summary-highlight')),
+      );
+      expect(
+        (box.decoration as BoxDecoration).color,
+        AppCategoryColors.of(Category.shopping),
+      );
+      expect(find.text('장 정리했어요'), findsOneWidget);
+      expect(find.text(keepScreenOnHint), findsNothing);
+      expect(find.byKey(const ValueKey('analysis-progress')), findsNothing);
+    });
+
+    testWidgets('받침이 없으면 "예요"', (tester) async {
+      await finished(tester, {Category.info: 30});
+      expect(find.text('예요'), findsOneWidget);
+    });
+
+    testWidgets('0장이면 요약을 숨긴다', (tester) async {
+      await finished(tester, {}, total: 0);
+      expect(find.text('요즘 가장 많이 모은 건'), findsNothing);
+      expect(find.text('새로 꺼낼 캡처가 없어요'), findsOneWidget);
+    });
+
+    testWidgets('빠진 장수를 회색으로 알려 주고, 다 들어갔으면 숨긴다', (tester) async {
+      await finished(tester, {Category.info: 25}, total: 30);
+      expect(find.text(leftOutText(30, 5)), findsOneWidget);
+      await finished(tester, {Category.info: 30}, total: 30);
+      expect(find.textContaining('빠졌어요'), findsNothing);
+    });
+
+    testWidgets('칸은 끝나면 남는 공간까지 자라고, 버튼은 좌우로 꽉 찬다', (tester) async {
+      final status = SyncStatus()..begin(30);
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AnalysisScreen(status: status, onHome: () {}),
+        ),
+      );
+      for (var i = 0; i < 30; i++) {
+        status.count(Category.shopping);
+      }
+      status.advance(30);
+      await tester.pump(const Duration(seconds: 1));
+      final before = tester.getRect(binNumber('30'));
+
+      status.finish();
+      await tester.pumpAndSettle();
+      final stage = tester.getRect(find.byType(DrawerStage));
+      final after = tester.getRect(binNumber('30'));
+      expect(after.top, lessThan(before.top), reason: '더 자랐다');
+      expect(after.top, greaterThanOrEqualTo(stage.top), reason: '스테이지 안');
+      expect(
+        after.top - stage.top,
+        lessThan(stage.height * 0.15),
+        reason: '스프링 여백만 빼고 남는 공간을 다 쓴다',
+      );
+
+      final button = tester.getRect(find.byType(AppButton));
+      expect(button.width, 390 - AppSpacing.screenPadding * 2);
+    });
+
+    for (final (size, scale) in const [
+      (Size(360, 640), 1.0),
+      (Size(360, 640), 1.3),
+      (Size(320, 480), 1.0),
+      (Size(240, 320), 1.0),
+    ]) {
+      testWidgets('넘치지 않는다 $size ×$scale', (tester) async {
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        await finished(tester, {
+          Category.entertainment: 15,
+          Category.schedule: 10,
+          Category.place: 2,
+        }, size: size);
+        expect(tester.takeException(), isNull);
+      });
+    }
   });
 
   testWidgets('칸 이름은 "문화"로 줄이고 카드 이름표는 그대로, 글자는 11px 이상이다', (tester) async {

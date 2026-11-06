@@ -116,6 +116,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     SettingsScreen(
                       settings: device.settings,
                       remote: device.remote,
+                      trash: device.trash,
                     ),
                   ),
                 ),
@@ -123,7 +124,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           if (device?.remote != null) SyncBanner(remote: device!.remote!),
           const SizedBox(height: AppSpacing.s24),
-          const HighlighterText(before: '잊고 있던 거,\n다시 ', highlight: '캐냈어요'),
+          const HighlighterText(before: '잊고 있던 스크린샷,\n다시 ', highlight: '꺼냈어요'),
           const SizedBox(height: AppSpacing.s24),
           if (interest != null) ...[
             InterestCard(

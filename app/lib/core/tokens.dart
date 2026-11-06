@@ -35,6 +35,14 @@ abstract final class AppColors {
 
   /// 선택 전 빈 원의 얇은 그림자(밝은 사진 위에서도 보이게).
   static const selectionRingShadow = Color(0x59111111);
+
+  /// 장수 배지(카테고리 수정 시트) 바탕. 선택된 칸에서는 흰색 18%.
+  static const countBadge = Color(0xFFEDEDEA);
+  static const countBadgeOnDark = Color(0x2EFFFFFF);
+
+  /// 목록 줄(설정 등) 눌림: 누르는 동안 셀라돈 12% 바탕, 물결은 24%.
+  static const pressHighlight = Color(0x1F7DC4CE);
+  static const pressSplash = Color(0x3D7DC4CE);
 }
 
 /// 카테고리 색(홈 비율 막대의 칸 · 알약 앞 점). 기존 토큰과 같은 값은 그 토큰을 그대로 쓴다.
@@ -280,6 +288,25 @@ abstract final class AnalysisStage {
   static const double appearOffsetY = -40;
   static const double appearScale = 0.88;
   static const double tiltRadians = 0.0873; // ±5°
+
+  /// 대기 묶음: 맨 앞 −1°, 뒤 2장은 좌우로 비켜 ±[tiltRadians]·[stackBackScale]배·반투명.
+  static const double stackFrontTilt = -0.0175; // −1°
+  static const double stackBackScale = 0.9;
+  static const double stackBackOpacity = 0.55;
+  static const double stackBackOffset = 0.22; // 카드 폭 비율
+
+  /// 맨 앞 카드의 스캔 선: 위↔아래 왕복 2초.
+  static const scanHalf = Duration(seconds: 1);
+  static const double scanLineHeight = 3;
+  static const double scanGlowBlur = 8;
+  static const double scanTrailShare = 0.22; // 선 위 그라데이션 높이(카드 높이 비율)
+  static const double scanTrailOpacity = 0.18;
+
+  /// 완료 순간 칸이 남는 공간까지 자라는 시간.
+  static const binGrow = Duration(milliseconds: 600);
+  static const summaryFade = Duration(
+    milliseconds: 200,
+  ); // 완료 요약이 자리 안에서 나타나는 시간
   static const double flyEndScale = 0.2;
 
   /// 떠 있는 카드가 없을 때 빈 카드가 숨 쉬는 반주기(1.6초 주기, scale [breathScale]↔1).

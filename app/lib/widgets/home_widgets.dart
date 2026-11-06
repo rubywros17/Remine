@@ -175,15 +175,20 @@ class CategoryRatioBar extends StatelessWidget {
 
 /// 막대 칸과 같은 색의 작은 점. 밝은 색은 옅은 테두리로 바탕과 구분한다.
 class CategoryDot extends StatelessWidget {
-  const CategoryDot({super.key, required this.category});
+  const CategoryDot({
+    super.key,
+    required this.category,
+    this.size = AppCategoryColors.dotSize,
+  });
 
   final Category category;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: AppCategoryColors.dotSize,
-      height: AppCategoryColors.dotSize,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         color: AppCategoryColors.of(category),
         shape: BoxShape.circle,
@@ -444,7 +449,7 @@ class _Watermark extends StatelessWidget {
   );
 }
 
-/// 콜라주 위에 비스듬히 붙은 원형 스티커 "19 / SHOTS". 흰색, 잊은 관심사는 레몬.
+/// 콜라주 위에 비스듬히 붙은 원형 스티커 "19 / SHOTS". 셀라돈(카드 강조색, 글자 대비 9.6:1), 잊은 관심사는 레몬.
 class _ShotsSticker extends StatelessWidget {
   const _ShotsSticker({required this.count, required this.forgotten});
 
@@ -461,7 +466,7 @@ class _ShotsSticker extends StatelessWidget {
         height: AppInterestCard.shotsSize,
         padding: const EdgeInsets.all(9),
         decoration: BoxDecoration(
-          color: forgotten ? AppColors.lemon : AppColors.white,
+          color: forgotten ? AppColors.lemon : AppColors.celadon,
           shape: BoxShape.circle,
           boxShadow: const [
             BoxShadow(color: AppColors.cardShadow, blurRadius: 6),

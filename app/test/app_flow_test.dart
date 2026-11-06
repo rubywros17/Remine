@@ -47,7 +47,7 @@ void main() {
       expect(find.text('re:mine', findRichText: true), findsOneWidget);
       expect(find.text('MON 10.19'), findsOneWidget);
       expect(find.byType(HighlighterText), findsOneWidget);
-      expect(find.text('캐냈어요'), findsOneWidget);
+      expect(find.text('꺼냈어요'), findsOneWidget);
       // 관심사 카드
       expect(find.text('잊은 관심사'), findsOneWidget);
       expect(find.text('#니트가디건'), findsOneWidget);
@@ -219,7 +219,7 @@ void main() {
       // 카드 위 스티커에도 같은 이름이 있으므로, 누르는 칩은 키로 찾는다.
       await tester.tap(find.byKey(const ValueKey('category-chip-5')));
       await tester.pumpAndSettle();
-      expect(find.text('이거 어디 서랍이야?'), findsOneWidget);
+      expect(find.text('어느 서랍에 넣을까요?'), findsOneWidget);
       return repo;
     }
 
@@ -227,16 +227,16 @@ void main() {
       await openSheet(tester);
 
       expect(find.textContaining('AI는 '), findsOneWidget);
-      expect(find.text('응, 쇼핑 맞아'), findsOneWidget); // 현재 값 그대로면 확인 문구
+      expect(find.text('쇼핑 그대로 둘게요'), findsOneWidget); // 현재 값 그대로면 확인 문구
 
       await tester.tap(find.text('장소'));
       await tester.pumpAndSettle();
-      expect(find.text('이 서랍으로 옮기기'), findsOneWidget);
-      expect(find.text('응, 쇼핑 맞아'), findsNothing);
+      expect(find.text('장소로 옮길게요'), findsOneWidget);
+      expect(find.text('쇼핑 그대로 둘게요'), findsNothing);
 
       await tester.tap(find.text('쇼핑').last); // 시트 안 타일로 되돌림
       await tester.pumpAndSettle();
-      expect(find.text('응, 쇼핑 맞아'), findsOneWidget);
+      expect(find.text('쇼핑 그대로 둘게요'), findsOneWidget);
     });
 
     testWidgets('다른 서랍으로 옮기면 저장소(USER)와 상세·카테고리·홈 집계에 바로 반영된다', (tester) async {
@@ -244,11 +244,11 @@ void main() {
 
       await tester.tap(find.text('장소'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('이 서랍으로 옮기기'));
+      await tester.tap(find.text('장소로 옮길게요'));
       await tester.pumpAndSettle();
 
       // 상세의 카테고리 칩과 카드 위 카테고리 스티커가 함께 바뀐다
-      expect(find.text('이거 어디 서랍이야?'), findsNothing);
+      expect(find.text('어느 서랍에 넣을까요?'), findsNothing);
       expect(find.text('장소'), findsNWidgets(2));
 
       final summary = await repo.summary();
@@ -277,7 +277,7 @@ void main() {
     testWidgets('"응, 쇼핑 맞아"는 값은 그대로 두고 USER로 저장한다', (tester) async {
       final repo = await openSheet(tester);
 
-      await tester.tap(find.text('응, 쇼핑 맞아'));
+      await tester.tap(find.text('쇼핑 그대로 둘게요'));
       await tester.pumpAndSettle();
 
       final item = (await repo.list(category: Category.shopping)).items
@@ -296,7 +296,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('이거 어디 서랍이야?'), findsNothing);
+      expect(find.text('어느 서랍에 넣을까요?'), findsNothing);
       final item = (await repo.list(category: Category.shopping)).items.first;
       expect(item.categorySource, CategorySource.auto);
     });

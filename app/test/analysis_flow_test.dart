@@ -85,7 +85,7 @@ void main() {
 
   group('첫 분석 화면', () {
     testWidgets('진행 중: 실제 숫자, 안내 제목, 작은 보안 문구, 홈에서 먼저 보기', (tester) async {
-      final status = SyncStatus()..begin(15, intervalMs: 4500);
+      final status = SyncStatus()..begin(15);
       status.advance(5);
       for (var i = 0; i < 3; i++) {
         status.count(Category.shopping);
@@ -103,7 +103,7 @@ void main() {
         expect(find.text(drawerBinLabel(c)), findsOneWidget, reason: '칸 7개');
       }
       expect(find.text('홈에서 먼저 볼래요'), findsOneWidget);
-      expect(find.text('홈으로'), findsNothing);
+      expect(find.text('홈에서 둘러보기'), findsNothing);
       expect(find.text(PrivacyNote.text), findsOneWidget);
       expect(find.text(keepScreenOnHint), findsOneWidget);
     });
@@ -121,10 +121,10 @@ void main() {
       );
 
       expect(find.text('15'), findsOneWidget);
-      expect(find.text('장 꺼냈어요'), findsOneWidget);
+      expect(find.text('장 정리했어요'), findsOneWidget);
       expect(find.text('/ 15장 꺼냈어요'), findsNothing);
-      expect(find.bySemanticsLabel('15장 꺼냈어요'), findsOneWidget);
-      expect(find.text('홈으로'), findsOneWidget);
+      expect(find.bySemanticsLabel('15장 정리했어요'), findsOneWidget);
+      expect(find.text('홈에서 둘러보기'), findsOneWidget);
       expect(find.text('홈에서 먼저 볼래요'), findsNothing);
       expect(
         find.text(keepScreenOnHint),
@@ -134,7 +134,7 @@ void main() {
       await tester.pump(const Duration(seconds: 5));
       expect(home, 0, reason: '누르기 전에는 이동하지 않는다');
 
-      await tester.tap(find.text('홈으로'));
+      await tester.tap(find.text('홈에서 둘러보기'));
       expect(home, 1);
     });
 
@@ -146,7 +146,7 @@ void main() {
 
       expect(find.text('새로 꺼낼 캡처가 없어요'), findsOneWidget);
       expect(find.textContaining('서버에 연결하지 못했어요'), findsOneWidget);
-      expect(find.text('홈으로'), findsOneWidget);
+      expect(find.text('홈에서 둘러보기'), findsOneWidget);
     });
 
     testWidgets('카드는 방금 분류된 실제 캡처 썸네일 + 그 카테고리 이름표다', (tester) async {
@@ -280,11 +280,61 @@ void main() {
       await tester.pump(const Duration(seconds: 3));
 
       expect(find.text('HOME'), findsNothing, reason: '자동 이동 금지');
-      expect(find.text('홈으로'), findsOneWidget);
+      expect(find.text('홈에서 둘러보기'), findsOneWidget);
 
-      await tester.tap(find.text('홈으로'));
+      await tester.tap(find.text('홈에서 둘러보기'));
       await tester.pump();
       expect(find.text('HOME'), findsOneWidget);
+    });
+
+    group('첫 분석 이후 실행', () {
+      /// [n]장이 새로 생긴 상태로 앱을 연다. 서버 응답은 오지 않아 실행이 begin 직후에 머문다.
+      Future<SyncRig> openWith(WidgetTester tester, int n) async {
+        late final RecordingClient client;
+        client = RecordingClient(
+          responder: (r) => r.path == '/api/screenshots/analyze'
+              ? Completer<http.StreamedResponse>().future
+              : Future.value(client.defaultFor(r)),
+        );
+        final rig = (await tester.runAsync(() async {
+          final rig = await SyncRig.create(
+            photos: photosNamed({
+              for (var i = 0; i < n; i++)
+                'p$i': 'Screenshot_20261021_1010${10 + i}_Chrome.jpg',
+            }),
+            texts: {for (var i = 0; i < n; i++) 'p$i': '봄 니트 가디건 신상 할인 ' * 10},
+            client: client,
+          );
+          await rig.state.setFirstSyncDone();
+          return rig;
+        }))!;
+        await tester.pumpWidget(
+          _app(SyncGate(remote: rig.remote, child: const Text('HOME'))),
+        );
+        await tester.runAsync(() async {
+          for (var i = 0; i < 200 && rig.status.runId == 0; i++) {
+            await Future<void>.delayed(const Duration(milliseconds: 10));
+          }
+        });
+        await tester.pump();
+        expect(rig.status.total, n);
+        return rig;
+      }
+
+      testWidgets('새 캡처가 $analysisScreenMinShots장 이상이면 분석 화면, 문구는 이번 장수 기준', (
+        tester,
+      ) async {
+        await openWith(tester, analysisScreenMinShots);
+        expect(find.text('HOME'), findsNothing);
+        expect(find.text('/ $analysisScreenMinShots장 꺼냈어요'), findsOneWidget);
+        await tester.pump(const Duration(minutes: 6)); // 응답 없는 요청의 시간 제한을 흘려보낸다
+      });
+
+      testWidgets('그보다 적으면 홈에서 뒤로 정리한다', (tester) async {
+        await openWith(tester, analysisScreenMinShots - 1);
+        expect(find.text('HOME'), findsOneWidget);
+        await tester.pump(const Duration(minutes: 6));
+      });
     });
 
     testWidgets('진행 중에도 "홈에서 먼저 볼래요"로 나갈 수 있다(동기화는 멈추지 않는다)', (tester) async {

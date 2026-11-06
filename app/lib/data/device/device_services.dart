@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 
 import '../remote/remote_services.dart';
 import 'device_capture_service.dart';
+import 'device_trash.dart';
 import 'gallery_reader.dart';
 import 'settings_store.dart';
 
@@ -14,12 +15,14 @@ class DeviceServices {
     required this.capture,
     required this.settings,
     required this.exportDir,
+    required this.trash,
     this.remote,
   });
 
   final GalleryReader reader;
   final DeviceCaptureService capture;
   final SettingsStore settings;
+  final DeviceTrash trash;
 
   /// 디버그 내보내기 폴더(앱 전용 외부 저장소 — 권한 없이 쓰고 `adb pull`로 가져온다).
   final Future<Directory> Function() exportDir;

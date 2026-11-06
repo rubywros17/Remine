@@ -13,6 +13,10 @@ import 'package:remine/data/device/gallery_reader.dart';
 import 'package:remine/data/device/privacy/local_verdict_store.dart';
 import 'package:remine/data/device/privacy/privacy_filter.dart';
 import 'package:remine/data/device/settings_store.dart';
+import 'package:remine/data/device/trash_store.dart';
+import 'package:remine/data/remine_store.dart';
+import 'package:remine/models/screenshot_item.dart';
+import 'package:remine/widgets/category_sheet.dart';
 import 'package:remine/models/category.dart';
 import 'package:remine/screens/debug_ocr_screen.dart';
 import 'package:remine/widgets/drawer_stage.dart';
@@ -273,9 +277,84 @@ void defineLayoutMatrix({
         await tester.pumpAndSettle();
         await tester.tap(chip.first);
         await tester.pumpAndSettle(); // 카테고리 칩 → 시트
-        expect(find.text('이거 어디 서랍이야?'), findsOneWidget);
+        expect(find.text('어느 서랍에 넣을까요?'), findsOneWidget);
       });
       _expectClean('수정 시트 $label', errors);
+    });
+
+    testWidgets('수정 시트 · 문화생활 + 세 자리 장수(선택 칸) · $label', (tester) async {
+      final errors = await _errorsDuring(() async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1.0;
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.view.reset);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        final repo = FakeScreenshotRepository(
+          now: () => _now,
+          seed: [
+            for (var i = 0; i < 999; i++)
+              ScreenshotItem(
+                id: i + 1,
+                localAssetId: 'e$i',
+                takenAt: _now,
+                category: Category.entertainment,
+                tags: const [],
+              ),
+          ],
+        );
+        await tester.pumpWidget(
+          RemineScope(
+            store: RemineStore(repo, now: () => _now),
+            child: const MaterialApp(
+              home: Scaffold(
+                body: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: CategorySheet(
+                    current: Category.entertainment,
+                    autoCategory: Category.entertainment,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final name = find.text(Category.entertainment.label);
+        final tile = find.ancestor(
+          of: name,
+          matching: find.byType(AnimatedContainer),
+        );
+        final badge = find.byKey(const ValueKey('count-badge-ENTERTAINMENT'));
+        // 글자·아이콘은 수정 전 크기 그대로(줄이지 않는다), 비율 축소 없음.
+        expect(
+          tester.widget<Text>(name).style!.fontSize,
+          CategoryTileSize.nameFontSize,
+        );
+        expect(find.byType(FittedBox), findsNothing);
+        // 320×480·1.3배는 여백을 다 줄여도 모자라 배지만 숨긴다.
+        final narrow = realFonts && size == const Size(320, 480) && scale > 1;
+        if (narrow) {
+          expect(badge, findsNothing, reason: '320×480·1.3배는 배지를 숨긴다');
+        }
+        // 이름은 한 줄이고, 이름(과 배지)은 칸 안에 있다(잘리지 않음).
+        // 15px 글자 한 줄 높이는 두 줄(15 × 배율 × 2)보다 낮다.
+        expect(tester.getSize(name).height, lessThan(15 * scale * 2));
+        final box = tester.getRect(tile);
+        expect(tester.getRect(name).left, greaterThanOrEqualTo(box.left));
+        expect(tester.getRect(name).right, lessThanOrEqualTo(box.right + 0.5));
+        if (badge.evaluate().isNotEmpty) {
+          expect(
+            find.descendant(of: badge, matching: find.text('999')),
+            findsOneWidget,
+          );
+          expect(
+            tester.getRect(badge).right,
+            lessThanOrEqualTo(box.right + 0.5),
+            reason: '배지가 칸 밖으로 ${tester.getRect(badge).right - box.right}px',
+          );
+        }
+      });
+      _expectClean('수정 시트 문화생활 999 $label', errors);
     });
 
     testWidgets('사진 권한 거부 · $label', (tester) async {
@@ -354,6 +433,37 @@ void defineLayoutMatrix({
       _expectClean('설정 $label', errors);
     });
 
+    testWidgets('휴지통(전체 선택 + 하단 [복구]·[삭제 N장]) · $label', (tester) async {
+      final errors = await _errorsDuring(() async {
+        final store = InMemoryTrashStore();
+        for (var i = 0; i < 12; i++) {
+          await store.add(
+            TrashedShot(
+              assetId: 't$i',
+              category: Category.values[i % Category.values.length],
+              takenAt: _now,
+              trashedAt: _now.add(Duration(minutes: i)),
+              onServer: false,
+            ),
+          );
+        }
+        await _pump(
+          tester,
+          size,
+          scale,
+          device: fakeServices(FakeGalleryReader(), trash: store),
+        );
+        await _tap(tester, find.byIcon(LucideIcons.settings));
+        await _tap(tester, find.text('휴지통'));
+        await tester.runAsync(pumpEventQueue);
+        await tester.pump();
+        await _tap(tester, find.text('전체 선택'));
+        expect(find.text('선택 해제'), findsOneWidget);
+        expect(find.text('삭제 12장'), findsOneWidget);
+      });
+      _expectClean('휴지통 $label', errors);
+    });
+
     testWidgets('첫 분석 · 실제 진행(큰 숫자·예상 시간·홈 버튼) · $label', (tester) async {
       final errors = await _errorsDuring(() async {
         tester.view.physicalSize = size;
@@ -386,9 +496,9 @@ void defineLayoutMatrix({
           ),
         );
         await tester.pump(const Duration(milliseconds: 400));
-        expect(find.text('남은 시간을 계산하고 있어요'), findsOneWidget);
+        expect(find.text(etaPendingText), findsOneWidget);
         // 서버 응답을 기다리는 중(움직이는 막대 + 안내 문구). 막대가 계속 움직이므로 settle 대신 시간을 흘려보낸다.
-        final waiting = SyncStatus()..begin(300, intervalMs: 4500);
+        final waiting = SyncStatus()..begin(300);
         waiting.setWaiting(20);
         await tester.pumpWidget(
           MaterialApp(
@@ -402,7 +512,7 @@ void defineLayoutMatrix({
       _expectClean('첫 분석 실제 진행 $label', errors);
     });
 
-    testWidgets('첫 분석 · 완료 상태·카드 비행(칸 99장·홈으로 버튼) · $label', (tester) async {
+    testWidgets('첫 분석 · 완료 요약·대기 묶음·카드 비행(칸 99장) · $label', (tester) async {
       final errors = await _errorsDuring(() async {
         tester.view.physicalSize = size;
         tester.view.devicePixelRatio = 1.0;
@@ -417,6 +527,7 @@ void defineLayoutMatrix({
             status.count(c);
           }
         }
+        status.count(Category.entertainment); // 강조 줄이 가장 긴 "문화생활이에요"가 되게
         status.finish();
         Future<void> show(SyncStatus st, {FakeGalleryReader? reader}) async {
           await tester.pumpWidget(
@@ -432,14 +543,25 @@ void defineLayoutMatrix({
         }
 
         await show(status);
-        expect(find.text('홈으로'), findsOneWidget);
+        expect(find.text('홈에서 둘러보기'), findsOneWidget);
+        // 요약은 미리 잡아 둔 자리 안에 다 들어간다(넘치면 잘린다).
+        final slot = tester.getRect(
+          find.byKey(const ValueKey('summary-slot-box')),
+        );
+        final summary = tester.getRect(find.byType(AnalysisSummary));
+        expect(
+          summary.bottom,
+          lessThanOrEqualTo(slot.bottom + 0.5),
+          reason: '요약이 자리보다 ${summary.bottom - slot.bottom}px 길다',
+        );
         // 아직 한 장도 분류되지 않은 완료(새 캡처 없음)와 연결 실패 안내.
         await show(SyncStatus()..finish());
         expect(find.text('새로 꺼낼 캡처가 없어요'), findsWidgets);
         await show(SyncStatus()..finish(issue: SyncIssue.offline));
         expect(find.textContaining('서버에 연결하지 못했어요'), findsOneWidget);
-        // 진행 중 + 카드가 쌓이고 날아가는 상태(칸마다 몇 장씩 들어간다).
-        final partial = SyncStatus()..begin(300, intervalMs: 4500);
+        // 진행 중 + 대기 묶음과 카드가 쌓이고 날아가는 상태(칸마다 몇 장씩 들어간다).
+        final partial = SyncStatus()..begin(300);
+        partial.setWaiting(16, assetIds: ['w0', 'w1', 'w2']);
         await tester.pumpWidget(
           MaterialApp(
             home: DeviceScope(
@@ -592,6 +714,7 @@ void defineLayoutMatrix({
           reader: reader,
           capture: _StallingCapture(base.capture, done.future),
           settings: base.settings,
+          trash: base.trash,
           exportDir: base.exportDir,
         );
         tester.view.physicalSize = size;

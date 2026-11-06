@@ -59,14 +59,21 @@ class _AnalysisPreviewScreenState extends State<AnalysisPreviewScreen> {
   void initState() {
     super.initState();
     if (widget.measured) {
-      _status.begin(_total, intervalMs: 4500);
-      _status.setWaiting(_batchSize);
+      _status.begin(_total);
+      _waitForNextBatch();
       _timer = Timer.periodic(_batchEvery, (_) => _batch());
     } else {
       _status.begin(_total);
       _timer = Timer.periodic(_tick, (_) => _step());
     }
   }
+
+  void _waitForNextBatch() => _status.setWaiting(
+    _batchSize,
+    assetIds: [
+      for (var i = 1; i <= SyncStatus.maxFaces; i++) _assetId(_status.done + i),
+    ],
+  );
 
   String _assetId(int n) {
     final ids = widget.assetIds;
@@ -77,6 +84,7 @@ class _AnalysisPreviewScreenState extends State<AnalysisPreviewScreen> {
 
   void _batch() {
     final size = min(_batchSize, _total - _status.done);
+    _status.setWaiting(0); // 실제 흐름처럼 응답이 오면 대기를 끄고 결과를 넣는다
     for (var i = 1; i <= size; i++) {
       _status.count(_pick(), assetId: _assetId(_status.done + i));
     }
@@ -84,6 +92,8 @@ class _AnalysisPreviewScreenState extends State<AnalysisPreviewScreen> {
     if (_status.done >= _total) {
       _timer.cancel();
       _status.finish();
+    } else {
+      _waitForNextBatch();
     }
   }
 

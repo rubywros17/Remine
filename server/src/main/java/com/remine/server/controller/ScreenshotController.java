@@ -6,9 +6,11 @@ import com.remine.server.dto.AnalyzeResponse;
 import com.remine.server.dto.CategoryUpdateRequest;
 import com.remine.server.dto.CategoryUpdateResponse;
 import com.remine.server.dto.ForgetRequest;
+import com.remine.server.dto.TrashRequest;
 import com.remine.server.dto.ScreenshotPageResponse;
 import com.remine.server.service.ScreenshotCategoryService;
 import com.remine.server.service.ScreenshotForgetService;
+import com.remine.server.service.ScreenshotTrashService;
 import com.remine.server.service.ScreenshotQueryService;
 import com.remine.server.service.ScreenshotService;
 import jakarta.validation.Valid;
@@ -40,6 +42,7 @@ public class ScreenshotController {
     private final AnalyzeMultipartReader multipartReader;
     private final ScreenshotCategoryService categoryService;
     private final ScreenshotForgetService forgetService;
+    private final ScreenshotTrashService trashService;
 
     @PostMapping(value = "/analyze", consumes = MediaType.APPLICATION_JSON_VALUE)
     public AnalyzeResponse analyze(@RequestHeader("X-Device-Id") Long deviceId,
@@ -69,6 +72,22 @@ public class ScreenshotController {
     public void forget(@RequestHeader("X-Device-Id") Long deviceId,
                        @Valid @RequestBody ForgetRequest request) {
         forgetService.forget(deviceId, request.assetIds());
+    }
+
+    /** 앱 휴지통에 넣은 캡처를 관심사 집계·푸시에서 뺀다. 없는 id는 무시 → 204. */
+    @PostMapping("/trash")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void trash(@RequestHeader("X-Device-Id") Long deviceId,
+                      @Valid @RequestBody TrashRequest request) {
+        trashService.trash(deviceId, request.assetIds());
+    }
+
+    /** 앱 휴지통에서 되살린 캡처를 다시 집계에 넣는다. 없는 id는 무시 → 204. */
+    @PostMapping("/restore")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void restore(@RequestHeader("X-Device-Id") Long deviceId,
+                        @Valid @RequestBody TrashRequest request) {
+        trashService.restore(deviceId, request.assetIds());
     }
 
     @GetMapping

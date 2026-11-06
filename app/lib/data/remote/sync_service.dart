@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import '../../models/category.dart';
+import '../device/trash_store.dart';
 import '../device/device_capture_service.dart';
 import '../device/gallery_reader.dart';
 import '../device/own_capture.dart';
@@ -39,6 +40,7 @@ class SyncService {
     this.push,
     this.log,
     this.autoSync = true,
+    this.trash,
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now {
     api.recoverDevice = _recoverDevice;
@@ -75,6 +77,9 @@ class SyncService {
   /// (main.dart, 릴리스는 항상 켜짐). 꺼져도 서버 조회·토큰·기기 재등록은 그대로이고 [run]으로 수동 실행한다.
   final bool autoSync;
 
+  /// 앱 휴지통. 서버에 아직 못 알린 일을 [flushTrash]가 보낸다.
+  final TrashStore? trash;
+
   Future<void>? _inFlight;
   StreamSubscription<String>? _tokenSub;
   bool _again = false; // 재등록으로 전송 기록을 비웠다 → 이번 실행 뒤 한 번 더
@@ -104,6 +109,7 @@ class SyncService {
       final id = await api.registerDevice(await _tokenForRegister());
       await state.clear();
       await state.setDeviceId(id);
+      await trash?.resendAll(); // 새 기기에는 휴지통 표시가 없다. 이번 실행의 재전송 뒤에 다시 알린다
       return id;
     }().whenComplete(() => _reregistering = null));
     if (_inFlight != null) {
@@ -123,12 +129,14 @@ class SyncService {
       final config = await api.config();
       final deviceId = await _ensureDevice();
       await _forgetOwn(deviceId, own);
+      await flushTrash(); // 지난번에 못 알린 휴지통
       final waiting = <GalleryPhoto>[];
       for (final photo in mine) {
         final e = await state.entry(photo.id);
+        // 기기에서 끝난 캡처도 다시 처리하지 않는다(바뀌면 다시 판정).
         final upToDate =
             e != null &&
-            e.status == SyncStatusCode.synced &&
+            e.status != SyncStatusCode.failed &&
             e.modifiedAt == photo.modifiedAt;
         if (!upToDate) waiting.add(photo);
       }
@@ -143,7 +151,7 @@ class SyncService {
         ' → 보낼 후보 ${waiting.length} → SYNC_LIMIT 후 ${pending.length}',
       );
       final tally = _Tally();
-      status.begin(pending.length, intervalMs: config.classifyIntervalMs);
+      status.begin(pending.length);
       var deviceIdNow = deviceId;
       final size = batchSize < config.maxBatchSize
           ? batchSize
@@ -161,6 +169,7 @@ class SyncService {
         ' · 글자 없음 ETC ${tally.noTextEtc} · 건너뜀(판정 없음 등) ${tally.skipped} · 실패 $failed',
       );
       await state.setFirstSyncDone();
+      await flushTrash(); // 재등록으로 다시 보낸 캡처까지 표시되도록 끝에서 한 번 더
       failed = await state.failedCount();
       status.finish(
         issue: failed > 0 ? SyncIssue.partial : SyncIssue.none,
@@ -219,10 +228,12 @@ class SyncService {
   /// 예전에 보냈던 캡처가 지금 보니 Remine 자기 캡처면(판정 규칙이 생기기 전에 보낸 것) 서버에서 지운다.
   /// 지운 뒤 전송 기록을 없애서 다음 실행에는 다시 보내지 않는다. 실패하면 다음 실행에서 다시(분석은 계속).
   Future<void> _forgetOwn(int deviceId, List<GalleryPhoto> own) async {
-    final sent = [
-      for (final p in own)
-        if (await state.entry(p.id) != null) p.id,
-    ];
+    // 서버에 보낸 적 있는 것만. 기기에서 끝난 캡처(deviceOnly)의 id는 서버에 알리지 않는다.
+    final sent = <String>[];
+    for (final p in own) {
+      final e = await state.entry(p.id);
+      if (e != null && e.status != SyncStatusCode.deviceOnly) sent.add(p.id);
+    }
     if (sent.isEmpty) return;
     try {
       for (var i = 0; i < sent.length; i += _forgetChunk) {
@@ -236,7 +247,61 @@ class SyncService {
     }
   }
 
-  static const _forgetChunk = 500; // 서버 forget 상한
+  static const _forgetChunk = 500; // 서버 forget·trash·restore 상한
+
+  Future<void>? _flushing;
+  bool _flushAgain = false;
+
+  /// 휴지통 대기열을 서버에 보낸다. 실패는 삼킨다(대기열에 남아 다음 동기화 때 다시). 겹쳐 돌지 않고, 도는 중에 또 불리면 끝나고 한 번 더.
+  Future<void> flushTrash() {
+    if (_flushing != null) {
+      _flushAgain = true;
+      return _flushing!;
+    }
+    return _flushing = _flushLoop().whenComplete(() => _flushing = null);
+  }
+
+  Future<void> _flushLoop() async {
+    final store = trash;
+    if (store == null) return;
+    do {
+      _flushAgain = false;
+      try {
+        final id = await state.deviceId();
+        if (id == null) return; // 등록 전: 서버에 그 캡처가 아직 없다
+        final o = await store.outbox();
+        await _sendTrash(o.trash, (ids) => api.trash(id, ids), store.trashSent);
+        await _sendTrash(
+          o.restore,
+          (ids) => api.restore(id, ids),
+          store.restoreSent,
+        );
+        await _sendTrash(
+          o.forget,
+          (ids) => api.forget(id, ids),
+          store.forgetSent,
+        );
+      } on ApiException catch (e) {
+        log?.call('[sync] 휴지통 반영 실패: $e');
+        return;
+      } catch (e) {
+        log?.call('[sync] 휴지통 반영 실패: ${e.runtimeType}'); // 내용은 남기지 않는다
+        return;
+      }
+    } while (_flushAgain);
+  }
+
+  Future<void> _sendTrash(
+    List<String> ids,
+    Future<void> Function(List<String> ids) send,
+    Future<void> Function(List<String> ids) done,
+  ) async {
+    for (var i = 0; i < ids.length; i += _forgetChunk) {
+      final part = ids.sublist(i, (i + _forgetChunk).clamp(0, ids.length));
+      await send(part);
+      await done(part);
+    }
+  }
 
   /// 앱 시작 때 한 번 서버의 토큰을 알림 설정에 맞춘다. **서버에 토큰이 있는 건 알림을 켰을 때뿐이다.**
   /// 켜짐 → 지금 토큰을 올리고 FCM이 바꿀 때마다 다시 올림 / 꺼짐 → 지움(지난번 실패분도 여기서 다시) /
@@ -317,7 +382,10 @@ class SyncService {
     for (final photo in chunk) {
       final verdict = await capture.verdicts.find(photo.id);
       final record = await capture.store.find(photo.id);
-      if (verdict?.route == LocalRoute.deviceOnly) tally.deviceOnly++;
+      if (verdict?.route == LocalRoute.deviceOnly) {
+        tally.deviceOnly++;
+        await state.putEntry(_entry(photo, SyncStatusCode.deviceOnly));
+      }
       if (verdict?.route == LocalRoute.deviceOnly &&
           verdict!.category != null) {
         status.count(
@@ -375,7 +443,8 @@ class SyncService {
       round++;
       final AnalyzeResult result;
       try {
-        status.setWaiting(send.length); // 화면이 "분류하는 중"을 보여 준다
+        // 화면이 "분류하는 중"과 이 묶음의 썸네일을 보여 준다(기기 안 표시일 뿐, 보내는 내용과 무관).
+        status.setWaiting(send.length, assetIds: send.keys.toList());
         result = await api.analyze(currentDevice, [
           for (final o in send.values) o.toItem(),
         ]);
@@ -474,6 +543,7 @@ class SyncService {
         now: _now(),
       ),
     );
+    await state.putEntry(_entry(photo, SyncStatusCode.deviceOnly));
     status.count(category, assetId: photo.id);
   }
 

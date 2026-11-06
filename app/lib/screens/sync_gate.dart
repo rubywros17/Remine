@@ -4,12 +4,18 @@ import 'package:flutter/services.dart';
 import '../data/remote/remote_services.dart';
 import 'analysis_screen.dart';
 
+/// 첫 분석 이후 실행에서도 이번에 보낼 캡처가 이 장수 이상이면 홈 대신 분석 화면을 보여 준다.
+/// 그보다 적으면 홈에서 뒤로 조용히 정리한다.
+const analysisScreenMinShots = 10;
+
 /// 서버 연동 모드에서 동기화를 시작하고, **첫 분석**(처음 설치해 아직 한 번도 끝내지 못한 동안)에는 진행 화면을 보여 준다.
 ///
 /// - 분석 화면의 "홈에서 먼저 볼래요"를 누르면 바로 [child](홈)로 나간다. 동기화는 앱이 열려 있는 동안 계속 돌고,
 ///   배치가 끝날 때마다 홈이 새로 불러온다.
 /// - 첫 분석이 끝나도(또는 서버에 닿지 못해 멈춰도) 자동으로 넘어가지 않는다. 완료 상태에서 [홈으로]를 눌러야 [child]가 열린다.
 /// - 이후 실행은 곧바로 [child]를 보여 주고 뒤에서 새로 생기거나 바뀐 캡처만 증분으로 보낸다.
+///   이번에 보낼 캡처가 [analysisScreenMinShots]장 이상이면(앱 시작·복귀 모두) 분석 화면으로 바꾼다.
+///   다른 화면이 위에 열려 있으면 끼어들지 않는다.
 /// - 앱이 다시 앞으로 돌아올 때(resumed)도 한 번 더 시작한다. 이미 돌고 있으면 겹쳐 돌지 않는다.
 /// - 푸시: 시작할 때 서버 토큰을 알림 설정에 맞춘다. 알림을 묻는 것은 이 앞의 NotificationGate다.
 /// - 첫 분석 화면이 떠 있고 아직 끝나지 않은 동안 화면 꺼짐을 막는다(화면이 꺼지면 앱이 멈춰 동기화가 끊긴다).
@@ -62,8 +68,41 @@ class _SyncGateState extends State<SyncGate> with WidgetsBindingObserver {
     });
     _updateScreenOn();
     widget.remote.sync.startTokenSync(); // 기다리지 않는다(실패해도 동기화와 무관)
-    // 끝나도 자동으로 홈으로 넘어가지 않는다: 분석 화면이 완료 상태("N장 꺼냈어요")와 [홈으로] 버튼을 보여 준다.
-    await widget.remote.sync.runAuto();
+    // 끝나도 자동으로 홈으로 넘어가지 않는다: 분석 화면이 완료 상태("N장 정리했어요")와 [홈에서 둘러보기] 버튼을 보여 준다.
+    await _runAuto();
+  }
+
+  /// 감시를 켠 때의 [SyncStatus.runId]. 이 값이 바뀌면(begin) 이번 실행의 장수로 한 번만 판단한다.
+  int? _watchFrom;
+
+  Future<void> _runAuto() async {
+    final sync = widget.remote.sync;
+    final status = widget.remote.status;
+    if (!_showAnalysis && !sync.isRunning && sync.autoSync) {
+      _watchFrom = status.runId;
+      status.addListener(_onBegin);
+    }
+    try {
+      await sync.runAuto();
+    } finally {
+      _stopWatching(); // begin 전에 끝난 실행(오류 등)
+    }
+  }
+
+  void _stopWatching() {
+    if (_watchFrom == null) return;
+    _watchFrom = null;
+    widget.remote.status.removeListener(_onBegin);
+  }
+
+  void _onBegin() {
+    final status = widget.remote.status;
+    if (status.runId == _watchFrom) return; // 아직 시작 전
+    _stopWatching();
+    if (!mounted || status.total < analysisScreenMinShots) return;
+    if (ModalRoute.of(context)?.isCurrent == false) return; // 다른 화면이 위에 있다
+    setState(() => _showAnalysis = true);
+    _updateScreenOn();
   }
 
   /// 분석 화면의 홈 버튼("홈에서 먼저 볼래요" / 완료 후 [홈으로]).
@@ -75,7 +114,7 @@ class _SyncGateState extends State<SyncGate> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && _loaded) {
-      widget.remote.sync.runAuto(); // 진행 중이면 새로 시작하지 않는다
+      _runAuto(); // 진행 중이면 새로 시작하지 않는다
     }
   }
 
@@ -83,6 +122,7 @@ class _SyncGateState extends State<SyncGate> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     widget.remote.status.removeListener(_updateScreenOn);
+    _stopWatching();
     if (_screenOn) widget.keepScreenOn(false);
     super.dispose();
   }

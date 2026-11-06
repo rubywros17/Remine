@@ -92,7 +92,7 @@ void main() {
       expect((shots.decoration! as BoxDecoration).color, AppColors.lemon);
     });
 
-    testWidgets('태그가 주인공, 그 아래 linkedTags 최대 3개, 스티커 "19 / SHOTS"(흰색)', (
+    testWidgets('태그가 주인공, 그 아래 linkedTags 최대 3개, 스티커 "19 / SHOTS"(셀라돈)', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -105,7 +105,7 @@ void main() {
       final shots = tester.widget<Container>(
         find.byKey(const ValueKey('shots-sticker')),
       );
-      expect((shots.decoration! as BoxDecoration).color, AppColors.white);
+      expect((shots.decoration! as BoxDecoration).color, AppColors.celadon);
 
       await tester.pumpWidget(_card(_interest(linked: const [])));
       expect(find.textContaining(' · '), findsNothing);

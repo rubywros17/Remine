@@ -213,20 +213,13 @@ void main() {
   });
 
   group('분류 대기 안내', () {
-    test('서버가 알려 준 호출 간격으로 시작부터 남은 시간을 어림한다', () {
-      final status = SyncStatus()..begin(15, intervalMs: 4500);
-      // 15장 × 4.5초 = 67.5초 → 측정 전에도 표시한다
-      expect(status.eta, const Duration(milliseconds: 67500));
-      expect(formatEta(status.eta!), '약 2분 남았어요');
-    });
-
-    test('간격을 모르면(가짜 분류기·옛 서버) 측정 전에는 예상하지 않는다', () {
+    test('첫 묶음이 끝나기 전에는 남은 시간을 내지 않는다', () {
       final status = SyncStatus()..begin(15);
       expect(status.eta, isNull);
     });
 
     test('진행 문구는 묶음 사이에도 마지막 장수를 유지한다', () {
-      final status = SyncStatus()..begin(15, intervalMs: 4500);
+      final status = SyncStatus()..begin(15);
       expect(status.progressMessage, '분류를 준비하는 중이에요…');
       status.setWaiting(15);
       expect(status.progressMessage, '15장을 분류하는 중이에요…');

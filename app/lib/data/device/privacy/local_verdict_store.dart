@@ -56,6 +56,9 @@ abstract interface class LocalVerdictStore {
   /// 기기에서 분류가 끝난([LocalRoute.deviceOnly]) 건. [hidden]이 null이면 숨김 여부와 상관없이 전부.
   Future<List<StoredVerdict>> deviceOnly({bool? hidden});
 
+  /// 갤러리에서 지운 캡처의 판정을 지운다.
+  Future<void> removeAll(Iterable<String> assetIds);
+
   Future<void> clear();
 }
 
@@ -127,6 +130,14 @@ class SqfliteLocalVerdictStore implements LocalVerdictStore {
   }
 
   @override
+  Future<void> removeAll(Iterable<String> assetIds) async {
+    final db = await _local.db;
+    for (final id in assetIds) {
+      await db.delete('local_verdict', where: 'asset_id = ?', whereArgs: [id]);
+    }
+  }
+
+  @override
   Future<void> clear() async => (await _local.db).delete('local_verdict');
 }
 
@@ -172,6 +183,10 @@ class InMemoryLocalVerdictStore implements LocalVerdictStore {
     });
     return list;
   }
+
+  @override
+  Future<void> removeAll(Iterable<String> assetIds) async =>
+      assetIds.forEach(_rows.remove);
 
   @override
   Future<void> clear() async => _rows.clear();

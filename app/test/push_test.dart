@@ -251,12 +251,14 @@ void main() {
     testWidgets('첫 분석 완료 화면의 [홈으로] 뒤에는 묻지 않는다', (tester) async {
       final rig = await newRig(tester, FakePushClient());
       await tester.pumpWidget(
-        MaterialApp(home: SyncGate(remote: rig.remote, child: const Text('HOME'))),
+        MaterialApp(
+          home: SyncGate(remote: rig.remote, child: const Text('HOME')),
+        ),
       );
       await tester.runAsync(() => rig.sync.run());
       await tester.pump(const Duration(seconds: 3));
-      await tester.ensureVisible(find.text('홈으로'));
-      await tester.tap(find.text('홈으로'));
+      await tester.ensureVisible(find.text('홈에서 둘러보기'));
+      await tester.tap(find.text('홈에서 둘러보기'));
       await tester.pump();
 
       expect(find.text('HOME'), findsOneWidget);

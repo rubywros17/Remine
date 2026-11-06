@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../core/helpers.dart';
 import '../core/tokens.dart';
+import '../data/remine_store.dart';
 import '../data/remote/sync_status.dart';
 import '../models/category.dart';
 import '../widgets/app_button.dart';
@@ -12,7 +14,7 @@ import '../widgets/small_widgets.dart';
 /// 없으면(개발용 `START_SCREEN=analysis`, 테스트) 가짜 진행값을 보여 준다.
 ///
 /// - 진행 중: [onHome]이 있으면 "홈에서 먼저 볼래요"로 분석 중에도 홈에 나갈 수 있다(분석은 계속된다).
-/// - 끝나면: 자동으로 넘어가지 않고 "N장 꺼냈어요" 완료 상태와 [홈으로] 버튼을 보여 준다.
+/// - 끝나면: 자동으로 넘어가지 않고 "N장 정리했어요" 요약과 [홈에서 둘러보기] 버튼을 보여 준다.
 /// - 큰 숫자는 서버 진행 수가 아니라 칸 합계다. 완료 상태도 칸을 다 채운 뒤에 보여 준다([DrawerStage.onProgress]).
 ///
 /// 레이아웃: 상단 숫자와 하단 버튼 사이의 남는 높이를 [DrawerStage]가 쓴다. 그래도 모자라면 내용 전체가 함께 스크롤된다.
@@ -70,12 +72,38 @@ class _LiveAnalysisState extends State<_LiveAnalysis> {
   late int _landed = widget.status.counts.values.fold(0, (a, b) => a + b);
   late bool _settled = widget.status.finished;
 
+  /// 완료 요약에 쓰는 전체 개수(홈 막대와 같은 데이터). 불러오기 전에는 null이라 요약을 그리지 않는다.
+  Map<Category, int>? _totals;
+  bool _totalsRequested = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_settled) _loadTotals();
+  }
+
   void _onProgress(int landed, bool settled) {
     if (landed == _landed && settled == _settled) return;
     setState(() {
       _landed = landed;
       _settled = settled;
     });
+    if (settled) _loadTotals();
+  }
+
+  /// 칸을 다 채운 뒤 한 번. 이번 실행 개수가 아니라 저장소 요약(휴지통 제외, 기기 분류 포함)이다.
+  /// 저장소가 없는 화면(개발용·테스트)은 이번 실행 개수로 대신한다.
+  Future<void> _loadTotals() async {
+    if (_totalsRequested) return;
+    _totalsRequested = true;
+    final store = RemineScope.maybeOf(context);
+    final totals = store == null
+        ? widget.status.counts
+        : {
+            for (final c in (await store.repository.summary()).categories)
+              c.category: c.count,
+          };
+    if (mounted) setState(() => _totals = totals);
   }
 
   @override
@@ -93,14 +121,14 @@ class _LiveAnalysisState extends State<_LiveAnalysis> {
           status: status,
           onProgress: _onProgress,
           finished: _settled,
+          summaryCounts: _totals,
           etaText: eta != null
               ? formatEta(eta)
               : status.running
-              ? '남은 시간을 계산하고 있어요'
+              ? etaPendingText
               : null,
-          progressText: _settled
-              ? status.bannerMessage
-              : status.progressMessage,
+          progressText: status.progressMessage,
+          issueText: _settled ? status.bannerMessage : null,
           onHome: widget.onHome,
         );
       },
@@ -116,8 +144,10 @@ class _Body extends StatelessWidget {
     this.status,
     this.onProgress,
     this.finished = false,
+    this.summaryCounts,
     this.etaText,
     this.progressText,
+    this.issueText,
     this.onHome,
   });
 
@@ -129,8 +159,12 @@ class _Body extends StatelessWidget {
   final SyncStatus? status;
   final void Function(int landed, bool settled)? onProgress;
   final bool finished;
+
+  /// 완료 요약의 카테고리별 개수(전체 기준).
+  final Map<Category, int>? summaryCounts;
   final String? etaText;
   final String? progressText;
+  final String? issueText;
   final VoidCallback? onHome;
 
   @override
@@ -169,20 +203,24 @@ class _Body extends StatelessWidget {
                             total: total,
                             finished: finished,
                             etaText: etaText,
+                            issueText: issueText,
                           ),
                           const SizedBox(height: AppSpacing.s16),
-                          _ProgressSlot(
-                            text: progressText,
-                            finished: finished,
-                            working: status != null,
-                          ),
-                          const SizedBox(height: AppSpacing.s12),
-                          _FixedLine(
-                            finished ? null : keepScreenOnHint,
-                            style: AppText.caption.copyWith(
-                              color: AppColors.white.withValues(alpha: 0.7),
+                          if (finished)
+                            _SummarySlot(counts: summaryCounts)
+                          else ...[
+                            _ProgressSlot(
+                              text: progressText,
+                              working: status != null,
                             ),
-                          ),
+                            const SizedBox(height: AppSpacing.s12),
+                            _FixedLine(
+                              keepScreenOnHint,
+                              style: AppText.caption.copyWith(
+                                color: AppColors.white.withValues(alpha: 0.7),
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                       const SizedBox(height: AppSpacing.s16),
@@ -191,6 +229,7 @@ class _Body extends StatelessWidget {
                           status: status,
                           counts: counts,
                           onProgress: onProgress,
+                          finished: finished,
                         ),
                       ),
                       const SizedBox(height: AppSpacing.s16),
@@ -198,12 +237,15 @@ class _Body extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
                           if (onHome != null) ...[
-                            Center(
-                              child: AppButton(
-                                label: finished ? '홈으로' : '홈에서 먼저 볼래요',
-                                onTap: onHome,
+                            if (finished)
+                              AppButton(label: '홈에서 둘러보기', onTap: onHome)
+                            else
+                              Center(
+                                child: AppButton(
+                                  label: '홈에서 먼저 볼래요',
+                                  onTap: onHome,
+                                ),
                               ),
-                            ),
                             const SizedBox(height: AppSpacing.s16),
                           ],
                           const PrivacyNote(),
@@ -221,15 +263,17 @@ class _Body extends StatelessWidget {
   }
 }
 
-/// 큰 진행 숫자. 진행 중에는 "N / M장 꺼냈어요", 끝나면 "N장 꺼냈어요".
+/// 큰 진행 숫자. 진행 중에는 "N / M장 꺼냈어요", 끝나면 "N장 정리했어요"와 빠진 장수.
 class _Counter extends StatelessWidget {
   const _Counter({
     required this.done,
     required this.total,
     required this.finished,
     required this.etaText,
+    this.issueText,
   });
 
+  final String? issueText;
   final int done;
   final int total;
   final bool finished;
@@ -238,7 +282,10 @@ class _Counter extends StatelessWidget {
   /// 끝났는데 꺼낸 게 없을 때(새 캡처 없음·서버에 닿지 못함).
   static const _noneText = '새로 꺼낼 캡처가 없어요';
 
-  String get _finishedText => done == 0 ? _noneText : '$done장 꺼냈어요';
+  String get _finishedText => done == 0 ? _noneText : '$done장 정리했어요';
+
+  /// 칸에 들어가지 못한 장수(서버가 이미 가진 캡처, 다음에 다시 보낼 캡처 등).
+  int get _left => total - done;
 
   @override
   Widget build(BuildContext context) {
@@ -259,14 +306,218 @@ class _Counter extends StatelessWidget {
           const SizedBox(height: AppSpacing.s8),
           Text(
             finished
-                ? (done == 0 ? _finishedText : '장 꺼냈어요')
+                ? (done == 0 ? _finishedText : '장 정리했어요')
                 : '/ $total장 꺼냈어요',
             style: AppText.sectionTitle.copyWith(color: AppColors.white),
           ),
           const SizedBox(height: AppSpacing.s8),
-          _FixedLine(
-            finished ? null : etaText,
-            style: AppText.body.copyWith(color: AppColors.celadonSoft),
+          if (!finished)
+            _FixedLine(
+              etaText,
+              style: AppText.body.copyWith(color: AppColors.celadonSoft),
+            )
+          else if (issueText != null)
+            Text(
+              issueText!,
+              style: AppText.caption.copyWith(color: AppColors.lemon),
+            )
+          else if (_left > 0 && done > 0)
+            Text(
+              leftOutText(total, _left),
+              style: AppText.caption.copyWith(
+                color: AppColors.white.withValues(alpha: 0.55),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 첫 묶음이 끝나기 전 남은 시간 자리. 믿을 값이 없어 숫자를 보여 주지 않는다.
+const etaPendingText = '남은 시간 계산 중이에요';
+
+/// 칸에 들어가지 못한 장 안내. 서버가 이미 분석한 캡처(건너뜀)와 다음 실행에 다시 보낼 캡처(실패·마감)를 한 문장으로 묶는다.
+String leftOutText(int total, int left) =>
+    '$total장 중 $left장은 이미 정리했거나 다음에 다시 확인해요';
+
+/// 많은 순서로 상위 [limit]개(0장 제외). 동점이면 칸 순서상 앞의 것.
+List<MapEntry<Category, int>> topCategories(
+  Map<Category, int> counts, {
+  int limit = 3,
+}) {
+  final list = [
+    for (final c in Category.values)
+      if ((counts[c] ?? 0) > 0) MapEntry(c, counts[c]!),
+  ];
+  // List.sort는 안정 정렬을 보장하지 않으므로 칸 순서까지 비교한다.
+  list.sort((a, b) {
+    final byCount = b.value.compareTo(a.value);
+    return byCount != 0 ? byCount : a.key.index.compareTo(b.key.index);
+  });
+  return list.take(limit).toList();
+}
+
+/// 완료 요약 자리. DONE이 되는 순간 가장 긴 요약 높이를 먼저 잡아 두고(비어 있음), 전체 개수가 오면
+/// 그 안에서 페이드인한다. 요약이 늦게 와도 아래 스테이지 크기가 바뀌지 않는다.
+class _SummarySlot extends StatelessWidget {
+  const _SummarySlot({required this.counts});
+
+  /// 아직 불러오지 못했으면 null.
+  final Map<Category, int>? counts;
+
+  /// 이 글자 배율부터 자리를 네 줄로 잡는다.
+  static const _wideScale = 1.3;
+
+  @override
+  Widget build(BuildContext context) {
+    // 자리 높이: 요약과 같은 글자 스타일의 줄들(제목 · 강조 · 상위 3개). 글자 크기 설정을 따라간다.
+    // 좁은 화면·대체 글꼴에서는 제목이나 가장 긴 강조 줄("문화생활이에요")이 접히므로 그 줄 수를 재서 잡는다.
+    // 글자 1.3배 이상이면 강조 줄은 항상 두 줄로 잡는다.
+    final title = AppText.sectionTitle;
+    final scaler = MediaQuery.textScalerOf(context);
+    // 측정은 Text가 실제로 쓰는 스타일(테마 기본 스타일과 합친 것)로 한다.
+    final measured = DefaultTextStyle.of(context).style.merge(title);
+    // 화면이 IntrinsicHeight 안이라 LayoutBuilder를 못 쓴다 → 화면 폭에서 안전 영역·좌우 여백을 뺀다.
+    final insets = MediaQuery.paddingOf(context);
+    final width =
+        MediaQuery.sizeOf(context).width -
+        insets.left -
+        insets.right -
+        AppSpacing.screenPadding * 2;
+    final titleLines = _lines(summaryTitle, measured, scaler, width);
+    final widest =
+        _width(Category.entertainment.label, measured, scaler) +
+        16 + // 이름 하이라이트 좌우 여백
+        _width('이에요', measured, scaler);
+    final highlightLines = scaler.scale(1) >= _wideScale || widest > width
+        ? 2
+        : 1;
+    return _slot(context, title, titleLines, highlightLines);
+  }
+
+  static TextPainter _paint(
+    String s,
+    TextStyle style,
+    TextScaler scaler,
+    double maxWidth,
+  ) => TextPainter(
+    text: TextSpan(text: s, style: style),
+    textDirection: TextDirection.ltr,
+    textScaler: scaler,
+  )..layout(maxWidth: maxWidth);
+
+  static int _lines(String s, TextStyle style, TextScaler scaler, double w) {
+    final p = _paint(s, style, scaler, w);
+    final n = p.computeLineMetrics().length;
+    p.dispose();
+    return n;
+  }
+
+  static double _width(String s, TextStyle style, TextScaler scaler) {
+    final p = _paint(s, style, scaler, double.infinity);
+    final w = p.width;
+    p.dispose();
+    return w;
+  }
+
+  Widget _slot(
+    BuildContext context,
+    TextStyle title,
+    int titleLines,
+    int highlightLines,
+  ) {
+    return Stack(
+      key: const ValueKey('summary-slot-box'),
+      children: [
+        ExcludeSemantics(
+          child: Opacity(
+            opacity: 0,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var i = 0; i < titleLines; i++) Text(' ', style: title),
+                const SizedBox(height: AppSpacing.s4),
+                for (var i = 0; i < highlightLines; i++)
+                  Text(' ', style: title),
+                const SizedBox(height: AppSpacing.s8),
+                const Text(' ', style: AppText.caption),
+              ],
+            ),
+          ),
+        ),
+        // 그보다 길어지면 아래가 잘린다(스테이지는 그대로).
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: AnimatedOpacity(
+            key: const ValueKey('summary-slot'),
+            opacity: counts == null ? 0 : 1,
+            duration: AppMotion.reduced(context)
+                ? Duration.zero
+                : AnalysisStage.summaryFade,
+            child: AnalysisSummary(counts: counts ?? const {}),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 완료 요약 제목.
+const summaryTitle = '요즘 가장 많이 모은 건';
+
+/// 완료 요약: "요즘 가장 많이 모은 건 / [카테고리]이에요" + 상위 3개. 한 장도 없으면 그리지 않는다.
+class AnalysisSummary extends StatelessWidget {
+  const AnalysisSummary({super.key, required this.counts});
+
+  final Map<Category, int> counts;
+
+  @override
+  Widget build(BuildContext context) {
+    final top = topCategories(counts);
+    if (top.isEmpty) return const SizedBox.shrink();
+    final best = top.first.key;
+    final title = AppText.sectionTitle.copyWith(color: AppColors.white);
+    final line = top.map((e) => '${e.key.label} ${e.value}장').join(' · ');
+    final copula = copulaFor(best.label);
+    return Semantics(
+      label: '요즘 가장 많이 모은 건 ${best.label}$copula. $line',
+      excludeSemantics: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(summaryTitle, style: title),
+          const SizedBox(height: AppSpacing.s4),
+          Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              DecoratedBox(
+                key: const ValueKey('summary-highlight'),
+                decoration: BoxDecoration(
+                  color: AppCategoryColors.of(best),
+                  borderRadius: BorderRadius.circular(AppRadii.tile),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Text(
+                    best.label,
+                    style: title.copyWith(color: AppColors.ink),
+                  ),
+                ),
+              ),
+              Text(copula, style: title),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.s8),
+          Text(
+            line,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AppText.caption.copyWith(
+              color: AppColors.white.withValues(alpha: 0.55),
+            ),
           ),
         ],
       ),
@@ -327,17 +578,11 @@ class _FixedLine extends StatelessWidget {
   }
 }
 
-/// 진행 영역: 가는 막대 + 한 줄 안내. 묶음 사이·완료 뒤에도 같은 자리를 차지해 레이아웃이 튀지 않는다.
-/// 끝나면 막대는 숨기고 안내 자리에 문제 문구(있을 때만)를 보여 준다. 모션 줄이기면 막대 없이 글자만.
+/// 진행 영역: 가는 막대 + 한 줄 안내. 묶음 사이에도 같은 자리를 차지해 레이아웃이 튀지 않는다. 모션 줄이기면 막대 없이 글자만.
 class _ProgressSlot extends StatelessWidget {
-  const _ProgressSlot({
-    required this.text,
-    required this.finished,
-    required this.working,
-  });
+  const _ProgressSlot({required this.text, required this.working});
 
   final String? text;
-  final bool finished;
 
   /// 실제 진행 중인 화면인지(개발용 가짜 값이면 막대를 띄우지 않는다).
   final bool working;
@@ -346,7 +591,7 @@ class _ProgressSlot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final showBar = working && !finished && !AppMotion.reduced(context);
+    final showBar = working && !AppMotion.reduced(context);
     return Semantics(
       key: const ValueKey('analysis-progress'),
       liveRegion: true,
@@ -372,10 +617,7 @@ class _ProgressSlot extends StatelessWidget {
           const SizedBox(height: AppSpacing.s8),
           _FixedLine(
             text,
-            style: AppText.body.copyWith(
-              fontSize: 14,
-              color: finished ? AppColors.lemon : AppColors.white,
-            ),
+            style: AppText.body.copyWith(fontSize: 14, color: AppColors.white),
           ),
         ],
       ),

@@ -183,7 +183,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('장소'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('이 서랍으로 옮기기'));
+      await tester.tap(find.text('장소로 옮길게요'));
       await tester.pumpAndSettle();
 
       // 상세: 같은 항목이 그대로 보이고 칩만 장소로 바뀐다

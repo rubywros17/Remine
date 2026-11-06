@@ -60,7 +60,6 @@ class SyncStatus extends ChangeNotifier {
   int _lastBatchCount = 0;
   SyncIssue _issue = SyncIssue.none;
   int _failedCount = 0;
-  int _intervalMs = 0;
   int _waiting = 0;
   final Map<Category, int> _counts = {};
 
@@ -88,13 +87,15 @@ class SyncStatus extends ChangeNotifier {
   /// 지금 서버 응답을 기다리고 있는 장수(0이면 기다리는 중이 아니다). 화면이 "분류하는 중"을 보여 주는 데 쓴다.
   int get waiting => _waiting;
 
-  /// 서버가 알려 준 장당 분류 간격(ms). 0이면 모른다/대기 없음.
-  int get intervalMs => _intervalMs;
+  /// 지금 서버에 보낸 묶음의 앞쪽 캡처(최대 [maxFaces]장). 대기 화면이 실제 썸네일을 보여 주는 데 쓴다. 숨김 캡처는 보내지 않으니 들어오지 않는다.
+  List<String> get batchFaces => List.unmodifiable(_batchFaces);
+  List<String> _batchFaces = const [];
+  static const maxFaces = 3;
 
   static const _batchWindow = 3;
 
-  /// 남은 예상 시간. 처음에는 서버가 알려 준 호출 간격으로 어림하고(없으면 null),
-  /// 묶음이 끝나면 최근 3묶음의 평균 속도로 계산한다. 표시값은 줄어드는 방향으로만 바뀐다.
+  /// 남은 예상 시간. 첫 묶음이 끝나기 전에는 null이고(믿을 값이 없다),
+  /// 그 뒤로 최근 3묶음의 평균 속도로 계산한다. 표시값은 줄어드는 방향으로만 바뀐다.
   Duration? get eta {
     if (!_running) return null;
     final computed = _computeEta();
@@ -107,11 +108,7 @@ class SyncStatus extends ChangeNotifier {
 
   Duration? _computeEta() {
     final remaining = _total - _done;
-    if (_batches.isEmpty) {
-      return _intervalMs > 0
-          ? Duration(milliseconds: _intervalMs * remaining)
-          : null;
-    }
+    if (_batches.isEmpty) return null;
     var ms = 0;
     var items = 0;
     for (final b in _batches) {
@@ -135,12 +132,12 @@ class SyncStatus extends ChangeNotifier {
     return last == null ? Duration.zero : _now().difference(last);
   }
 
-  void begin(int total, {int intervalMs = 0}) {
+  void begin(int total) {
     _running = true;
     _finished = false;
     _shots.clear();
     _runId++;
-    _intervalMs = intervalMs;
+    _batchFaces = const [];
     _waiting = 0;
     _done = 0;
     _total = total;
@@ -166,10 +163,11 @@ class SyncStatus extends ChangeNotifier {
   }
 
   /// 서버에 [count]장을 보내고 응답을 기다리는 동안 켠다(응답이 오면 0으로).
-  void setWaiting(int count) {
-    if (_waiting == count) return;
+  void setWaiting(int count, {List<String> assetIds = const []}) {
+    if (_waiting == count && assetIds.isEmpty && _batchFaces.isEmpty) return;
     _waiting = count;
     if (count > 0) _lastBatchCount = count;
+    _batchFaces = count > 0 ? assetIds.take(maxFaces).toList() : const [];
     notifyListeners();
   }
 
@@ -183,6 +181,7 @@ class SyncStatus extends ChangeNotifier {
     _running = false;
     _finished = true;
     _waiting = 0;
+    _batchFaces = const [];
     _issue = issue;
     _failedCount = failedCount;
     notifyListeners(); // 화면이 마지막 기록까지 가져간 뒤에 비운다

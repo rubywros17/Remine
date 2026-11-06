@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:remine/data/device/trash_store.dart';
 import 'package:remine/data/device/device_capture_service.dart';
 import 'package:remine/data/device/gallery_reader.dart';
 import 'package:remine/data/device/ocr_engine.dart';
@@ -102,6 +103,8 @@ class RecordingClient extends http.BaseClient {
       case 'PUT /api/devices/me/fcm-token':
       case 'DELETE /api/devices/me/fcm-token':
       case 'POST /api/screenshots/forget':
+      case 'POST /api/screenshots/trash':
+      case 'POST /api/screenshots/restore':
         return http.StreamedResponse(const Stream.empty(), 204);
       case 'POST /api/dev/push-test':
         return jsonResponse({'result': 'SENT'});
@@ -231,6 +234,7 @@ class SyncRig {
     this.repository,
     this.batches,
     this.push,
+    this.trash,
   );
 
   final RecordingClient client;
@@ -247,6 +251,7 @@ class SyncRig {
   /// 배치가 끝날 때마다 쌓이는 호출 시점의 `status.done`.
   final List<int> batches;
   final PushClient? push;
+  final TrashStore trash;
 
   RemoteServices get remote => RemoteServices(
     repository: repository,
@@ -269,6 +274,7 @@ class SyncRig {
     void Function(String line)? log,
     ForegroundLog? foreground,
     bool autoSync = true,
+    TrashStore? trash,
   }) async {
     final reader = FakeGalleryReader(photos: photos, albums: albums);
     final ocr = MapOcrEngine(texts);
@@ -288,6 +294,7 @@ class SyncRig {
     final api = RemineApi('http://localhost:8080', c, log: log);
     final shrink = shrinker ?? FakeShrinker();
     final batches = <int>[];
+    final trashStore = trash ?? InMemoryTrashStore();
     final sync = SyncService(
       api: api,
       reader: reader,
@@ -303,7 +310,10 @@ class SyncRig {
       push: push,
       log: log,
       autoSync: autoSync,
+      trash: trashStore,
     );
+    final repository = RemoteRepository(api, state, status, trash: trashStore)
+      ..onTrashChanged = sync.flushTrash;
     return SyncRig._(
       c,
       reader,
@@ -314,9 +324,10 @@ class SyncRig {
       status,
       shrink,
       sync,
-      RemoteRepository(api, state, status),
+      repository,
       batches,
       push,
+      trashStore,
     );
   }
 }

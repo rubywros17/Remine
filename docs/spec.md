@@ -50,7 +50,7 @@
 - 첫 실행 시 최근 N장(기본 300장)만 분석해 첫 경험을 빠르게 한다.
 - 서버는 analyze 요청 하나에 **최대 20장**(`remine.analyze.max-batch-size`)만 받으므로 앱이 **20장씩 나눠** 순차 요청한다. 초과하면 400이다.
   (분류 호출이 순차이고 무료 등급 속도 제한 때문에 호출 간격을 두어, 20장 요청은 최소 약 1.5분이 걸릴 수 있다. 비동기·병렬 분석은 미정 사항.)
-- 이후 새로 추가된 스크린샷만 증분 분석한다.
+- 이후 새로 추가된 스크린샷만 증분 분석한다. 앱을 열 때(시작·복귀) 이번에 분석할 캡처가 10장(`analysisScreenMinShots`) 이상이면 홈 대신 첫 분석과 같은 화면을 보여 주고(문구는 이번 장수 기준), 그보다 적으면 홈에서 뒤로 정리한다.
 
 **F-02. 자동 분류 + 태그**
 - 기기 안에서 OCR로 텍스트 추출 (ML Kit, 한국어).
@@ -72,6 +72,7 @@
     - **강한 민감 정보**(주민등록번호, 카드·계좌번호, 인증번호(OTP), 비밀번호): 서버로 보내지 않고 기기에서 `ETC`로 분류한다. 텍스트·이미지 모두 기기를 떠나지 않는다.
     - **전화번호**: 차단하지 않는다. OCR 텍스트에서 `[전화번호]`로 가린 뒤 **텍스트만** 보내고 이미지는 보내지 않는다. 서버도 `[전화번호]` 표시가 있으면 이미지가 와도 쓰지 않는다(이중 방어).
     - **은행·증권·메신저 앱 캡처**: 서버로 보내지 않고 기기에서 앱 기준으로 바로 분류한다(메신저 → `CHAT`, 은행·증권 → `ETC`).
+    - **기기에서 끝난 캡처**(민감·금융·메신저·글자 없음)는 기기 로컬 DB에 처리 기록(`deviceOnly`)만 남겨 다음 실행에서 다시 처리하지 않는다. 이 기록의 asset id는 서버로 보내지 않는다.
     - **Remine 자기 화면 캡처**: 분류 대상이 아니라 OCR·전송·목록에서 모두 뺀다. 갤럭시는 우리 앱 화면 캡처 파일명에 앱 이름을 붙이지 않아서, "파일명에 앱 이름이 없음 + 촬영 시각이 앱이 앞에 있던 구간(resumed~paused, 앞뒤 5초) 안"이면 자기 캡처로 본다. 구간은 기기에만 최근 90일 보관한다. 구간 기록이 생기기 전 캡처는 설치 ~ 이 규칙이 들어간 업데이트 시각을 한 번 정해 그 기간의 이름 없는 캡처만 빼고, 이미 서버에 보낸 것은 `POST /api/screenshots/forget`으로 지운다.
 - LLM(`gemini-3.5-flash-lite`, temperature 1.0)이 카테고리·태그·한 줄 요약을 생성한다. 근거와 한계는 `experiment/SUMMARY.md`.
   - 요약은 핵심 대상 + 내용의 20자 안팎 명사구다(마침표·"-다" 금지, "화면/캡처/스마트폰" 금지). 운영 프롬프트 v3 = v1 카테고리 정의 + 이 요약 형식.
@@ -128,8 +129,9 @@
 
 **F-06. 사진 정리(휴지통)** — 앱 내 휴지통(이번 단계) / 기기·서버 삭제(3주차 이후)
 - 상세 화면에서 캡처를 **위로 던져** 휴지통으로 옮긴다(보이는 메뉴는 없고, 화면 읽기 동작 "휴지통으로 옮기기"로도 가능). 되돌리기는 몇 초(4초) 동안 스낵바로 제공한다. 모션·제스처 명세는 [design.md](design.md)의 상세 화면.
-- **지금 구현 범위(앱 내 휴지통)**: 앱의 Repository에만 `trash`/`restore` 개념이 있다. 휴지통 항목은 목록·카테고리 개수·대표 태그·최신 썸네일·관심사 집계에서 빠지고, 되돌리면 원래 위치(`taken_at` 최신순)로 돌아온다. 휴지통 항목의 카테고리는 수정할 수 없다. **서버와 기기 사진은 건드리지 않는다.**
-- **3주차 이후 범위(미정, 제안만)**: ① 실제 **기기 사진 삭제 또는 시스템 휴지통 이동**(안드로이드는 `MediaStore` 휴지통 API/삭제 권한 확인이 필요, 사용자 확인 절차 설계) ② **서버 삭제 API**(예: `DELETE /api/screenshots/{id}` 또는 휴지통 상태 동기화 — 서버에 이미 저장된 OCR 텍스트·카테고리·태그·요약을 어떻게 지울지, 휴지통 보관 기간) ③ 휴지통 화면(목록·비우기·복원). MVP 범위 밖이라 구현하지 않고 제안으로만 둔다.
+- **앱 휴지통**: 스와이프는 앱 DB(`trash` 표)에 남기고 갤러리 원본은 건드리지 않는다. 앱을 다시 켜도 유지되고 목록·카테고리 개수·최신 썸네일에서 빠진다. 설정 > 휴지통에서 되살릴 수 있다.
+- **서버 반영**: 서버 캡처는 `POST /api/screenshots/trash`·`/restore`로 알려 관심사 집계·푸시에서 뺀다(행과 태그는 유지, 목록·요약은 앱이 직접 뺀다). 실패하면 앱 대기열에 남아 다음 동기화 때 다시 보낸다. 기기에서만 분류한 캡처는 asset id도 보내지 않는다.
+- **갤러리에서 삭제**(Android 11+): 설정 > 휴지통에서 고른 장 또는 전체를 `MediaStore.createTrashRequest`로 시스템 확인창 한 번에 갤러리 휴지통으로 옮긴다(약 30일 뒤 시스템이 삭제). 허용한 장만 앱 기록과 서버 데이터(`forget`)를 지우고, 취소하면 아무것도 바뀌지 않는다. Android 10 이하는 버튼을 숨기고 앱 휴지통만 제공한다. 새 권한은 필요 없다.
 - 개인정보: 휴지통으로 옮기는 것은 서버 전송과 무관하다. 서버 삭제가 생기면 "저장하는 항목(OCR 텍스트·카테고리·태그·요약)"의 삭제 방식을 처리방침에 명시한다.
 
 ### ⏳ MVP 이후
@@ -236,7 +238,7 @@
 - **검토 기준 정확도** = confirmed / (confirmed + corrected). 사용자가 직접 본 표본뿐이라 작고 편향될 수 있어 참고용이다.
 - **혼동 쌍** (auto_category → category) 건수: 프롬프트·카테고리 정의 개선의 입력.
 - 한계: 수정 이력 없음, 기기 안에서 분류한 캡처(민감·은행·메신저 앱)는 서버에 없어 제외, 모델·프롬프트 버전별 분리는 버전 컬럼(`classifier_version`)이 생기면 가능.
-- 조회 API: `GET /api/categories/accuracy` (헤더 `X-Device-Id`) → `{analyzed, corrected, confirmed, unreviewed, correctionRate, accuracyUpperBound, reviewedAccuracy, byAutoCategory:[{category, analyzed, corrected, confirmed}], confusions:[{from, to, count}]}`. 비율은 분모가 0이면 `null`. `confirmed`는 앱 수정 시트의 "응, X 맞아"(같은 값 저장)로 생긴다. `from`/`to` 기간 필터는 아직 없다. `group by auto_category, category, category_source` 쿼리 1회. 기기 전체 합산은 인증이 없는 지금은 API로 열지 않고 관리용 SQL로만 본다.
+- 조회 API: `GET /api/categories/accuracy` (헤더 `X-Device-Id`) → `{analyzed, corrected, confirmed, unreviewed, correctionRate, accuracyUpperBound, reviewedAccuracy, byAutoCategory:[{category, analyzed, corrected, confirmed}], confusions:[{from, to, count}]}`. 비율은 분모가 0이면 `null`. `confirmed`는 앱 수정 시트의 "X 그대로 둘게요"(같은 값 저장)로 생긴다. `from`/`to` 기간 필터는 아직 없다. `group by auto_category, category, category_source` 쿼리 1회. 기기 전체 합산은 인증이 없는 지금은 API로 열지 않고 관리용 SQL로만 본다.
 
 ## 9. API (초안)
 
@@ -281,7 +283,9 @@
 | 없는 id **또는 다른 기기의 캡처** | 404 (같은 응답이라 다른 기기의 id 존재를 알 수 없음. 값 검증이 먼저라 400/404 차이로도 알 수 없음) |
 | 분석되지 않은 캡처(`analyzed_at` null) | 409 |
 | GET | `/api/screenshots?category=&tag=&page=&size=` | 분류된 스크린샷 목록. taken_at 최신순, page 기본 0 / size 기본 30·최대 100, 각 항목에 태그 포함. 항목: `{id, localAssetId, takenAt, sourceApp, category, autoCategory, categorySource, summary, tags}`. `tag`는 정규화 키로 비교한다(`#`·공백·대소문자 무시, "니트 가디건" = "니트가디건"). `category` 없이 `tag`만 주면 카테고리와 상관없이 그 태그 전부(앱의 태그 모아보기) |
-| POST | `/api/screenshots/forget` | 보내지 말았어야 할 캡처(Remine 자기 화면 캡처)를 서버에서 지운다. 본문 `{"assetIds":["..."]}`(최대 500개, 없으면 400) → 204. 이 기기의 캡처와 태그 연결만 지우고 없는 id는 무시(멱등). 관심사·카테고리 개수는 조회 때 다시 세므로 바로 반영된다. 미등록 기기 404 |
+| POST | `/api/screenshots/forget` | 서버에서 지운다(Remine 자기 화면 캡처, 갤러리에서 삭제한 캡처). 본문 `{"assetIds":["..."]}`(최대 500개, 없으면 400) → 204. 이 기기의 캡처와 태그 연결만 지우고 없는 id는 무시(멱등). 관심사·카테고리 개수는 조회 때 다시 세므로 바로 반영된다. 미등록 기기 404 |
+| POST | `/api/screenshots/trash` | 앱 휴지통 캡처를 관심사 집계·푸시에서 뺀다(행·태그·목록은 유지). 본문 `{"assetIds":[...]}`(최대 500개), 없는 id는 무시, 다시 보내도 결과가 같다. 204 |
+| POST | `/api/screenshots/restore` | 되살린 캡처를 다시 집계에 넣는다. 본문·규칙은 `trash`와 같다. 204 |
 | GET | `/api/categories/summary` | 홈 화면용. 7개 카테고리 전부 반환(0장은 count 0), 카테고리별 개수·대표 태그 상위 3개·최신 localAssetId 4개 |
 | GET | `/api/interests` | 감지된 관심사 목록(횟수 많은 순 → 마지막 캡처 최근 순 → 이름순). `{windowDays:14, minCount:3, items:[{tag, category, captureCount, dormantDays, recent:[{id, localAssetId}], linkedTags:[tag]}]}`. `recent`는 최근 3장(최신순, 앱이 기기 사진으로 썸네일을 그림), `dormantDays`는 마지막 캡처 이후 일수, `linkedTags`는 기간 안에 같은 캡처에 함께 붙은 다른 관심사 태그(앱의 머릿속 지도 연결선, 이미 읽은 행으로 묶어 쿼리 추가 없음). OCR 원문·요약은 없다. 없으면 `items: []` |
 
@@ -326,7 +330,6 @@
 - [x] LLM 선택 → `gemini-3.5-flash-lite`, temperature 1.0 (`experiment/SUMMARY.md`)
 - [x] 분류 입력 방식 → 하이브리드 (기준값 150자, 설정)
 - [x] DB 선택 → PostgreSQL 17 + Flyway
-- [ ] F-06 기기 사진 삭제·시스템 휴지통 이동, 서버 삭제 API, 휴지통 화면 — 3주차 이후 (앱 내 휴지통만 이번에 구현)
 - [ ] 분석의 비동기·병렬화 (작업 큐 + 진행 상태 조회, 제한된 동시성). 지금은 동기 순차 호출이라 요청당 20장으로 제한한다. 근본 해결 대상: Gemini가 느린 날(호출당 30~50초) 요청이 앱 타임아웃을 넘으면 앱이 같은 묶음을 다시 보낸다 — 지금은 `IN_PROGRESS`(메모리 선점, 서버 1대 전제)로 중복 분석만 막는다.
 - [x] 이미지 수신 API(multipart, 메모리 전용)와 "빈 OCR + 이미지" 분류 경로
 - [x] 사용자 카테고리 수정(F-05): `auto_category` + `category_source(AUTO/USER)`, 같은 값 수정 = USER
