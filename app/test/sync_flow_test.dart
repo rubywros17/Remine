@@ -33,22 +33,25 @@ List<int> idsIn(SentRequest r) =>
         .toList();
 
 void main() {
-  test('묶음을 5장으로 줄이면(SYNC_BATCH_SIZE=5) 5장씩 보내고 배치마다 숫자를 올리고 홈을 갱신한다', () async {
-    final rig = await SyncRig.create(
-      photos: fakePhotos(12),
-      texts: {for (var i = 0; i < 12; i++) 'p$i': _long},
-      batchSize: 5,
-    );
-    await rig.sync.run();
+  test(
+    '묶음을 5장으로 줄이면(SYNC_BATCH_SIZE=5) 5장씩 보내고 배치마다 숫자를 올리고 홈을 갱신한다',
+    () async {
+      final rig = await SyncRig.create(
+        photos: fakePhotos(12),
+        texts: {for (var i = 0; i < 12; i++) 'p$i': _long},
+        batchSize: 5,
+      );
+      await rig.sync.run();
 
-    final calls = rig.client.analyzeCalls.toList();
-    expect(calls.map((c) => idsIn(c).length), [5, 5, 2]);
-    // 배치가 끝날 때마다 진행이 5, 10, 12로 올라간 상태에서 홈에 알린다(+ 마지막 마무리 알림).
-    expect(rig.batches.take(3), [5, 10, 12]);
-    expect(rig.status.done, 12);
-    expect(rig.status.counts[Category.info], 12);
-    expect(rig.status.issue, SyncIssue.none);
-  });
+      final calls = rig.client.analyzeCalls.toList();
+      expect(calls.map((c) => idsIn(c).length), [5, 5, 2]);
+      // 배치가 끝날 때마다 진행이 5, 10, 12로 올라간 상태에서 홈에 알린다(+ 마지막 마무리 알림).
+      expect(rig.batches.take(3), [5, 10, 12]);
+      expect(rig.status.done, 12);
+      expect(rig.status.counts[Category.info], 12);
+      expect(rig.status.issue, SyncIssue.none);
+    },
+  );
 
   test('기본 묶음은 서버 상한(20)과 같아 45장은 20·20·5장이다', () async {
     expect(SyncService.defaultBatchSize, 20);
@@ -121,7 +124,7 @@ void main() {
     await rig.sync.run();
     expect(rig.status.issue, SyncIssue.partial);
     expect(rig.status.failedCount, 1);
-    expect(rig.status.issueMessage, contains('1장'));
+    expect(rig.status.bannerMessage, contains('1장'));
 
     rig.client.failWith.clear();
     await rig.sync.run();

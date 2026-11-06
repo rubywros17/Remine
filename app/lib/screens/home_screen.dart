@@ -11,6 +11,7 @@ import '../models/interest.dart';
 import '../widgets/home_widgets.dart';
 import '../widgets/small_widgets.dart';
 import '../widgets/sync_banner.dart';
+import 'analysis_preview_screen.dart';
 import 'category_screen.dart';
 import 'tag_screen.dart';
 import 'excluded_screen.dart';
@@ -60,11 +61,18 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  void _openDebugOcr(BuildContext context) {
+  void _openDebug(BuildContext context) {
+    if (!kDebugMode) return;
     final services = DeviceScope.maybeOf(context);
-    if (!kDebugMode || services == null) return;
-    Navigator.of(context)
-        .push(appRoute(context, (_) => DebugOcrScreen(services: services)));
+    Navigator.of(context).push(
+      appRoute(
+        context,
+        // 가짜 데이터 모드(크롬)에는 기기 서비스가 없어 디버그 화면을 못 띄우므로 미리보기로 바로 간다.
+        (_) => services == null
+            ? const AnalysisPreviewScreen()
+            : DebugOcrScreen(services: services),
+      ),
+    );
   }
 
   void _open(BuildContext context, Widget screen) {
@@ -90,12 +98,12 @@ class _HomeScreenState extends State<HomeScreen> {
           AppSpacing.s24,
         ),
         children: [
-          // 디버그 빌드 + 기기 모드에서만: 워드마크를 길게 누르면 OCR 측정 화면. 릴리스에서는 이 분기가 통째로 빠진다.
+          // 디버그 빌드에서만: 워드마크를 길게 누르면 디버그 화면(가짜 데이터 모드는 첫 분석 미리보기). 릴리스에서는 이 분기가 통째로 빠진다.
           Row(
             children: [
               Expanded(
                 child: GestureDetector(
-                  onLongPress: kDebugMode ? () => _openDebugOcr(context) : null,
+                  onLongPress: kDebugMode ? () => _openDebug(context) : null,
                   child: BrandHeader(pillText: formatWeekdayDate(store.now())),
                 ),
               ),

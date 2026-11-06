@@ -15,6 +15,7 @@ import 'package:remine/data/device/privacy/privacy_filter.dart';
 import 'package:remine/data/device/settings_store.dart';
 import 'package:remine/models/category.dart';
 import 'package:remine/screens/debug_ocr_screen.dart';
+import 'package:remine/widgets/drawer_stage.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:remine/widgets/small_widgets.dart';
@@ -375,7 +376,7 @@ void defineLayoutMatrix({
             home: AnalysisScreen(status: status, onHome: () {}),
           ),
         );
-        await tester.pumpAndSettle();
+        await tester.pump(const Duration(milliseconds: 400)); // 진행 막대가 계속 움직인다
         expect(find.text('홈에서 먼저 볼래요'), findsOneWidget);
         // 시작 직후(예상 시간 계산 중)와 실행 전(0/0)도 그려 본다.
         final fresh = SyncStatus()..begin(300);
@@ -384,7 +385,7 @@ void defineLayoutMatrix({
             home: AnalysisScreen(status: fresh, onHome: () {}),
           ),
         );
-        await tester.pumpAndSettle();
+        await tester.pump(const Duration(milliseconds: 400));
         expect(find.text('남은 시간을 계산하고 있어요'), findsOneWidget);
         // 서버 응답을 기다리는 중(움직이는 막대 + 안내 문구). 막대가 계속 움직이므로 settle 대신 시간을 흘려보낸다.
         final waiting = SyncStatus()..begin(300, intervalMs: 4500);
@@ -401,7 +402,7 @@ void defineLayoutMatrix({
       _expectClean('첫 분석 실제 진행 $label', errors);
     });
 
-    testWidgets('첫 분석 · 완료 상태(실제 썸네일 카드 4장·홈으로 버튼) · $label', (tester) async {
+    testWidgets('첫 분석 · 완료 상태·카드 비행(칸 99장·홈으로 버튼) · $label', (tester) async {
       final errors = await _errorsDuring(() async {
         tester.view.physicalSize = size;
         tester.view.devicePixelRatio = 1.0;
@@ -415,14 +416,6 @@ void defineLayoutMatrix({
           for (var i = 0; i < 99; i++) {
             status.count(c);
           }
-        }
-        for (final c in [
-          Category.entertainment,
-          Category.shopping,
-          Category.place,
-          Category.entertainment,
-        ]) {
-          status.count(c, assetId: 'a${status.recent.length}');
         }
         status.finish();
         Future<void> show(SyncStatus st, {FakeGalleryReader? reader}) async {
@@ -440,15 +433,13 @@ void defineLayoutMatrix({
 
         await show(status);
         expect(find.text('홈으로'), findsOneWidget);
-        expect(find.byType(Image), findsNWidgets(4));
         // 아직 한 장도 분류되지 않은 완료(새 캡처 없음)와 연결 실패 안내.
         await show(SyncStatus()..finish());
         expect(find.text('새로 꺼낼 캡처가 없어요'), findsWidgets);
         await show(SyncStatus()..finish(issue: SyncIssue.offline));
         expect(find.textContaining('서버에 연결하지 못했어요'), findsOneWidget);
-        // 진행 중 + 카드 일부만 채워진 상태.
+        // 진행 중 + 카드가 쌓이고 날아가는 상태(칸마다 몇 장씩 들어간다).
         final partial = SyncStatus()..begin(300, intervalMs: 4500);
-        partial.count(Category.entertainment, assetId: 'x1');
         await tester.pumpWidget(
           MaterialApp(
             home: DeviceScope(
@@ -457,9 +448,21 @@ void defineLayoutMatrix({
             ),
           ),
         );
-        await tester.pump();
-        await tester.pump();
+        for (var i = 0; i < 28; i++) {
+          partial.count(
+            Category.values[i % Category.values.length],
+            assetId: 'x$i',
+          );
+        }
+        partial.advance(28);
+        for (var i = 0; i < 20; i++) {
+          await tester.pump(const Duration(milliseconds: 150));
+        }
+        expect(find.byType(DrawerFlightCard), findsWidgets);
         expect(find.text('홈에서 먼저 볼래요'), findsOneWidget);
+        for (var i = 0; i < 60; i++) {
+          await tester.pump(const Duration(milliseconds: 150));
+        }
       });
       _expectClean('첫 분석 완료 상태 $label', errors);
     });

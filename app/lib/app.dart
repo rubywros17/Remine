@@ -11,6 +11,7 @@ import 'data/local_merged_repository.dart';
 import 'data/remote/push.dart';
 import 'data/remine_store.dart';
 import 'data/screenshot_repository.dart';
+import 'screens/analysis_preview_screen.dart';
 import 'screens/analysis_screen.dart';
 import 'screens/tag_screen.dart';
 import 'screens/consent_screen.dart';
@@ -35,7 +36,7 @@ class RemineApp extends StatefulWidget {
   /// 현재 시각(테스트용 주입).
   final DateTime Function()? now;
 
-  /// 개발용: 'analysis'면 첫 분석 화면에서 시작한다 (`--dart-define=START_SCREEN=analysis`).
+  /// 개발용: 'analysis'면 첫 분석 화면(멈춘 값), 'analysis-preview'·'analysis-preview-measured'면 가짜 진행으로 시작한다 (`--dart-define=START_SCREEN=...`).
   final String startScreen;
 
   /// 기기 모드(`--dart-define=DATA=device`)의 갤러리·OCR 서비스. null이면 가짜 데이터 모드(크롬·테스트).
@@ -131,6 +132,10 @@ class _RemineAppState extends State<RemineApp> {
         ),
         home: widget.startScreen == 'analysis'
             ? const AnalysisScreen()
+            : widget.startScreen == 'analysis-preview'
+            ? const AnalysisPreviewScreen()
+            : widget.startScreen == 'analysis-preview-measured'
+            ? const AnalysisPreviewScreen(measured: true)
             : device == null
             ? const ShellScreen()
             : PermissionGate(

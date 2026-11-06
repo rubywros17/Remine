@@ -10,7 +10,7 @@
     <!-- OCR 원문이 든 로컬 DB가 Google 계정 백업으로 올라가지 않게 한다 -->
     <application
         android:allowBackup="false"
-        android:label="remine"
+        android:label="${appLabel}"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

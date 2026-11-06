@@ -256,7 +256,7 @@ void main() {
 
       expect(rig.status.issue, SyncIssue.offline);
       expect(rig.status.running, isFalse);
-      expect(rig.status.issueMessage, contains('서버에 연결하지 못했어요'));
+      expect(rig.status.bannerMessage, contains('서버에 연결하지 못했어요'));
     });
 
     test('서버가 5xx면 server 안내, 다시 실행하면 이어서 보낸다', () async {
