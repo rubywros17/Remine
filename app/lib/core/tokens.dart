@@ -36,6 +36,10 @@ abstract final class AppColors {
   /// 선택 전 빈 원의 얇은 그림자(밝은 사진 위에서도 보이게).
   static const selectionRingShadow = Color(0x59111111);
 
+  /// 장수 배지(카테고리 수정 시트) 바탕. 선택된 칸에서는 흰색 18%.
+  static const countBadge = Color(0xFFEDEDEA);
+  static const countBadgeOnDark = Color(0x2EFFFFFF);
+
   /// 목록 줄(설정 등) 눌림: 누르는 동안 셀라돈 12% 바탕, 물결은 24%.
   static const pressHighlight = Color(0x1F7DC4CE);
   static const pressSplash = Color(0x3D7DC4CE);

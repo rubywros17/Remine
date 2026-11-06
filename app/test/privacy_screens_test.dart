@@ -100,7 +100,7 @@ void main() {
     expect(find.byIcon(LucideIcons.pencil), findsNothing);
     await tester.tap(find.byKey(const ValueKey('category-chip--1')));
     await tester.pumpAndSettle();
-    expect(find.text('이거 어디 서랍이야?'), findsNothing); // 수정 시트가 열리지 않는다
+    expect(find.text('어느 서랍에 넣을까요?'), findsNothing); // 수정 시트가 열리지 않는다
     expect(tester.takeException(), isNull);
   });
 

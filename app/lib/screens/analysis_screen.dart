@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
+import '../core/helpers.dart';
 import '../core/tokens.dart';
 import '../data/remine_store.dart';
 import '../data/remote/sync_status.dart';
@@ -357,12 +358,6 @@ List<MapEntry<Category, int>> topCategories(
   return list.take(limit).toList();
 }
 
-/// "쇼핑이에요", "정보예요": 마지막 글자에 받침이 있으면 "이에요".
-String _copulaFor(String word) {
-  final code = word.runes.last - 0xAC00;
-  return code >= 0 && code <= 11171 && code % 28 != 0 ? '이에요' : '예요';
-}
-
 /// 완료 요약 자리. DONE이 되는 순간 가장 긴 요약 높이를 먼저 잡아 두고(비어 있음), 전체 개수가 오면
 /// 그 안에서 페이드인한다. 요약이 늦게 와도 아래 스테이지 크기가 바뀌지 않는다.
 class _SummarySlot extends StatelessWidget {
@@ -486,7 +481,7 @@ class AnalysisSummary extends StatelessWidget {
     final best = top.first.key;
     final title = AppText.sectionTitle.copyWith(color: AppColors.white);
     final line = top.map((e) => '${e.key.label} ${e.value}장').join(' · ');
-    final copula = _copulaFor(best.label);
+    final copula = copulaFor(best.label);
     return Semantics(
       label: '요즘 가장 많이 모은 건 ${best.label}$copula. $line',
       excludeSemantics: true,

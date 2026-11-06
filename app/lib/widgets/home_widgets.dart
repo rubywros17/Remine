@@ -175,15 +175,20 @@ class CategoryRatioBar extends StatelessWidget {
 
 /// 막대 칸과 같은 색의 작은 점. 밝은 색은 옅은 테두리로 바탕과 구분한다.
 class CategoryDot extends StatelessWidget {
-  const CategoryDot({super.key, required this.category});
+  const CategoryDot({
+    super.key,
+    required this.category,
+    this.size = AppCategoryColors.dotSize,
+  });
 
   final Category category;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: AppCategoryColors.dotSize,
-      height: AppCategoryColors.dotSize,
+      width: size,
+      height: size,
       decoration: BoxDecoration(
         color: AppCategoryColors.of(category),
         shape: BoxShape.circle,

@@ -238,7 +238,7 @@
 - **검토 기준 정확도** = confirmed / (confirmed + corrected). 사용자가 직접 본 표본뿐이라 작고 편향될 수 있어 참고용이다.
 - **혼동 쌍** (auto_category → category) 건수: 프롬프트·카테고리 정의 개선의 입력.
 - 한계: 수정 이력 없음, 기기 안에서 분류한 캡처(민감·은행·메신저 앱)는 서버에 없어 제외, 모델·프롬프트 버전별 분리는 버전 컬럼(`classifier_version`)이 생기면 가능.
-- 조회 API: `GET /api/categories/accuracy` (헤더 `X-Device-Id`) → `{analyzed, corrected, confirmed, unreviewed, correctionRate, accuracyUpperBound, reviewedAccuracy, byAutoCategory:[{category, analyzed, corrected, confirmed}], confusions:[{from, to, count}]}`. 비율은 분모가 0이면 `null`. `confirmed`는 앱 수정 시트의 "응, X 맞아"(같은 값 저장)로 생긴다. `from`/`to` 기간 필터는 아직 없다. `group by auto_category, category, category_source` 쿼리 1회. 기기 전체 합산은 인증이 없는 지금은 API로 열지 않고 관리용 SQL로만 본다.
+- 조회 API: `GET /api/categories/accuracy` (헤더 `X-Device-Id`) → `{analyzed, corrected, confirmed, unreviewed, correctionRate, accuracyUpperBound, reviewedAccuracy, byAutoCategory:[{category, analyzed, corrected, confirmed}], confusions:[{from, to, count}]}`. 비율은 분모가 0이면 `null`. `confirmed`는 앱 수정 시트의 "X 그대로 둘게요"(같은 값 저장)로 생긴다. `from`/`to` 기간 필터는 아직 없다. `group by auto_category, category, category_source` 쿼리 1회. 기기 전체 합산은 인증이 없는 지금은 API로 열지 않고 관리용 SQL로만 본다.
 
 ## 9. API (초안)
 

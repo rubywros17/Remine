@@ -55,3 +55,20 @@ Route<T> appRoute<T>(BuildContext context, WidgetBuilder builder) {
 
 /// 집계 기간 이름: 7의 배수면 "2주", 아니면 "10일".
 String windowLabel(int days) => days % 7 == 0 ? '${days ~/ 7}주' : '$days일';
+
+/// 마지막 글자의 받침 번호. 0이면 받침 없음(한글이 아니어도 0), 8이면 ㄹ.
+/// [한글 메모] 완성형 한글은 0xAC00부터 (초성×21 + 중성)×28 + 종성 순서라 28로 나눈 나머지가 받침이다.
+int _finalConsonant(String word) {
+  if (word.isEmpty) return 0;
+  final code = word.runes.last - 0xAC00;
+  return code >= 0 && code <= 11171 ? code % 28 : 0;
+}
+
+/// "쇼핑이에요", "정보예요": 받침이 있으면 "이에요".
+String copulaFor(String word) => _finalConsonant(word) != 0 ? '이에요' : '예요';
+
+/// "쇼핑으로", "정보로", "문화생활로": 받침이 있으면 "으로", 없거나 ㄹ받침이면 "로".
+String withRo(String word) {
+  final c = _finalConsonant(word);
+  return '$word${c != 0 && c != 8 ? '으로' : '로'}';
+}

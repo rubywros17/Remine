@@ -14,6 +14,9 @@ import 'package:remine/data/device/privacy/local_verdict_store.dart';
 import 'package:remine/data/device/privacy/privacy_filter.dart';
 import 'package:remine/data/device/settings_store.dart';
 import 'package:remine/data/device/trash_store.dart';
+import 'package:remine/data/remine_store.dart';
+import 'package:remine/models/screenshot_item.dart';
+import 'package:remine/widgets/category_sheet.dart';
 import 'package:remine/models/category.dart';
 import 'package:remine/screens/debug_ocr_screen.dart';
 import 'package:remine/widgets/drawer_stage.dart';
@@ -274,9 +277,84 @@ void defineLayoutMatrix({
         await tester.pumpAndSettle();
         await tester.tap(chip.first);
         await tester.pumpAndSettle(); // 카테고리 칩 → 시트
-        expect(find.text('이거 어디 서랍이야?'), findsOneWidget);
+        expect(find.text('어느 서랍에 넣을까요?'), findsOneWidget);
       });
       _expectClean('수정 시트 $label', errors);
+    });
+
+    testWidgets('수정 시트 · 문화생활 + 세 자리 장수(선택 칸) · $label', (tester) async {
+      final errors = await _errorsDuring(() async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1.0;
+        tester.platformDispatcher.textScaleFactorTestValue = scale;
+        addTearDown(tester.view.reset);
+        addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+        final repo = FakeScreenshotRepository(
+          now: () => _now,
+          seed: [
+            for (var i = 0; i < 999; i++)
+              ScreenshotItem(
+                id: i + 1,
+                localAssetId: 'e$i',
+                takenAt: _now,
+                category: Category.entertainment,
+                tags: const [],
+              ),
+          ],
+        );
+        await tester.pumpWidget(
+          RemineScope(
+            store: RemineStore(repo, now: () => _now),
+            child: const MaterialApp(
+              home: Scaffold(
+                body: Align(
+                  alignment: Alignment.bottomCenter,
+                  child: CategorySheet(
+                    current: Category.entertainment,
+                    autoCategory: Category.entertainment,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final name = find.text(Category.entertainment.label);
+        final tile = find.ancestor(
+          of: name,
+          matching: find.byType(AnimatedContainer),
+        );
+        final badge = find.byKey(const ValueKey('count-badge-ENTERTAINMENT'));
+        expect(
+          find.descendant(of: badge, matching: find.text('999')),
+          findsOneWidget,
+        );
+        // 이름은 한 줄이고, 이름·배지 모두 칸 안에 있다(잘리지 않음).
+        // 앱 폰트가 있고 폭이 360 이상이면 여백만 줄여서 들어가야 한다(한 줄 전체 축소 없음).
+        // 320폭·1.3배처럼 그보다 좁으면 마지막 수단으로 살짝 줄어든다.
+        if (realFonts && size.width >= 360) {
+          final fitted = find.ancestor(
+            of: name,
+            matching: find.byType(FittedBox),
+          );
+          final row = find.descendant(of: fitted, matching: find.byType(Row));
+          expect(
+            tester.getSize(fitted).width,
+            closeTo(tester.renderObject<RenderBox>(row.first).size.width, 0.5),
+            reason: '글자가 줄었다',
+          );
+        }
+        // 15px 글자 한 줄 높이는 두 줄(15 × 배율 × 2)보다 낮다.
+        expect(tester.getSize(name).height, lessThan(15 * scale * 2));
+        final box = tester.getRect(tile);
+        expect(tester.getRect(name).left, greaterThanOrEqualTo(box.left));
+        expect(
+          tester.getRect(badge).right,
+          lessThanOrEqualTo(box.right + 0.5),
+          reason: '배지가 칸 밖으로 ${tester.getRect(badge).right - box.right}px',
+        );
+      });
+      _expectClean('수정 시트 문화생활 999 $label', errors);
     });
 
     testWidgets('사진 권한 거부 · $label', (tester) async {
