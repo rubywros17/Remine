@@ -417,6 +417,7 @@ void defineLayoutMatrix({
             status.count(c);
           }
         }
+        status.count(Category.entertainment); // 강조 줄이 가장 긴 "문화생활이에요"가 되게
         status.finish();
         Future<void> show(SyncStatus st, {FakeGalleryReader? reader}) async {
           await tester.pumpWidget(
@@ -433,6 +434,16 @@ void defineLayoutMatrix({
 
         await show(status);
         expect(find.text('홈에서 둘러보기'), findsOneWidget);
+        // 요약은 미리 잡아 둔 자리 안에 다 들어간다(넘치면 잘린다).
+        final slot = tester.getRect(
+          find.byKey(const ValueKey('summary-slot-box')),
+        );
+        final summary = tester.getRect(find.byType(AnalysisSummary));
+        expect(
+          summary.bottom,
+          lessThanOrEqualTo(slot.bottom + 0.5),
+          reason: '요약이 자리보다 ${summary.bottom - slot.bottom}px 길다',
+        );
         // 아직 한 장도 분류되지 않은 완료(새 캡처 없음)와 연결 실패 안내.
         await show(SyncStatus()..finish());
         expect(find.text('새로 꺼낼 캡처가 없어요'), findsWidgets);

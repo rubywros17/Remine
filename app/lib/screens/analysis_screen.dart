@@ -371,11 +371,17 @@ class _SummarySlot extends StatelessWidget {
   /// 아직 불러오지 못했으면 null.
   final Map<Category, int>? counts;
 
+  /// 이 글자 배율부터 자리를 네 줄로 잡는다.
+  static const _wideScale = 1.3;
+
   @override
   Widget build(BuildContext context) {
     // 자리 높이: 요약과 같은 글자 스타일의 세 줄(제목 · 강조 · 상위 3개). 글자 크기 설정을 따라간다.
+    // 글자 1.3배 이상이면 강조 줄("문화생활이에요")이 접힐 수 있어 한 줄을 더 잡는다.
     final title = AppText.sectionTitle;
+    final wide = MediaQuery.textScalerOf(context).scale(1) >= _wideScale;
     return Stack(
+      key: const ValueKey('summary-slot-box'),
       children: [
         ExcludeSemantics(
           child: Opacity(
@@ -386,13 +392,14 @@ class _SummarySlot extends StatelessWidget {
                 Text(' ', style: title),
                 const SizedBox(height: AppSpacing.s4),
                 Text(' ', style: title),
+                if (wide) Text(' ', style: title),
                 const SizedBox(height: AppSpacing.s8),
                 const Text(' ', style: AppText.caption),
               ],
             ),
           ),
         ),
-        // 아주 큰 글자에서 강조 줄이 접혀 자리보다 길어지면 아래가 잘린다(스테이지는 그대로).
+        // 그보다 길어지면 아래가 잘린다(스테이지는 그대로).
         Positioned(
           top: 0,
           left: 0,
