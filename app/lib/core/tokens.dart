@@ -127,11 +127,6 @@ abstract final class AppDetail {
   static const cardShadow = Color(0x73000000);
   static const cardGlow = Color(0x1AEDE7B3);
 
-  /// 더 보기 버튼 "#태그" 형광펜: 불투명 레몬 띠(두께 6)를 글자 기준선 아래에 붙인다.
-  /// 흰 글자와 거의 겹치지 않아 글자 대비는 차콜 기준(4.5:1 이상)으로 유지된다.
-  static const moreTagHighlight = AppColors.lemon;
-  static const double moreTagHighlightThickness = 6;
-
   /// 기울어진 이미지 카드의 실제 아래 모서리(그림자·빛 번짐 제외) ↔ 정보 패널 위 끝 최소 간격(px).
   static const double cardBottomGap = 24;
   static const double cardTilt = -2 * math.pi / 180;

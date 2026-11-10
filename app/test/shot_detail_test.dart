@@ -1,7 +1,6 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:remine/app.dart';
 import 'package:remine/core/helpers.dart';
@@ -250,77 +249,34 @@ void main() {
     expect(tester.getSize(clip.first), tester.getSize(hero));
   });
 
-  group('더 보기 버튼 "#태그" 형광펜', () {
-    Finder highlight() => find.byKey(const ValueKey('more-tag-highlight'));
-    Finder band() => find.descendant(
-      of: highlight(),
-      matching: find.byKey(const ValueKey('highlight-band')),
-    );
-    Finder tagText() =>
-        find.descendant(of: highlight(), matching: find.byType(Text));
-
-    /// 화면상 글자 기준선 y와 글자 크기.
-    (double, double) baselineOf(WidgetTester tester) {
-      final p = tester.renderObject<RenderParagraph>(
-        find.descendant(of: tagText(), matching: find.byType(RichText)),
-      );
-      final top = p.localToGlobal(Offset.zero).dy;
-      // 그려진 문단과 같은 글자·배율로 기준선을 잰다(레이아웃 밖에서는 RenderParagraph에 직접 물을 수 없다).
-      final painter = TextPainter(
-        text: p.text,
-        textDirection: TextDirection.ltr,
-        textScaler: p.textScaler,
-        maxLines: 1,
-      )..layout();
-      final baseline = painter.computeDistanceToActualBaseline(
-        TextBaseline.alphabetic,
-      );
-      painter.dispose();
-      return (top + baseline, p.textScaler.scale(p.text.style!.fontSize!));
-    }
-
-    testWidgets('"#태그"에만 불투명 레몬 띠(두께 6), "모아보기"에는 없다', (tester) async {
+  group('더 보기 버튼 "#태그" 글자색', () {
+    testWidgets('"#태그"는 레몬, "모아보기"는 흰색(형광펜 띠 없음)', (tester) async {
       await _openDetail(tester, tags: const ['숙소'], sameTag: 3);
 
-      expect(tester.widget<ColoredBox>(band()).color, AppColors.lemon);
-      expect(tester.getSize(band()).height, 6);
+      final tag = tester.widget<Text>(find.byKey(const ValueKey('more-tag')));
+      expect(tag.data, '#숙소');
+      expect(tag.style!.color, AppColors.lemon);
       expect(
-        find.descendant(of: highlight(), matching: find.text('#숙소')),
-        findsOneWidget,
-      );
-      expect(
-        find.ancestor(of: find.text(' 모아보기'), matching: highlight()),
-        findsNothing,
+        tester.widget<Text>(find.text(' 모아보기')).style!.color,
+        AppColors.white,
       );
     });
 
-    testWidgets('띠는 글자 아래 끝에 붙고, 글자와 겹쳐도 글자 높이의 10% 이내', (tester) async {
-      await _openDetail(tester, tags: const ['숙소'], sameTag: 3);
-
-      final (baseline, fontSize) = baselineOf(tester);
-      final top = tester.getRect(band()).top;
-      final overlap = math.max(0.0, baseline - top);
-      expect(overlap, lessThanOrEqualTo(fontSize * 0.1));
-      expect(top - baseline, lessThan(2), reason: '띠가 글자에서 떨어져 있다');
-    });
-
-    test('흰 글자는 차콜 위에서 4.5:1 이상', () {
+    test('레몬 글자는 차콜 위에서 4.5:1 이상', () {
       final ratio =
-          (AppColors.white.computeLuminance() + 0.05) /
+          (AppColors.lemon.computeLuminance() + 0.05) /
           (AppColors.darkGray.computeLuminance() + 0.05);
       expect(ratio, greaterThanOrEqualTo(4.5));
     });
 
     for (final size in const [Size(360, 800), Size(412, 915)]) {
-      testWidgets('태그가 말줄임돼도 띠가 말줄임 끝까지(글자 폭과 같다) · $size', (tester) async {
+      testWidgets('태그가 말줄임돼도 레몬색 그대로 · $size', (tester) async {
         const long = '아주아주아주긴관심사태그이름이라서한줄에다안들어가는태그';
         await _openDetail(tester, tags: const [long], sameTag: 3, size: size);
 
-        final b = tester.getRect(band());
-        final t = tester.getRect(tagText());
-        expect(b.left, t.left);
-        expect(b.width, t.width);
-        expect(tester.getRect(find.text(' 모아보기')).left, b.right);
+        final tag = tester.widget<Text>(find.byKey(const ValueKey('more-tag')));
+        expect(tag.overflow, TextOverflow.ellipsis);
+        expect(tag.style!.color, AppColors.lemon);
         expect(tester.takeException(), isNull);
       });
     }

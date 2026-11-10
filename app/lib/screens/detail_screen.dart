@@ -1318,14 +1318,14 @@ class _MoreButton extends StatelessWidget {
                       // "#태그"만 말줄임, "모아보기"는 항상 보인다.
                       Row(
                         children: [
-                          // "#태그"에만 형광펜(기준선 아래 띠). 말줄임되면 말줄임 끝까지 이어진다.
+                          // "#태그"만 레몬 글자(말줄임표도 같은 색), "모아보기"는 흰색.
                           Flexible(
-                            child: BaselineHighlight(
-                              key: const ValueKey('more-tag-highlight'),
-                              text: '#$tag',
-                              style: white,
-                              color: AppDetail.moreTagHighlight,
-                              thickness: AppDetail.moreTagHighlightThickness,
+                            child: Text(
+                              '#$tag',
+                              key: const ValueKey('more-tag'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: white.copyWith(color: AppColors.lemon),
                             ),
                           ),
                           Text(' 모아보기', maxLines: 1, style: white),
