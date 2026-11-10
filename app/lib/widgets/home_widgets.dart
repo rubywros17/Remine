@@ -572,7 +572,7 @@ class _Collage extends StatelessWidget {
   }
 }
 
-/// 하단 고정 탭바(서랍·관심사·검색). 선택 탭은 연셀라돈 알약 배경.
+/// 하단 고정 탭바(서랍·관심사·정리). 선택 탭은 연셀라돈 알약 배경.
 class AppTabBar extends StatelessWidget {
   const AppTabBar({super.key, required this.index, required this.onChanged});
 
@@ -582,7 +582,7 @@ class AppTabBar extends StatelessWidget {
   static const _tabs = [
     (LucideIcons.archive, '서랍'),
     (LucideIcons.star, '관심사'),
-    (LucideIcons.search, '검색'),
+    (LucideIcons.broom, '정리'),
   ];
 
   @override

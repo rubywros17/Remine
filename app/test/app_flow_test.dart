@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:remine/app.dart';
 import 'package:remine/core/tokens.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
@@ -62,7 +63,9 @@ void main() {
       // 탭바 3개
       expect(find.text('서랍'), findsOneWidget);
       expect(find.text('관심사'), findsOneWidget);
-      expect(find.text('검색'), findsOneWidget);
+      expect(find.text('정리'), findsOneWidget);
+      expect(find.byIcon(LucideIcons.broom), findsOneWidget);
+      expect(find.byIcon(LucideIcons.search), findsNothing);
     });
 
     testWidgets('관심사 카드의 콜라주는 회전한 모서리까지 카드 안쪽 여백 안에 있다', (tester) async {
@@ -119,7 +122,7 @@ void main() {
       }
     });
 
-    testWidgets('관심사 탭은 관심사 카드 목록이고, 검색 탭은 빈 화면 자리다', (tester) async {
+    testWidgets('관심사 탭은 관심사 카드 목록이고, 정리 탭은 임시 화면이다', (tester) async {
       await _pumpApp(tester);
 
       await tester.tap(find.text('관심사'));
@@ -129,9 +132,11 @@ void main() {
       expect(find.text('잊은 관심사'), findsWidgets);
       expect(find.byType(InterestCard, skipOffstage: true), findsWidgets);
 
-      await tester.tap(find.text('검색'));
+      await tester.tap(find.text('정리'));
       await tester.pumpAndSettle();
-      expect(find.text('검색도 곧 열릴 거야'), findsOneWidget);
+      expect(find.text('지워도 될 만한 캡처를 모아 드릴게요'), findsOneWidget);
+      expect(find.text('정리 제안은 곧 생겨요'), findsOneWidget);
+      expect(find.text('휴지통'), findsNothing, reason: '가짜 데이터 모드는 휴지통이 없다');
 
       await tester.tap(find.text('서랍'));
       await tester.pumpAndSettle();
