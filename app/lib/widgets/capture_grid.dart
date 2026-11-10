@@ -27,7 +27,7 @@ class CaptureGrid extends StatelessWidget {
   /// 한 목록을 여러 구역(태그 화면의 "최근 2주"/"그 전")으로 나눠 그릴 때 이 구역이 시작하는 위치.
   final int indexOffset;
 
-  /// 사진 카드에 바로 뉴모피즘 그림자([AppShadow.neuRaised])와 뉴모 날짜 알약(태그 화면). 바탕이 [AppColors.neuBg]여야 한다.
+  /// 사진 카드에 바로 뉴모피즘 그림자([AppShadow.neuRaised]), 날짜 알약엔 작은 뉴모 그림자(태그 화면). 바탕이 [AppColors.neuBg]여야 한다.
   final bool raised;
 
   static const _heights = [230.0, 170.0, 200.0, 250.0, 160.0];
@@ -106,17 +106,15 @@ class _Tile extends StatelessWidget {
         bottom: pillInset,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: raised ? AppColors.neuBg : AppColors.white,
+            color: AppColors.white,
             borderRadius: BorderRadius.circular(AppRadii.pill),
-            boxShadow: raised ? AppShadow.neuPill : null,
+            boxShadow: raised ? AppShadow.neuRaisedSmall : null,
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             child: Text(
               formatMonthDay(item.takenAt),
-              style: AppText.numBadge(
-                color: raised ? AppColors.neuPillInk : AppColors.ink,
-              ),
+              style: AppText.numBadge(),
             ),
           ),
         ),

@@ -26,7 +26,6 @@ abstract final class AppColors {
   /// 뉴모피즘 화면(태그 모아보기) 바탕. 이 위 보조 글자는 [neuInkSub]([inkSub]는 4.08:1로 모자람).
   static const neuBg = Color(0xFFE8E8E4);
   static const neuInkSub = Color(0xFF636365); // neuBg 위 4.88:1
-  static const neuPillInk = Color(0xFF55565A); // neuBg 위 5.97:1
   static const neuBarEmpty = Color(
     0xFFCFCFC9,
   ); // 날짜별 막대 0장(border는 neuBg 위 1.05:1이라 안 보임)
@@ -187,10 +186,10 @@ abstract final class AppShadow {
   ];
   static const double neuRaisedRadius = 22;
 
-  /// 뉴모 카드 위 날짜 알약(바탕 [AppColors.neuBg], 글자 [AppColors.neuPillInk]).
-  static const neuPill = [
-    BoxShadow(color: Color(0x99A3A39B), offset: Offset(2, 2), blurRadius: 5),
-    BoxShadow(color: Color(0xE6FFFFFF), offset: Offset(-2, -2), blurRadius: 5),
+  /// [neuRaised]를 작게 줄인 것. 뉴모 카드 위 흰 날짜 알약.
+  static const neuRaisedSmall = [
+    BoxShadow(color: Color(0x8CA3A39B), offset: Offset(3, 3), blurRadius: 7),
+    BoxShadow(color: Color(0xF2FFFFFF), offset: Offset(-3, -3), blurRadius: 7),
   ];
 }
 
