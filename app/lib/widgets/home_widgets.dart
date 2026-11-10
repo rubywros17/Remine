@@ -253,7 +253,7 @@ class CategoryPill extends StatelessWidget {
 
 /// 관심사 카드(다크그레이). 주인공은 태그: "#뜨개질"을 크게, 그 아래 같이 캡처한 관심사(`linkedTags`)를 작게.
 ///
-/// 숫자는 세 가지로 보여 준다: 콜라주 위 원형 스티커 "19 / SHOTS", 카드 뒤 옅은 외곽선 워터마크, 왼쪽 아래 점 5칸 게이지.
+/// 숫자는 세 가지로 보여 준다: 맨 앞 사진 오른쪽 위 원형 스티커 "19 / SHOTS", 카드 뒤 옅은 외곽선 워터마크, 왼쪽 아래 점 5칸 게이지.
 /// 상태: 마지막 캡처가 [Interest.forgottenAfterDays]일 미만이면 셀라돈 "요즘 빠진 것" + "오늘/어제/N일 전 마지막",
 /// 그 이상이면 레몬 "잊은 관심사" + 레몬 테두리 + "N일째 잠자는 중". 누르면 태그 모아보기.
 class InterestCard extends StatelessWidget {
@@ -311,19 +311,16 @@ class InterestCard extends StatelessWidget {
                   ),
                   if (collageWidth > 0) ...[
                     Positioned(
-                      right: 16,
-                      top: 12,
-                      bottom: 12,
+                      right: _collageRight,
+                      top: _collageTop,
+                      bottom: _collageTop,
                       width: collageWidth,
-                      child: _Collage(captures: i.recent),
-                    ),
-                    Positioned(
-                      right:
-                          16 + collageWidth - AppInterestCard.shotsSize * 0.45,
-                      top: 6,
-                      child: _ShotsSticker(
-                        count: i.captureCount,
-                        forgotten: i.forgotten,
+                      child: _Collage(
+                        captures: i.recent,
+                        sticker: _ShotsSticker(
+                          count: i.captureCount,
+                          forgotten: i.forgotten,
+                        ),
                       ),
                     ),
                   ],
@@ -449,7 +446,7 @@ class _Watermark extends StatelessWidget {
   );
 }
 
-/// 콜라주 위에 비스듬히 붙은 원형 스티커 "19 / SHOTS". 셀라돈(카드 강조색, 글자 대비 9.6:1), 잊은 관심사는 레몬.
+/// 콜라주 맨 앞 사진 오른쪽 위에 비스듬히 걸친 원형 스티커 "19 / SHOTS". 셀라돈(카드 강조색, 글자 대비 9.6:1), 잊은 관심사는 레몬.
 class _ShotsSticker extends StatelessWidget {
   const _ShotsSticker({required this.count, required this.forgotten});
 
@@ -523,12 +520,19 @@ class _Gauge extends StatelessWidget {
   );
 }
 
+/// 콜라주가 카드 오른쪽·위(아래도 같음)에서 떨어진 거리.
+const double _collageRight = 16;
+const double _collageTop = 12;
+
 /// 기울어진 썸네일 3장(장식). 회전은 장식에만 쓴다. 크기는 주어진 영역에 비례한다.
 /// 기기 모드에서는 실제 사진, 가짜 데이터 모드에서는 색 블록([CaptureThumb]).
 class _Collage extends StatelessWidget {
-  const _Collage({required this.captures});
+  const _Collage({required this.captures, required this.sticker});
 
   final List<InterestCapture> captures;
+
+  /// 맨 앞 사진의 오른쪽 위 모서리에 걸치는 "N / SHOTS" 스티커.
+  final Widget sticker;
 
   static const _angles = [-0.2, -0.04, 0.12]; // 라디안 (뒤 → 앞)
 
@@ -543,18 +547,44 @@ class _Collage extends StatelessWidget {
             0.0,
             box.maxHeight * 0.85,
           );
+          Rect thumbRect(int i) => Rect.fromLTWH(
+            box.maxWidth * 0.04 + i * box.maxWidth * 0.14,
+            6.0 + i * 8,
+            thumbWidth,
+            thumbHeight,
+          );
+          double angle(int i) => _angles[(i + (3 - shown.length)) % 3];
+
+          // 맨 앞 사진의 오른쪽 위 모서리(가운데 기준으로 회전한 뒤의 위치)에 스티커 가운데를 둔다.
+          // 사진이 없으면 맨 앞 자리(0번)를 기준으로 한다.
+          final front = math.max(0, shown.length - 1);
+          final r = thumbRect(front);
+          final a = angle(front);
+          final hw = r.width / 2, hh = r.height / 2;
+          final corner = r.center.translate(
+            hw * math.cos(a) + hh * math.sin(a),
+            hw * math.sin(a) - hh * math.cos(a),
+          );
+          // 카드 밖으로 잘리지 않게: 스티커가 카드 오른쪽·위 가장자리에서 안쪽 여백만큼 떨어지도록 당긴다.
+          // (이 Stack은 카드 오른쪽에서 _collageRight, 위에서 _collageTop 떨어져 있다.)
+          const d = AppInterestCard.shotsSize;
+          const inset = AppInterestCard.shotsEdgeInset;
+          final left = math.min(
+            corner.dx - d / 2,
+            box.maxWidth + _collageRight - inset - d,
+          );
+          final top = math.max(corner.dy - d / 2, inset - _collageTop);
+
           return Stack(
+            clipBehavior: Clip.none, // 스티커는 콜라주 영역 밖(카드 안)까지 걸친다
             children: [
               for (var i = 0; i < shown.length; i++)
-                Positioned(
-                  left: box.maxWidth * 0.04 + i * box.maxWidth * 0.14,
-                  top: 6.0 + i * 8,
-                  width: thumbWidth,
-                  height: thumbHeight,
+                Positioned.fromRect(
+                  rect: thumbRect(i),
                   child: Hero(
                     tag: 'screenshot-${shown[i].id}',
                     child: Transform.rotate(
-                      angle: _angles[(i + (3 - shown.length)) % 3],
+                      angle: angle(i),
                       child: CaptureThumb(
                         assetId: shown[i].localAssetId,
                         seed: shown[i].id,
@@ -564,6 +594,7 @@ class _Collage extends StatelessWidget {
                     ),
                   ),
                 ),
+              Positioned(left: left, top: top, child: sticker),
             ],
           );
         },

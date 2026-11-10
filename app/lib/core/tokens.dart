@@ -94,9 +94,12 @@ abstract final class AppBrain {
 abstract final class AppInterestCard {
   static const double minHeight = 168;
 
-  /// 콜라주 위 원형 스티커 "19 / SHOTS": 지름, 기울기(10°).
+  /// 콜라주 맨 앞 사진 오른쪽 위에 걸친 원형 스티커 "19 / SHOTS": 지름, 기울기(10°).
   static const double shotsSize = 58;
   static const double shotsTilt = 10 * math.pi / 180;
+
+  /// 스티커는 콜라주 맨 앞 사진의 오른쪽 위 모서리에 걸치되, 카드 가장자리에서 이만큼 안쪽에 둔다.
+  static const double shotsEdgeInset = 8;
 
   /// 카드 뒤 큰 숫자 워터마크: 크기, 외곽선 두께, 색(흰색 14%).
   static const double watermarkSize = 132;
