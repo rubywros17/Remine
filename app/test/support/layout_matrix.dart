@@ -433,6 +433,22 @@ void defineLayoutMatrix({
       _expectClean('설정 $label', errors);
     });
 
+    testWidgets('정리 탭(휴지통 줄) · $label', (tester) async {
+      final errors = await _errorsDuring(() async {
+        await _pump(
+          tester,
+          size,
+          scale,
+          device: fakeServices(FakeGalleryReader()),
+        );
+        await _tap(tester, find.text('정리'));
+        await tester.runAsync(pumpEventQueue);
+        await tester.pump();
+        expect(find.text('0장'), findsOneWidget);
+      });
+      _expectClean('정리 $label', errors);
+    });
+
     testWidgets('휴지통(전체 선택 + 하단 [복구]·[삭제 N장]) · $label', (tester) async {
       final errors = await _errorsDuring(() async {
         final store = InMemoryTrashStore();

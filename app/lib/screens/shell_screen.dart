@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
-import '../core/tokens.dart';
 import '../widgets/home_widgets.dart';
 import 'home_screen.dart';
 import 'interests_screen.dart';
+import 'tidy_screen.dart';
 
-/// 하단 탭바가 붙은 첫 화면. 검색 탭은 아직 빈 자리다.
+/// 하단 탭바가 붙은 첫 화면(서랍·관심사·정리).
 class ShellScreen extends StatefulWidget {
   const ShellScreen({super.key});
 
@@ -27,7 +27,7 @@ class _ShellScreenState extends State<ShellScreen> {
           for (final (i, tab) in [
             const HomeScreen(),
             InterestsScreen(active: _index == 1),
-            const _EmptyTab(message: '검색도 곧 열릴 거야'),
+            TidyScreen(active: _index == 2),
           ].indexed)
             HeroMode(enabled: i == _index, child: tab),
         ],
@@ -38,15 +38,4 @@ class _ShellScreenState extends State<ShellScreen> {
       ),
     );
   }
-}
-
-class _EmptyTab extends StatelessWidget {
-  const _EmptyTab({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Text(message, style: AppText.body.copyWith(color: AppColors.inkSub)),
-  );
 }
