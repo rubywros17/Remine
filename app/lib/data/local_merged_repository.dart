@@ -15,22 +15,23 @@ import 'screenshot_repository.dart';
 /// - 서버 id와 겹치지 않게 기기 판정 캡처의 id는 음수(`-localId`)다.
 /// - 한계: 기기 판정 캡처의 카테고리 수정은 아직 안 된다(서버 연동 브랜치에서 로컬 저장을 붙인다).
 /// - 휴지통은 [TrashStore]에 남는다. 기기 판정 캡처는 서버에 없으니 어떤 요청도 보내지 않는다.
-/// - 출처(`sourceApp`)는 서버로 보내지 않으므로 서버 응답엔 없다. 목록을 돌려줄 때 [fileNameOf]로 찾은
+/// - 출처(`sourceApp`)는 서버로 보내지 않으므로 서버 응답엔 없다. 목록을 돌려줄 때 [fileNamesOf]로 찾은
 ///   갤럭시 파일명의 앱 이름(대문자)을 기기에서 채운다.
 class LocalMergedRepository implements ScreenshotRepository {
   LocalMergedRepository(
     this._base,
     this._verdicts, {
     TrashStore? trash,
-    this.fileNameOf,
+    this.fileNamesOf,
   }) : _trash = trash ?? InMemoryTrashStore();
 
   final ScreenshotRepository _base;
   final LocalVerdictStore _verdicts;
   final TrashStore _trash;
 
-  /// asset id → 파일명. 없으면 출처를 채우지 않는다.
-  final Future<String?> Function(String assetId)? fileNameOf;
+  /// asset id들 → 파일명(찾은 것만). 한 번에 묶어 묻는다(장마다 묻으면 300장에 수백 ms). 없으면 출처를 채우지 않는다.
+  final Future<Map<String, String>> Function(List<String> assetIds)?
+  fileNamesOf;
 
   /// asset id → 앱 이름(없으면 null). 한 번 찾은 건 다시 찾지 않는다(파일명은 바뀌지 않는다).
   final _sourceApps = <String, String?>{};
@@ -38,16 +39,17 @@ class LocalMergedRepository implements ScreenshotRepository {
   Future<List<ScreenshotItem>> _withSourceApp(
     List<ScreenshotItem> items,
   ) async {
-    final lookup = fileNameOf;
+    final lookup = fileNamesOf;
     if (lookup == null) return items;
     final missing = {
       for (final s in items)
         if (!_sourceApps.containsKey(s.localAssetId)) s.localAssetId,
-    };
-    final names = await Future.wait(missing.map(lookup));
-    var i = 0;
-    for (final id in missing) {
-      _sourceApps[id] = appNameFromFileName(names[i++] ?? '')?.toUpperCase();
+    }.toList();
+    if (missing.isNotEmpty) {
+      final names = await lookup(missing);
+      for (final id in missing) {
+        _sourceApps[id] = appNameFromFileName(names[id] ?? '')?.toUpperCase();
+      }
     }
     return [
       for (final s in items)

@@ -30,6 +30,9 @@ class OcrRecord {
 
 abstract interface class OcrStore {
   Future<OcrRecord?> find(String assetId);
+
+  /// asset id → 파일명(기록이 있는 것만). 목록 출처 표시용으로 한 번에 묶어 읽는다(원문은 읽지 않는다).
+  Future<Map<String, String>> fileNames(List<String> assetIds);
   Future<void> save(OcrRecord record);
   Future<void> remove(String assetId);
   Future<int> count();
@@ -61,6 +64,26 @@ class SqfliteOcrStore implements OcrStore {
       whereArgs: [assetId],
     );
     return rows.isEmpty ? null : ocrRecordFromRow(rows.first);
+  }
+
+  @override
+  Future<Map<String, String>> fileNames(List<String> assetIds) async {
+    final db = await _local.db;
+    final out = <String, String>{};
+    // SQLite 변수 개수 상한(999) 아래로 나눠 묻는다.
+    for (var i = 0; i < assetIds.length; i += 500) {
+      final ids = assetIds.skip(i).take(500).toList();
+      final rows = await db.query(
+        'ocr_result',
+        columns: ['asset_id', 'file_name'],
+        where: 'asset_id IN (${List.filled(ids.length, '?').join(',')})',
+        whereArgs: ids,
+      );
+      for (final r in rows) {
+        out[r['asset_id'] as String] = r['file_name'] as String;
+      }
+    }
+    return out;
   }
 
   @override
@@ -98,6 +121,12 @@ class InMemoryOcrStore implements OcrStore {
 
   @override
   Future<OcrRecord?> find(String assetId) async => _rows[assetId];
+
+  @override
+  Future<Map<String, String>> fileNames(List<String> assetIds) async => {
+    for (final id in assetIds)
+      if (_rows[id] case final r?) id: r.fileName,
+  };
 
   @override
   Future<void> save(OcrRecord record) async => _rows[record.assetId] = record;
