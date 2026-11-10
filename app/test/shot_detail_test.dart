@@ -91,4 +91,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('어느 서랍에 넣을까요?'), findsOneWidget);
   });
+
+  testWidgets('해시태그는 칩이 아니라 레몬 형광펜 글자', (tester) async {
+    await _openDetail(tester);
+
+    expect(find.byType(HighlighterText), findsNWidgets(2));
+    expect(find.text('#가디건'), findsOneWidget);
+  });
 }

@@ -1190,11 +1190,17 @@ class _InfoCard extends StatelessWidget {
                     style: AppText.cardTitle,
                   ),
                   const SizedBox(height: AppSpacing.s16),
+                  // 해시태그: 칩 대신 레몬 형광펜 밑줄 글자(홈 "꺼냈어요"와 같은 방식).
                   Wrap(
-                    spacing: AppSpacing.s8,
+                    spacing: AppSpacing.s12,
                     runSpacing: AppSpacing.s8,
                     children: [
-                      for (final t in item.tags) AppChip.hashtag(label: '#$t'),
+                      for (final t in item.tags)
+                        HighlighterText(
+                          before: '',
+                          highlight: '#$t',
+                          style: AppText.label,
+                        ),
                     ],
                   ),
                   if (onMore != null && sameInterestCount > 0) ...[
