@@ -26,6 +26,10 @@ abstract final class AppColors {
   /// 뉴모피즘 화면(태그 모아보기) 바탕. 이 위 보조 글자는 [neuInkSub]([inkSub]는 4.08:1로 모자람).
   static const neuBg = Color(0xFFE8E8E4);
   static const neuInkSub = Color(0xFF636365); // neuBg 위 4.88:1
+  static const neuPillInk = Color(0xFF55565A); // neuBg 위 5.97:1
+  static const neuBarEmpty = Color(
+    0xFFCFCFC9,
+  ); // 날짜별 막대 0장(border는 neuBg 위 1.05:1이라 안 보임)
   static const white = Color(0xFFFFFFFF);
 
   /// 휴지통 기준선을 넘었을 때 아이콘 배경(원)과 아이콘.
@@ -175,16 +179,19 @@ abstract final class AppShadow {
   ];
   static const cardBorderColor = Color(0x0D000000);
 
-  /// 뉴모피즘 볼록 받침(바탕 [AppColors.neuBg] 위 전용): 오른쪽 아래 어둠 + 왼쪽 위 빛.
-  /// 위·왼쪽으로도 약 26px 번지므로 카드 위 글자와 간격을 넉넉히 둔다.
+  /// 뉴모피즘 볼록 사진 카드(바탕 [AppColors.neuBg] 위 전용): 오른쪽 아래 어둠 + 왼쪽 위 빛.
+  /// 사방으로 약 23px(7 + blur 16) 번지므로 카드 사이·카드 위 글자와 간격을 넉넉히 둔다.
   static const neuRaised = [
-    BoxShadow(color: Color(0x8CA3A39B), offset: Offset(8, 8), blurRadius: 18),
-    BoxShadow(color: Color(0xF2FFFFFF), offset: Offset(-8, -8), blurRadius: 18),
+    BoxShadow(color: Color(0x8CA3A39B), offset: Offset(7, 7), blurRadius: 16),
+    BoxShadow(color: Color(0xF2FFFFFF), offset: Offset(-7, -7), blurRadius: 16),
   ];
-  static const double neuRaisedRadius = 24;
+  static const double neuRaisedRadius = 22;
 
-  /// 받침 안쪽 여백(받침 ↔ 사진). 사진 모서리는 [AppRadii.tile].
-  static const double neuRaisedPadding = 7;
+  /// 뉴모 카드 위 날짜 알약(바탕 [AppColors.neuBg], 글자 [AppColors.neuPillInk]).
+  static const neuPill = [
+    BoxShadow(color: Color(0x99A3A39B), offset: Offset(2, 2), blurRadius: 5),
+    BoxShadow(color: Color(0xE6FFFFFF), offset: Offset(-2, -2), blurRadius: 5),
+  ];
 }
 
 /// 홈 세로 여백. 제목 ↔ 관심사 카드와 관심사 카드 ↔ 서랍 제목은 보이는 글자 끝 기준으로 같은 간격이고,

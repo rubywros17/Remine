@@ -27,7 +27,7 @@ class CaptureGrid extends StatelessWidget {
   /// 한 목록을 여러 구역(태그 화면의 "최근 2주"/"그 전")으로 나눠 그릴 때 이 구역이 시작하는 위치.
   final int indexOffset;
 
-  /// 사진을 배경색 받침에 올린 뉴모피즘 볼록 카드([AppShadow.neuRaised], 태그 화면). 바탕이 [AppColors.neuBg]여야 한다.
+  /// 사진 카드에 바로 뉴모피즘 그림자([AppShadow.neuRaised])와 뉴모 날짜 알약(태그 화면). 바탕이 [AppColors.neuBg]여야 한다.
   final bool raised;
 
   static const _heights = [230.0, 170.0, 200.0, 250.0, 160.0];
@@ -93,39 +93,48 @@ class _Tile extends StatelessWidget {
   final VoidCallback onTap;
   final bool raised;
 
-  // 날짜 알약은 카드 바깥 기준 왼쪽 아래 12. 볼록 카드면 받침 여백만큼 사진 안쪽으로 당겨 같은 자리에 둔다.
-  static const _pillInset = 12.0;
-
   @override
   Widget build(BuildContext context) {
-    final pillInset = raised
-        ? _pillInset - AppShadow.neuRaisedPadding
-        : _pillInset;
-    final photo = Hero(
-      tag: 'screenshot-${item.id}',
-      child: CaptureThumb(
-        assetId: item.localAssetId,
-        seed: item.id,
-        radius: raised ? AppRadii.tile : AppRadii.card,
-        child: Positioned(
-          left: pillInset,
-          bottom: pillInset,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: AppColors.white,
-              borderRadius: BorderRadius.circular(AppRadii.pill),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-              child: Text(
-                formatMonthDay(item.takenAt),
-                style: AppText.numBadge(),
+    final radius = raised ? AppShadow.neuRaisedRadius : AppRadii.card;
+    final pillInset = raised ? 10.0 : 12.0;
+    Widget thumb = CaptureThumb(
+      assetId: item.localAssetId,
+      seed: item.id,
+      radius: radius,
+      child: Positioned(
+        left: pillInset,
+        bottom: pillInset,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: raised ? AppColors.neuBg : AppColors.white,
+            borderRadius: BorderRadius.circular(AppRadii.pill),
+            boxShadow: raised ? AppShadow.neuPill : null,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            child: Text(
+              formatMonthDay(item.takenAt),
+              style: AppText.numBadge(
+                color: raised ? AppColors.neuPillInk : AppColors.ink,
               ),
             ),
           ),
         ),
       ),
     );
+    if (raised) {
+      // 그림자는 Hero 안: 상세로 갈 때 빈 자리에 그림자 틀만 남지 않게.
+      // RepaintBoundary: 블러 그림자를 타일마다 한 번만 그리고 스크롤 중엔 다시 그리지 않게.
+      thumb = RepaintBoundary(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(radius),
+            boxShadow: AppShadow.neuRaised,
+          ),
+          child: thumb,
+        ),
+      );
+    }
     return PressableScale(
       onTap: onTap,
       label:
@@ -133,23 +142,7 @@ class _Tile extends StatelessWidget {
       child: SizedBox(
         key: anchorKey,
         height: height,
-        // 받침은 Hero 밖: 상세로 갈 때 사진만 받침에서 들려 나가고 받침은 자리에 남는다.
-        // RepaintBoundary: 블러 그림자를 타일마다 한 번만 그리고 스크롤 중엔 다시 그리지 않게.
-        child: raised
-            ? RepaintBoundary(
-                child: Container(
-                  padding: const EdgeInsets.all(AppShadow.neuRaisedPadding),
-                  decoration: BoxDecoration(
-                    color: AppColors.neuBg,
-                    borderRadius: BorderRadius.circular(
-                      AppShadow.neuRaisedRadius,
-                    ),
-                    boxShadow: AppShadow.neuRaised,
-                  ),
-                  child: photo,
-                ),
-              )
-            : photo,
+        child: Hero(tag: 'screenshot-${item.id}', child: thumb),
       ),
     );
   }

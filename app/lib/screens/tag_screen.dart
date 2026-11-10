@@ -423,7 +423,7 @@ const insightPhrases = {
   );
 }
 
-/// 날짜별 캡처 수 막대. 있는 날은 셀라돈, 0인 날은 테두리색 낮은 막대. 아래 양끝에 시작 날짜와 "오늘".
+/// 날짜별 캡처 수 막대. 있는 날은 셀라돈, 0인 날은 neuBarEmpty 낮은 막대. 아래 양끝에 시작 날짜와 "오늘".
 /// 처음 그려질 때 막대가 아래에서 올라온다("애니메이션 줄이기"면 시간 0이라 바로 다 그려진다).
 ///
 /// [Flutter 메모] TweenAnimationBuilder는 처음 만들어질 때 begin → end로 한 번 움직이고, 값이 같으면 다시 움직이지 않는다.
@@ -465,7 +465,9 @@ class DailyBars extends StatelessWidget {
                             ? AppTagBars.emptyHeight
                             : AppTagBars.height * c / max * t,
                         decoration: BoxDecoration(
-                          color: c == 0 ? AppColors.border : AppColors.celadon,
+                          color: c == 0
+                              ? AppColors.neuBarEmpty
+                              : AppColors.celadon,
                           borderRadius: BorderRadius.circular(
                             AppTagBars.radius,
                           ),
