@@ -127,6 +127,9 @@ abstract final class AppDetail {
   static const cardShadow = Color(0x73000000);
   static const cardGlow = Color(0x1AEDE7B3);
 
+  /// 더 보기 버튼 "#태그" 형광펜: 레몬 25%. 45%면 흰 글자 대비가 3.2:1이라 낮춤(차콜 위 4.85:1).
+  static const moreTagHighlight = Color(0x40EDE7B3);
+
   /// 기울어진 이미지 카드의 실제 아래 모서리(그림자·빛 번짐 제외) ↔ 정보 패널 위 끝 최소 간격(px).
   static const double cardBottomGap = 24;
   static const double cardTilt = -2 * math.pi / 180;

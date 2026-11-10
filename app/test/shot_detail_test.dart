@@ -248,4 +248,51 @@ void main() {
     final clip = find.descendant(of: hero, matching: find.byType(ClipRRect));
     expect(tester.getSize(clip.first), tester.getSize(hero));
   });
+
+  group('더 보기 버튼 "#태그" 형광펜', () {
+    Finder highlight() => find.byKey(const ValueKey('more-tag-highlight'));
+
+    testWidgets('"#태그"에만 아래 30% 레몬 띠, "모아보기"에는 없다', (tester) async {
+      await _openDetail(tester, tags: const ['숙소'], sameTag: 3);
+
+      final box = tester.widget<DecoratedBox>(highlight());
+      final g = (box.decoration as BoxDecoration).gradient! as LinearGradient;
+      expect(g.stops, [0, 0.7, 0.7, 1]);
+      expect(g.colors.last, AppDetail.moreTagHighlight);
+      expect(
+        find.descendant(of: highlight(), matching: find.text('#숙소')),
+        findsOneWidget,
+      );
+      expect(
+        find.ancestor(of: find.text(' 모아보기'), matching: highlight()),
+        findsNothing,
+      );
+    });
+
+    test('형광펜과 겹친 흰 글자도 차콜 위에서 4.5:1 이상', () {
+      final bg = Color.alphaBlend(
+        AppDetail.moreTagHighlight,
+        AppColors.darkGray,
+      );
+      final ratio =
+          (AppColors.white.computeLuminance() + 0.05) /
+          (bg.computeLuminance() + 0.05);
+      expect(ratio, greaterThanOrEqualTo(4.5));
+    });
+
+    for (final size in const [Size(360, 800), Size(412, 915)]) {
+      testWidgets('태그가 말줄임돼도 형광펜이 말줄임 끝까지(글자 폭과 같다) · $size', (tester) async {
+        const long = '아주아주아주긴관심사태그이름이라서한줄에다안들어가는태그';
+        await _openDetail(tester, tags: const [long], sameTag: 3, size: size);
+
+        final band = tester.getRect(highlight());
+        final text = tester.getRect(
+          find.descendant(of: highlight(), matching: find.byType(Text)),
+        );
+        expect(band.width, text.width);
+        // 말줄임됐다: 띠 바로 뒤에 "모아보기"가 붙는다.
+        expect(tester.getRect(find.text(' 모아보기')).left, band.right);
+      });
+    }
+  });
 }
