@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
@@ -67,15 +68,21 @@ const double detailCardDefaultAspect = 0.62;
 /// 폭은 영역 폭의 78%([AppDetail.cardMaxWidthFraction])까지, 높이는 영역 높이까지이고 사진 비율([aspect], 폭/높이)을 지킨다.
 /// 흰 테두리는 두께가 고정(6px)이라 테두리를 포함한 카드 높이는 `(폭 − 12) / 비율 + 12`다.
 /// 세로로 긴 사진은 높이 기준으로 폭이 정해지고, 안쪽 사진 영역의 비율이 사진과 같아 `cover`로 그려도 잘리지 않는다.
+/// [tilt](라디안)만큼 기울여 그리면 모서리가 위아래로 삐져나오므로, 기울인 뒤의 높이(`h·cos + w·sin`)가
+/// 영역 높이 안에 들도록 높이를 줄인다(비율 유지).
 double detailCardWidth({
   required double areaWidth,
   required double areaHeight,
   double? aspect,
+  double tilt = 0,
 }) {
   final a = (aspect ?? detailCardDefaultAspect).clamp(0.2, 5.0);
   final border2 = AppDetail.cardBorder * 2;
   final byWidth = areaWidth * AppDetail.cardMaxWidthFraction;
-  final byHeight = (areaHeight - border2) * a + border2;
+  // 폭 w = h·a + b(1−a) (b = 테두리 합)를 h·cos + w·sin ≤ H에 넣어 h를 푼다. tilt 0이면 h = H.
+  final (c, s) = (math.cos(tilt.abs()), math.sin(tilt.abs()));
+  final h = (areaHeight - s * border2 * (1 - a)) / (c + a * s);
+  final byHeight = h * a + border2 * (1 - a);
   final width = byWidth < byHeight ? byWidth : byHeight;
   return width < border2 + 1 ? border2 + 1 : width;
 }
@@ -611,10 +618,10 @@ class _DetailPageState extends State<_DetailPage> {
                       child: CustomSingleChildLayout(
                         delegate: const _FillAreaDelegate(),
                         child: Padding(
-                          // 상단 바 아래 최소 16px 여백, 아래는 정보 카드와 붙지 않게 8px.
+                          // 상단 바 아래 최소 16px, 기울어진 이미지의 아래 끝 ↔ 정보 카드 최소 10px.
                           padding: const EdgeInsets.only(
                             top: AppDetail.cardTopGap,
-                            bottom: AppSpacing.s8,
+                            bottom: AppDetail.cardBottomGap,
                           ),
                           child: _ThrowCard(
                             item: _item,
@@ -941,6 +948,7 @@ class _ThrowCardState extends State<_ThrowCard> with TickerProviderStateMixin {
             areaWidth: box.maxWidth,
             areaHeight: box.maxHeight,
             aspect: _aspect,
+            tilt: AppDetail.cardTilt,
           );
           final visual = Transform.rotate(
             angle: AppDetail

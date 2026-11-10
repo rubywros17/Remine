@@ -1,8 +1,10 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:remine/app.dart';
+import 'package:remine/core/tokens.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
 import 'package:remine/screens/detail_screen.dart';
 
@@ -177,5 +179,62 @@ void main() {
       expect(tester.getRect(_card).height, greaterThanOrEqualTo(200));
       expect(tester.takeException(), isNull);
     });
+  });
+
+  group('기울어진 이미지 아래 끝 ↔ 정보 패널 최소 10px', () {
+    test('기울이면 기울인 뒤의 높이가 영역 안에 들고, 비율은 그대로다', () {
+      for (final a in [0.3, 0.45, 0.62, 1.0]) {
+        final w = detailCardWidth(
+          areaWidth: 390,
+          areaHeight: 500,
+          aspect: a,
+          tilt: AppDetail.cardTilt,
+        );
+        final h = detailCardHeight(w, aspect: a);
+        final t = AppDetail.cardTilt.abs();
+        expect(h * math.cos(t) + w * math.sin(t), lessThanOrEqualTo(500.01));
+        expect((w - 12) / (h - 12), closeTo(a, 0.001));
+      }
+    });
+
+    /// 기울어진 흰 카드(그림자 있는 DecoratedBox)의 화면상 바깥 사각형.
+    Rect visibleCard(WidgetTester tester) {
+      final box = find.descendant(
+        of: _card,
+        matching: find.byWidgetPredicate(
+          (w) =>
+              w is DecoratedBox &&
+              (w.decoration as BoxDecoration).boxShadow != null,
+        ),
+      );
+      final render = tester.renderObject<RenderBox>(box.first);
+      return MatrixUtils.transformRect(
+        render.getTransformTo(null),
+        Offset.zero & render.size,
+      );
+    }
+
+    for (final size in const [Size(360, 800), Size(412, 915)]) {
+      testWidgets('세로로 긴 사진도 아래 끝이 패널에서 10 이상 떨어지고, 패널은 비율과 상관없이 같다 · $size', (
+        tester,
+      ) async {
+        Rect? panel;
+        for (final ratio in [0.3, 0.45, 1.5, null]) {
+          await tester.pumpWidget(const SizedBox()); // 앞 비율의 화면을 비운다
+          await _openDetail(tester, reader: _RatioReader(ratio), size: size);
+          final info = tester.getRect(
+            find.byKey(const ValueKey('info-card-5')),
+          );
+          final card = visibleCard(tester);
+          expect(
+            info.top - card.bottom,
+            greaterThanOrEqualTo(10 - 0.5),
+            reason: '비율 $ratio: 간격 ${info.top - card.bottom}',
+          );
+          expect(info, panel ?? info, reason: '비율 $ratio에서 패널이 움직였다');
+          panel = info;
+        }
+      });
+    }
   });
 }

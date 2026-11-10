@@ -121,6 +121,9 @@ abstract final class AppDetail {
   static const double cardMaxWidthFraction = 0.78;
   static const double cardBorder = 6;
   static const double cardTopGap = 16;
+
+  /// 기울어진 이미지 카드의 보이는 아래 끝 ↔ 정보 패널 위 끝 최소 간격(px).
+  static const double cardBottomGap = 10;
   static const double cardTilt = -2 * math.pi / 180;
 }
 
