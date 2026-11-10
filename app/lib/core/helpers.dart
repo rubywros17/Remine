@@ -26,6 +26,23 @@ String formatWeekdayDate(DateTime d) =>
 
 const _weekdays = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 
+/// 출처 칩 표기: 대문자, 자주 나오는 붙여 쓴 앱 이름만 띄어 쓴다(공백·대소문자 무관하게 비교). 사전에 없으면 대문자 그대로.
+String sourceAppLabel(String name) {
+  final upper = name.trim().toUpperCase();
+  return _sourceAppSpacing[upper.replaceAll(' ', '')] ?? upper;
+}
+
+const _sourceAppSpacing = {
+  'KAKAOMAP': 'KAKAO MAP',
+  'NAVERMAP': 'NAVER MAP',
+  'NMAP': 'NAVER MAP',
+  'GOOGLEMAPS': 'GOOGLE MAPS',
+  'KAKAOTALK': 'KAKAO TALK',
+  'KAKAOPAGE': 'KAKAO PAGE',
+  'NAVERWEBTOON': 'NAVER WEBTOON',
+  'YOUTUBEMUSIC': 'YOUTUBE MUSIC',
+};
+
 /// "2026.11.06 (TUE)  |  13:58" — 캡처 상세의 촬영 시각(24시간제, 구분선 앞뒤 공백 2칸).
 String formatStamp(DateTime d) =>
     '${d.year}.${formatMonthDay(d)} (${_weekdays[d.weekday - 1]})'

@@ -1291,7 +1291,7 @@ class _SourceChip extends StatelessWidget {
     child: Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       child: Text(
-        name.toUpperCase(),
+        sourceAppLabel(name),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: AppText.caption.copyWith(

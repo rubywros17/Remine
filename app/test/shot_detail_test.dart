@@ -173,4 +173,19 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  test('출처 표기: 자주 나오는 앱만 띄어 쓰고, 사전에 없으면 대문자 그대로', () {
+    expect(sourceAppLabel('KakaoMap'), 'KAKAO MAP');
+    expect(sourceAppLabel('NAVERMAP'), 'NAVER MAP');
+    expect(sourceAppLabel('NMap'), 'NAVER MAP');
+    expect(sourceAppLabel('Naver Map'), 'NAVER MAP');
+    expect(sourceAppLabel('Instagram'), 'INSTAGRAM');
+    expect(sourceAppLabel('29CM'), '29CM');
+  });
+
+  testWidgets('출처 칩도 사전 표기를 쓴다', (tester) async {
+    await _openDetail(tester, sourceApp: 'KAKAOMAP');
+
+    expect(find.text('KAKAO MAP'), findsOneWidget);
+  });
 }
