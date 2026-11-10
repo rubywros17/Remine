@@ -285,7 +285,7 @@ void main() {
       }
     });
 
-    for (final size in const [Size(412, 891), Size(360, 640)]) {
+    for (final size in const [Size(360, 800), Size(412, 915), Size(360, 640)]) {
       testWidgets('7칸 여백 동일, 색 점은 왼쪽부터, 배지 오른쪽 끝은 열마다 같은 줄 $size', (
         tester,
       ) async {
