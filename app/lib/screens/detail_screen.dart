@@ -611,7 +611,7 @@ class _DetailPageState extends State<_DetailPage> {
                       child: CustomSingleChildLayout(
                         delegate: const _FillAreaDelegate(),
                         child: Padding(
-                          // 상단 바 아래 최소 16px, 기울어진 이미지의 아래 끝 ↔ 정보 카드 최소 10px.
+                          // 상단 바 아래 최소 16px, 기울어진 이미지의 실제 아래 모서리 ↔ 정보 카드 최소 24px.
                           padding: const EdgeInsets.only(
                             top: AppDetail.cardTopGap,
                             bottom: AppDetail.cardBottomGap,

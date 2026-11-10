@@ -126,8 +126,8 @@ abstract final class AppDetail {
   static const cardShadow = Color(0x73000000);
   static const cardGlow = Color(0x1AEDE7B3);
 
-  /// 기울어진 이미지 카드의 보이는 아래 끝 ↔ 정보 패널 위 끝 최소 간격(px).
-  static const double cardBottomGap = 10;
+  /// 기울어진 이미지 카드의 실제 아래 모서리(그림자·빛 번짐 제외) ↔ 정보 패널 위 끝 최소 간격(px).
+  static const double cardBottomGap = 24;
   static const double cardTilt = -2 * math.pi / 180;
 }
 

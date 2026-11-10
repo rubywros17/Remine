@@ -171,7 +171,7 @@ void main() {
     });
   });
 
-  group('기울어진 이미지 아래 끝 ↔ 정보 패널 최소 10px', () {
+  group('기울어진 이미지 실제 아래 모서리 ↔ 정보 패널 최소 24px', () {
     test('기울이면 기울인 뒤의 높이가 영역 안에 들고, 비율은 그대로다', () {
       for (final a in [0.3, 0.45, 0.62, 1.0]) {
         final w = detailCardWidth(
@@ -187,7 +187,7 @@ void main() {
       }
     });
 
-    /// 기울어진 흰 카드(그림자 있는 DecoratedBox)의 화면상 바깥 사각형.
+    /// 기울어진 카드(그림자 있는 DecoratedBox) 자체의 화면상 바깥 사각형 — 그림자·빛 번짐은 포함하지 않는다.
     Rect visibleCard(WidgetTester tester) {
       final box = find.descendant(
         of: _card,
@@ -205,26 +205,27 @@ void main() {
     }
 
     for (final size in const [Size(360, 800), Size(412, 915)]) {
-      testWidgets('세로로 긴 사진도 아래 끝이 패널에서 10 이상 떨어지고, 패널은 비율과 상관없이 같다 · $size', (
-        tester,
-      ) async {
-        Rect? panel;
-        for (final ratio in [0.3, 0.45, 1.5, null]) {
-          await tester.pumpWidget(const SizedBox()); // 앞 비율의 화면을 비운다
-          await _openDetail(tester, reader: _RatioReader(ratio), size: size);
-          final info = tester.getRect(
-            find.byKey(const ValueKey('info-card-5')),
-          );
-          final card = visibleCard(tester);
-          expect(
-            info.top - card.bottom,
-            greaterThanOrEqualTo(10 - 0.5),
-            reason: '비율 $ratio: 간격 ${info.top - card.bottom}',
-          );
-          expect(info, panel ?? info, reason: '비율 $ratio에서 패널이 움직였다');
-          panel = info;
-        }
-      });
+      testWidgets(
+        '세로로 긴 사진도 아래 모서리가 패널에서 24 이상 떨어지고, 패널은 비율과 상관없이 같다 · $size',
+        (tester) async {
+          Rect? panel;
+          for (final ratio in [0.3, 0.45, 1.5, null]) {
+            await tester.pumpWidget(const SizedBox()); // 앞 비율의 화면을 비운다
+            await _openDetail(tester, reader: _RatioReader(ratio), size: size);
+            final info = tester.getRect(
+              find.byKey(const ValueKey('info-card-5')),
+            );
+            final card = visibleCard(tester);
+            expect(
+              info.top - card.bottom,
+              greaterThanOrEqualTo(24 - 0.5),
+              reason: '비율 $ratio: 간격 ${info.top - card.bottom}',
+            );
+            expect(info, panel ?? info, reason: '비율 $ratio에서 패널이 움직였다');
+            panel = info;
+          }
+        },
+      );
     }
   });
 }
