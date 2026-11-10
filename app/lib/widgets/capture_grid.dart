@@ -109,6 +109,13 @@ class _Tile extends StatelessWidget {
             color: AppColors.white,
             borderRadius: BorderRadius.circular(AppRadii.pill),
             boxShadow: raised ? AppShadow.neuRaisedSmall : null,
+            // 카테고리 알약과 같은 테두리. DecoratedBox의 테두리는 안쪽에 그려져 알약 크기는 그대로다.
+            border: raised
+                ? Border.all(
+                    color: AppCategoryColors.pillBorder,
+                    width: AppCategoryColors.pillBorderWidth,
+                  )
+                : null,
           ),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),

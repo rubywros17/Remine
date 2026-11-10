@@ -216,7 +216,10 @@ class CategoryPill extends StatelessWidget {
           decoration: BoxDecoration(
             color: AppColors.background,
             borderRadius: BorderRadius.circular(AppRadii.pill),
-            border: Border.all(color: AppCategoryColors.pillBorder, width: 1.2),
+            border: Border.all(
+              color: AppCategoryColors.pillBorder,
+              width: AppCategoryColors.pillBorderWidth,
+            ),
           ),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),

@@ -70,6 +70,7 @@ abstract final class AppCategoryColors {
 
   /// 카테고리 알약 테두리(검정보다 부드러운 차콜).
   static const pillBorder = AppColors.darkGray;
+  static const double pillBorderWidth = 1.2;
 
   static const double dotSize = 9;
   static const double barHeight = 30;
