@@ -1318,20 +1318,14 @@ class _MoreButton extends StatelessWidget {
                       // "#태그"만 말줄임, "모아보기"는 항상 보인다.
                       Row(
                         children: [
-                          // "#태그"에만 형광펜(아래 30%). 말줄임되면 줄어든 글자 폭 끝까지 이어진다.
+                          // "#태그"에만 형광펜(기준선 아래 띠). 말줄임되면 말줄임 끝까지 이어진다.
                           Flexible(
-                            child: DecoratedBox(
+                            child: BaselineHighlight(
                               key: const ValueKey('more-tag-highlight'),
-                              decoration: highlighterDecoration(
-                                height: 0.3,
-                                color: AppDetail.moreTagHighlight,
-                              ),
-                              child: Text(
-                                '#$tag',
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: white,
-                              ),
+                              text: '#$tag',
+                              style: white,
+                              color: AppDetail.moreTagHighlight,
+                              thickness: AppDetail.moreTagHighlightThickness,
                             ),
                           ),
                           Text(' 모아보기', maxLines: 1, style: white),

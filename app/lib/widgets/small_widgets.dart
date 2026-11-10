@@ -210,6 +210,57 @@ BoxDecoration highlighterDecoration({
   ),
 );
 
+/// 한 줄 글자(말줄임 가능) 아래에 붙는 형광펜 띠. 띠 윗변을 글자 기준선(baseline)에 맞춰 획과 거의 겹치지 않고,
+/// 폭은 실제로 그려진 글자 폭이라 말줄임되면 말줄임표 끝까지만 이어진다.
+class BaselineHighlight extends StatelessWidget {
+  const BaselineHighlight({
+    super.key,
+    required this.text,
+    required this.style,
+    required this.color,
+    required this.thickness,
+  });
+
+  final String text;
+  final TextStyle style;
+  final Color color;
+  final double thickness;
+
+  @override
+  Widget build(BuildContext context) {
+    // 같은 스타일·글자 크기 배율로 기준선 위치를 잰다(Text와 같은 줄 상자).
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: DefaultTextStyle.of(context).style.merge(style),
+      ),
+      textDirection: TextDirection.ltr,
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    final baseline = painter.computeDistanceToActualBaseline(
+      TextBaseline.alphabetic,
+    );
+    painter.dispose();
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        Positioned(
+          left: 0,
+          right: 0,
+          top: baseline,
+          height: thickness,
+          child: ColoredBox(
+            key: const ValueKey('highlight-band'),
+            color: color,
+          ),
+        ),
+        Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: style),
+      ],
+    );
+  }
+}
+
 /// 제목의 핵심 단어에 레몬 형광펜(글자 아래쪽 절반을 칠한 띠)을 긋는다.
 ///
 /// [Flutter 메모] WidgetSpan은 글자 흐름 안에 위젯을 끼워 넣는다. 여기서는 단어를 그라데이션(경계가 딱 끊어지는)
