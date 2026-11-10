@@ -8,6 +8,7 @@ import 'package:remine/core/tokens.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
 import 'package:remine/models/category.dart';
 import 'package:remine/models/screenshot_item.dart';
+import 'package:remine/screens/tag_screen.dart';
 import 'package:remine/widgets/home_widgets.dart';
 import 'package:remine/widgets/small_widgets.dart';
 
@@ -146,30 +147,62 @@ void main() {
     }
   });
 
-  testWidgets('더 보기 버튼은 "#태그 캡처 N장 더 보기"', (tester) async {
+  testWidgets('더 보기 버튼: 차콜 64 · "#태그 모아보기" / "같은 관심사 캡처 N장" · 누르면 태그 화면', (
+    tester,
+  ) async {
     await _openDetail(tester, tags: const ['숙소'], sameTag: 7);
 
+    final button = find.byKey(const ValueKey('more-button'));
+    final box = tester.widget<Container>(
+      find.descendant(of: button, matching: find.byType(Container)).first,
+    );
+    expect((box.decoration! as BoxDecoration).color, AppColors.darkGray);
+    expect(tester.getSize(button).height, 64);
     expect(find.text('#숙소'), findsNWidgets(2)); // 해시태그 + 버튼
-    expect(find.text(' 캡처 7장 더 보기'), findsOneWidget);
+    expect(find.text(' 모아보기'), findsOneWidget);
+    expect(find.text('같은 관심사 캡처 7장'), findsOneWidget);
+
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    expect(find.byType(TagScreen), findsOneWidget);
   });
 
+  for (final (others, thumbs) in [(0, 0), (1, 1), (2, 2), (3, 3), (5, 3)]) {
+    testWidgets('같은 관심사 캡처 $others장 → 썸네일 $thumbs장(지금 캡처 제외)', (tester) async {
+      await _openDetail(tester, tags: const ['숙소'], sameTag: others);
+
+      final shown = find.byWidgetPredicate(
+        (w) =>
+            w.key is ValueKey<String> &&
+            (w.key! as ValueKey<String>).value.startsWith('more-thumb-'),
+      );
+      expect(shown, findsNWidgets(thumbs));
+      expect(find.byKey(const ValueKey('more-thumb-1')), findsNothing);
+      expect(
+        find.byKey(const ValueKey('more-button')),
+        others == 0 ? findsNothing : findsOneWidget,
+      );
+    });
+  }
+
   for (final size in const [Size(360, 800), Size(412, 915)]) {
-    testWidgets('태그가 길면 태그만 말줄임, "캡처 N장 더 보기"는 다 보인다 · $size', (tester) async {
+    testWidgets('태그가 길면 태그만 말줄임, "모아보기"는 다 보인다 · $size', (tester) async {
       const long = '아주아주아주긴관심사태그이름이라서한줄에다안들어가는태그';
       await _openDetail(tester, tags: const [long], sameTag: 12, size: size);
 
-      final rest = find.text(' 캡처 12장 더 보기');
+      final rest = find.text(' 모아보기');
       expect(rest, findsOneWidget);
       final painter = TextPainter(
-        text: TextSpan(
-          text: ' 캡처 12장 더 보기',
-          style: tester.widget<Text>(rest).style,
-        ),
+        text: TextSpan(text: ' 모아보기', style: tester.widget<Text>(rest).style),
         textDirection: TextDirection.ltr,
       )..layout();
       expect(tester.getSize(rest).width, greaterThanOrEqualTo(painter.width));
       final tag = tester.widget<Text>(find.text('#$long').last);
       expect(tag.overflow, TextOverflow.ellipsis);
+      expect(
+        find.byKey(const ValueKey('more-thumb-111')),
+        findsOneWidget,
+      ); // 최신 1장
       expect(tester.takeException(), isNull);
     });
   }

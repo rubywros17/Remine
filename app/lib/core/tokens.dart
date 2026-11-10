@@ -15,6 +15,7 @@ abstract final class AppColors {
   static const ink = Color(0xFF111111);
   static const inkSub = Color(0xFF6F6F71); // 칩·셀라돈 위에는 쓰지 않는다(대비 부족)
   static const darkGray = Color(0xFF4A4B4E); // 위 글자는 흰색
+  static const onDarkSub = Color(0xFFBDBEC1); // 다크그레이 위 보조 글자(대비 4.6:1)
   static const celadon = Color(0xFF7DC4CE); // 면·버튼용
   static const celadonDeep = Color(0xFF3E8D98); // 바탕 위 큰 숫자 전용
   static const celadonSoft = Color(0xFFDDEFF2);

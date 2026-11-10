@@ -532,6 +532,9 @@ class _DetailPage extends StatefulWidget {
 
 class _DetailPageState extends State<_DetailPage> {
   int _sameInterestCount = 0;
+
+  /// 더 보기 버튼 썸네일: 같은 대표 태그의 다른 캡처 최대 3장(지금 보는 캡처 제외, 최신순).
+  List<ScreenshotItem> _sameInterestShots = const [];
   bool _requested = false;
 
   ScreenshotItem get _item => widget.item;
@@ -551,10 +554,17 @@ class _DetailPageState extends State<_DetailPage> {
   Future<void> _loadSameInterest() async {
     final tag = _mainTag;
     if (tag == null) return;
+    // 지금 캡처가 끼어 있을 수 있어 4장을 받아 빼고 3장만 쓴다.
     final page = await RemineScope.of(context).repository
-        .list(tag: tag, size: 1);
+        .list(tag: tag, size: 4);
     if (!mounted) return;
-    setState(() => _sameInterestCount = page.totalElements - 1);
+    setState(() {
+      _sameInterestCount = page.totalElements - 1;
+      _sameInterestShots = [
+        for (final s in page.items)
+          if (s.id != _item.id) s,
+      ].take(3).toList();
+    });
   }
 
   Future<void> _editCategory() async {
@@ -630,6 +640,7 @@ class _DetailPageState extends State<_DetailPage> {
                   _InfoCard(
                     item: _item,
                     sameInterestCount: _sameInterestCount,
+                    sameInterestShots: _sameInterestShots,
                     interestTag: tag,
                     onEditCategory: _editCategory,
                     onMore: tag == null
@@ -1114,6 +1125,7 @@ class _InfoCard extends StatelessWidget {
   const _InfoCard({
     required this.item,
     required this.sameInterestCount,
+    required this.sameInterestShots,
     required this.interestTag,
     required this.onEditCategory,
     required this.onMore,
@@ -1121,6 +1133,7 @@ class _InfoCard extends StatelessWidget {
 
   final ScreenshotItem item;
   final int sameInterestCount;
+  final List<ScreenshotItem> sameInterestShots;
 
   /// "더 보기"가 여는 관심사 태그(첫 태그). 없으면 버튼도 없다.
   final String? interestTag;
@@ -1231,57 +1244,11 @@ class _InfoCard extends StatelessWidget {
                       interestTag != null &&
                       sameInterestCount > 0) ...[
                     const SizedBox(height: AppSpacing.s20),
-                    PressableScale(
-                      onTap: onMore,
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(minHeight: 56),
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: AppColors.lemon,
-                            borderRadius: BorderRadius.circular(AppRadii.tile),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
-                            ),
-                            child: Row(
-                              children: [
-                                // "#태그"만 말줄임, "캡처 N장 더 보기"는 항상 보인다.
-                                Expanded(
-                                  child: Row(
-                                    children: [
-                                      Flexible(
-                                        child: Text(
-                                          '#$interestTag',
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                          style: AppText.label.copyWith(
-                                            fontSize: 15,
-                                          ),
-                                        ),
-                                      ),
-                                      Text(
-                                        ' 캡처 $sameInterestCount장 더 보기',
-                                        maxLines: 1,
-                                        style: AppText.label.copyWith(
-                                          fontSize: 15,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: AppSpacing.s8),
-                                const Icon(
-                                  LucideIcons.arrowRight,
-                                  size: 20,
-                                  color: AppColors.ink,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
+                    _MoreButton(
+                      tag: interestTag!,
+                      count: sameInterestCount,
+                      shots: sameInterestShots,
+                      onTap: onMore!,
                     ),
                   ],
                 ],
@@ -1289,6 +1256,148 @@ class _InfoCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 같은 관심사 모아보기 버튼(차콜, 높이 64): 썸네일 최대 3장 · "#태그 모아보기 / 같은 관심사 캡처 N장" · 레몬 원 화살표.
+class _MoreButton extends StatelessWidget {
+  const _MoreButton({
+    required this.tag,
+    required this.count,
+    required this.shots,
+    required this.onTap,
+  });
+
+  final String tag;
+  final int count;
+  final List<ScreenshotItem> shots;
+  final VoidCallback onTap;
+
+  /// 썸네일 1·2·3장일 때의 기울기(도).
+  static const _angles = {
+    1: [0.0],
+    2: [-6.0, 6.0],
+    3: [-6.0, 0.0, 6.0],
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final white = AppText.label.copyWith(
+      fontSize: 15,
+      fontWeight: FontWeight.w700,
+      color: AppColors.white,
+    );
+    return PressableScale(
+      key: const ValueKey('more-button'),
+      onTap: onTap,
+      label: '#$tag 모아보기, 같은 관심사 캡처 $count장',
+      child: Container(
+        height: 64,
+        decoration: BoxDecoration(
+          color: AppColors.darkGray,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        child: LayoutBuilder(
+          builder: (context, box) {
+            // 아주 좁으면(크롬 창을 줄였을 때 등) 썸네일을 빼고 글자에 자리를 준다.
+            final thumbs = box.maxWidth >= 240 && shots.isNotEmpty;
+            return Row(
+              children: [
+                if (thumbs) ...[
+                  _thumbs(),
+                  const SizedBox(width: AppSpacing.s12),
+                ],
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // "#태그"만 말줄임, "모아보기"는 항상 보인다.
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              '#$tag',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: white,
+                            ),
+                          ),
+                          Text(' 모아보기', maxLines: 1, style: white),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '같은 관심사 캡처 $count장',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.caption.copyWith(
+                          fontSize: 12,
+                          color: AppColors.onDarkSub,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.s8),
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: const BoxDecoration(
+                    color: AppColors.lemon,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    LucideIcons.arrowRight,
+                    size: 18,
+                    color: AppColors.ink,
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  /// 살짝 겹친 썸네일(흰 2px 테두리, 작은 해상도로 읽음).
+  Widget _thumbs() {
+    const w = 28.0, h = 38.0, step = 16.0;
+    final angles = _angles[shots.length]!;
+    return SizedBox(
+      width: w + step * (shots.length - 1),
+      height: h,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          for (var i = 0; i < shots.length; i++)
+            Positioned(
+              left: step * i,
+              child: Transform.rotate(
+                angle: angles[i] * math.pi / 180,
+                child: Container(
+                  key: ValueKey('more-thumb-${shots[i].id}'),
+                  width: w,
+                  height: h,
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: AppColors.white,
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: CaptureThumb(
+                    assetId: shots[i].localAssetId,
+                    seed: shots[i].id,
+                    radius: 5,
+                    size: 96,
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
