@@ -149,7 +149,9 @@ class _TagScreenState extends State<TagScreen> {
           )
         : null;
     if (insight != null) _lastInsight[widget.tag] = insight.id;
+    // 이 화면만 뉴모피즘 회색 바탕(상태바 영역까지: SafeArea가 Scaffold 안쪽이라 그대로 칠해진다).
     return Scaffold(
+      backgroundColor: AppColors.neuBg,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(
@@ -204,7 +206,7 @@ class _TagScreenState extends State<TagScreen> {
                     if (_items.isNotEmpty)
                       lastSeenLabel(_items.first.takenAt, _today),
                   ].join(' · '),
-                  style: AppText.caption.copyWith(color: AppColors.inkSub),
+                  style: AppText.caption.copyWith(color: AppColors.neuInkSub),
                 ),
                 // 결론(해석 문장) → 근거(막대) 순서
                 if (insight != null) ...[
@@ -220,7 +222,7 @@ class _TagScreenState extends State<TagScreen> {
                   items: const [],
                   keyFor: _keyFor,
                   onOpen: _openDetail,
-                  depth: true,
+                  raised: true,
                 ),
               if (recent.isNotEmpty) ...[
                 _SectionTitle('최근 $window'),
@@ -228,7 +230,7 @@ class _TagScreenState extends State<TagScreen> {
                   items: recent,
                   keyFor: _keyFor,
                   onOpen: _openDetail,
-                  depth: true,
+                  raised: true,
                 ),
               ],
               if (older.isNotEmpty) ...[
@@ -238,7 +240,7 @@ class _TagScreenState extends State<TagScreen> {
                   items: older,
                   keyFor: _keyFor,
                   onOpen: _openDetail,
-                  depth: true,
+                  raised: true,
                   indexOffset: recent.length,
                 ),
               ],
@@ -438,7 +440,7 @@ class DailyBars extends StatelessWidget {
     final start = today.subtract(Duration(days: counts.length - 1));
     final caption = AppText.caption.copyWith(
       fontSize: AppTagBars.labelSize,
-      color: AppColors.inkSub,
+      color: AppColors.neuInkSub,
     );
     return Semantics(
       label: '최근 ${counts.length}일 중 $activeDays일 캡처',
@@ -495,7 +497,8 @@ class _SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: AppSpacing.s12),
+    // 볼록 카드의 흰 빛이 위로 번져 제목 글자를 덮지 않게 12 대신 24.
+    padding: const EdgeInsets.only(bottom: AppSpacing.s24),
     child: Semantics(header: true, child: Text(text, style: AppText.cardTitle)),
   );
 }
