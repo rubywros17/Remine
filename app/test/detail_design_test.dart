@@ -80,29 +80,6 @@ void main() {
       expect(card.top - 56, greaterThanOrEqualTo(16 - 0.5));
     });
 
-    testWidgets('흰 테두리 6px + 부드러운 그림자', (tester) async {
-      await _openDetail(tester);
-
-      final box = tester.widget<DecoratedBox>(
-        find.descendant(of: _card, matching: find.byType(DecoratedBox)).first,
-      );
-      final decoration = box.decoration as BoxDecoration;
-      expect(decoration.color, AppColors.white);
-      expect(decoration.boxShadow, isNotEmpty);
-      expect(decoration.boxShadow!.first.blurRadius, greaterThanOrEqualTo(16));
-      final padding = tester.widget<Padding>(
-        find
-            .descendant(
-              of: find
-                  .descendant(of: _card, matching: find.byType(DecoratedBox))
-                  .first,
-              matching: find.byType(Padding),
-            )
-            .first,
-      );
-      expect(padding.padding, const EdgeInsets.all(6));
-    });
-
     testWidgets('가만히 있을 때 기울기는 -2°다', (tester) async {
       await _openDetail(tester);
 

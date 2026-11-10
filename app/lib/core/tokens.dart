@@ -117,10 +117,14 @@ abstract final class AppInterestCard {
 
 /// 상세 화면의 이미지 카드·배경 값. 값의 근거는 docs/design.md.
 abstract final class AppDetail {
-  /// 이미지 카드 최대 폭(영역 폭 비율), 흰 테두리 두께(px), 상단 바 아래 최소 여백(px), 기울기(-2°, 라디안).
+  /// 이미지 카드 최대 폭(영역 폭 비율), 상단 바 아래 최소 여백(px), 기울기(-2°, 라디안).
   static const double cardMaxWidthFraction = 0.78;
-  static const double cardBorder = 6;
   static const double cardTopGap = 16;
+
+  /// 테두리 대신: 1px 흰 10% 윤곽, 깊은 그림자(검정 45%, 0·18, blur 40), 레몬 10% 빛 번짐(blur 80).
+  static const cardOutline = Color(0x1AFFFFFF);
+  static const cardShadow = Color(0x73000000);
+  static const cardGlow = Color(0x1AEDE7B3);
 
   /// 기울어진 이미지 카드의 보이는 아래 끝 ↔ 정보 패널 위 끝 최소 간격(px).
   static const double cardBottomGap = 10;

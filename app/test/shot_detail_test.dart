@@ -188,4 +188,31 @@ void main() {
 
     expect(find.text('KAKAO MAP'), findsOneWidget);
   });
+
+  testWidgets('캡처 카드는 흰 테두리 대신 그림자·레몬 빛 번짐·1px 흰 10% 윤곽', (tester) async {
+    await _openDetail(tester);
+
+    final hero = find.descendant(
+      of: find.byType(PageView),
+      matching: find.byType(Hero),
+    );
+    final boxes = tester
+        .widgetList<DecoratedBox>(
+          find.descendant(of: hero, matching: find.byType(DecoratedBox)),
+        )
+        .map((d) => d.decoration as BoxDecoration)
+        .toList();
+    final shadowed = boxes.firstWhere((d) => d.boxShadow != null);
+    expect(shadowed.boxShadow!.map((s) => s.color), [
+      AppDetail.cardGlow,
+      AppDetail.cardShadow,
+    ]);
+    expect(
+      boxes.where((d) => d.border?.top.color == AppDetail.cardOutline),
+      hasLength(1),
+    );
+    // 사진(내용)과 카드 가장자리 사이에 흰 패딩이 없다(회전 전 크기로 비교).
+    final clip = find.descendant(of: hero, matching: find.byType(ClipRRect));
+    expect(tester.getSize(clip.first), tester.getSize(hero));
+  });
 }

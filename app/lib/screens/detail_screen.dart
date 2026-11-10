@@ -63,11 +63,10 @@ const trashSemanticsAction = CustomSemanticsAction(label: '휴지통으로 옮�
 /// 사진 비율을 모를 때 쓰는 이미지 카드 기본 비율(폭/높이).
 const double detailCardDefaultAspect = 0.62;
 
-/// 영역([areaWidth] × [areaHeight]) 안에 들어가는 **가장 큰** 이미지 카드의 바깥 폭.
+/// 영역([areaWidth] × [areaHeight]) 안에 들어가는 **가장 큰** 이미지 카드의 폭.
 ///
 /// 폭은 영역 폭의 78%([AppDetail.cardMaxWidthFraction])까지, 높이는 영역 높이까지이고 사진 비율([aspect], 폭/높이)을 지킨다.
-/// 흰 테두리는 두께가 고정(6px)이라 테두리를 포함한 카드 높이는 `(폭 − 12) / 비율 + 12`다.
-/// 세로로 긴 사진은 높이 기준으로 폭이 정해지고, 안쪽 사진 영역의 비율이 사진과 같아 `cover`로 그려도 잘리지 않는다.
+/// 테두리가 없어 카드 비율 = 사진 비율이라 `cover`로 그려도 잘리지 않는다.
 /// [tilt](라디안)만큼 기울여 그리면 모서리가 위아래로 삐져나오므로, 기울인 뒤의 높이(`h·cos + w·sin`)가
 /// 영역 높이 안에 들도록 높이를 줄인다(비율 유지).
 double detailCardWidth({
@@ -77,22 +76,16 @@ double detailCardWidth({
   double tilt = 0,
 }) {
   final a = (aspect ?? detailCardDefaultAspect).clamp(0.2, 5.0);
-  final border2 = AppDetail.cardBorder * 2;
   final byWidth = areaWidth * AppDetail.cardMaxWidthFraction;
-  // 폭 w = h·a + b(1−a) (b = 테두리 합)를 h·cos + w·sin ≤ H에 넣어 h를 푼다. tilt 0이면 h = H.
-  final (c, s) = (math.cos(tilt.abs()), math.sin(tilt.abs()));
-  final h = (areaHeight - s * border2 * (1 - a)) / (c + a * s);
-  final byHeight = h * a + border2 * (1 - a);
-  final width = byWidth < byHeight ? byWidth : byHeight;
-  return width < border2 + 1 ? border2 + 1 : width;
+  // w = h·a를 h·cos + w·sin ≤ H에 넣어 h를 푼다. tilt 0이면 h = H.
+  final h = areaHeight / (math.cos(tilt.abs()) + a * math.sin(tilt.abs()));
+  final width = math.min(byWidth, h * a);
+  return width < 1 ? 1 : width;
 }
 
-/// [detailCardWidth]로 정한 폭의 카드 바깥 높이(테두리 포함).
-double detailCardHeight(double width, {double? aspect}) {
-  final a = (aspect ?? detailCardDefaultAspect).clamp(0.2, 5.0);
-  final border2 = AppDetail.cardBorder * 2;
-  return (width - border2) / a + border2;
-}
+/// [detailCardWidth]로 정한 폭의 카드 높이.
+double detailCardHeight(double width, {double? aspect}) =>
+    width / (aspect ?? detailCardDefaultAspect).clamp(0.2, 5.0);
 
 class _DetailScreenState extends State<DetailScreen> {
   late final List<ScreenshotItem> _items = [...widget.items];
@@ -950,24 +943,38 @@ class _ThrowCardState extends State<_ThrowCard> with TickerProviderStateMixin {
             aspect: _aspect,
             tilt: AppDetail.cardTilt,
           );
+          final radius = BorderRadius.circular(AppRadii.card);
           final visual = Transform.rotate(
             angle: AppDetail
                 .cardTilt, // 가만히 있을 때 -2°. 드래그 중에는 바깥 Transform이 더 기울인다.
+            // 테두리 없이: 레몬 빛 번짐 + 아래로 깊은 그림자, 위에 1px 흰 10% 윤곽.
             child: DecoratedBox(
               decoration: BoxDecoration(
                 color: AppColors.white,
-                borderRadius: BorderRadius.circular(AppRadii.card),
+                borderRadius: radius,
                 boxShadow: const [
+                  BoxShadow(color: AppDetail.cardGlow, blurRadius: 80),
                   BoxShadow(
-                    color: AppColors.cardShadow,
-                    blurRadius: 24,
-                    offset: Offset(0, 8),
+                    color: AppDetail.cardShadow,
+                    blurRadius: 40,
+                    offset: Offset(0, 18),
                   ),
                 ],
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(AppDetail.cardBorder),
-                child: _CardContent(item: item, block: block, aspect: _aspect),
+              child: DecoratedBox(
+                position: DecorationPosition.foreground,
+                decoration: BoxDecoration(
+                  borderRadius: radius,
+                  border: Border.all(color: AppDetail.cardOutline),
+                ),
+                child: ClipRRect(
+                  borderRadius: radius,
+                  child: _CardContent(
+                    item: item,
+                    block: block,
+                    aspect: _aspect,
+                  ),
+                ),
               ),
             ),
           );
@@ -1044,39 +1051,43 @@ class _CardContent extends StatelessWidget {
       return CaptureThumb(
         assetId: item.localAssetId,
         seed: item.id,
-        radius: AppRadii.tile,
+        radius: AppRadii.card,
         size: 720,
         aspect: aspect,
       );
     }
-    return LayoutBuilder(
-      builder: (context, box) {
-        final showBars = box.maxHeight >= 150;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: block.withValues(alpha: 0.55),
-                  borderRadius: BorderRadius.circular(AppRadii.tile),
+    return Padding(
+      // 가짜 모드: 흰 카드 안에 블록·막대가 붙지 않게 안쪽 여백.
+      padding: const EdgeInsets.all(AppSpacing.s12),
+      child: LayoutBuilder(
+        builder: (context, box) {
+          final showBars = box.maxHeight >= 150;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: block.withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(AppRadii.tile),
+                  ),
+                  child: const SizedBox.expand(),
                 ),
-                child: const SizedBox.expand(),
               ),
-            ),
-            if (showBars) ...[
-              const SizedBox(height: AppSpacing.s12),
-              _bar(1.0, AppColors.chip),
-              const SizedBox(height: AppSpacing.s8),
-              _bar(0.6, AppColors.chip),
-              const SizedBox(height: AppSpacing.s8),
-              _bar(0.3, AppColors.border),
-              const SizedBox(height: AppSpacing.s12),
-              _bar(1.0, AppColors.darkGray, height: 28),
+              if (showBars) ...[
+                const SizedBox(height: AppSpacing.s12),
+                _bar(1.0, AppColors.chip),
+                const SizedBox(height: AppSpacing.s8),
+                _bar(0.6, AppColors.chip),
+                const SizedBox(height: AppSpacing.s8),
+                _bar(0.3, AppColors.border),
+                const SizedBox(height: AppSpacing.s12),
+                _bar(1.0, AppColors.darkGray, height: 28),
+              ],
             ],
-          ],
-        );
-      },
+          );
+        },
+      ),
     );
   }
 

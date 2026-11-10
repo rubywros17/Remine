@@ -86,12 +86,11 @@ void main() {
       );
     });
 
-    test('안쪽 사진 영역의 비율이 사진과 같다(테두리를 뺀 크기)', () {
+    test('카드 비율이 사진 비율과 같다(테두리 없음)', () {
       for (final a in [0.45, 0.62, 1.0, 1.5]) {
         final w = detailCardWidth(areaWidth: 390, areaHeight: 500, aspect: a);
         final h = detailCardHeight(w, aspect: a);
-        const border = 6.0; // 흰 테두리는 고정 6px
-        expect((w - 2 * border) / (h - 2 * border), closeTo(a, 0.001));
+        expect(w / h, closeTo(a, 0.001));
       }
     });
 
@@ -139,8 +138,7 @@ void main() {
       expect(card.bottom, lessThanOrEqualTo(info.top + 0.5));
 
       // 안쪽(테두리 제외) 사진 영역의 비율이 사진과 같다 → cover여도 잘리지 않는다.
-      const border = 6.0;
-      final inner = (card.width - 2 * border) / (card.height - 2 * border);
+      final inner = card.width / card.height;
       expect(inner, closeTo(0.45, 0.01));
       // 세로로 긴 사진이라 높이 기준: 폭이 78%보다 작다.
       expect(card.width, lessThan(390 * 0.78 - 1));
@@ -153,22 +151,14 @@ void main() {
 
       final card = tester.getRect(_card);
       expect(card.width, closeTo(390 * 0.78, 1));
-      const border = 6.0;
-      expect(
-        (card.width - 2 * border) / (card.height - 2 * border),
-        closeTo(1.5, 0.01),
-      );
+      expect(card.width / card.height, closeTo(1.5, 0.01));
     });
 
     testWidgets('비율을 못 얻으면(null) 기본 0.62로 그린다', (tester) async {
       await _openDetail(tester, reader: _RatioReader(null));
 
       final card = tester.getRect(_card);
-      const border = 6.0;
-      expect(
-        (card.width - 2 * border) / (card.height - 2 * border),
-        closeTo(detailCardDefaultAspect, 0.01),
-      );
+      expect(card.width / card.height, closeTo(detailCardDefaultAspect, 0.01));
     });
   });
 
@@ -193,7 +183,7 @@ void main() {
         final h = detailCardHeight(w, aspect: a);
         final t = AppDetail.cardTilt.abs();
         expect(h * math.cos(t) + w * math.sin(t), lessThanOrEqualTo(500.01));
-        expect((w - 12) / (h - 12), closeTo(a, 0.001));
+        expect(w / h, closeTo(a, 0.001));
       }
     });
 
