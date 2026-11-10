@@ -169,7 +169,7 @@ void main() {
   });
 
   group('정보 카드·상단 바', () {
-    testWidgets('카테고리 버튼은 레몬 배경을 채운 알약 + 연필(검은 테두리 없음)', (tester) async {
+    testWidgets('카테고리 버튼은 흰 알약 + 연회색 테두리 + 연필', (tester) async {
       await _openDetail(tester);
 
       final chip = find.descendant(
@@ -188,8 +188,8 @@ void main() {
                   )
                   .decoration
               as BoxDecoration;
-      expect(deco.color, AppColors.lemon);
-      expect(deco.border, isNull);
+      expect(deco.color, AppColors.white);
+      expect((deco.border! as Border).top.color, AppColors.border);
       expect(
         find.descendant(of: chip, matching: find.byIcon(LucideIcons.pencil)),
         findsOneWidget,

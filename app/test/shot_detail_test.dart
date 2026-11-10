@@ -6,6 +6,8 @@ import 'package:remine/core/tokens.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
 import 'package:remine/models/category.dart';
 import 'package:remine/models/screenshot_item.dart';
+import 'package:remine/widgets/home_widgets.dart';
+import 'package:remine/widgets/small_widgets.dart';
 
 final _now = DateTime(2026, 11, 10, 12);
 
@@ -69,5 +71,24 @@ void main() {
 
     expect(find.byKey(const ValueKey('source-chip')), findsNothing);
     expect(find.text('2026.11.06 (FRI)  |  13:58'), findsOneWidget);
+  });
+
+  testWidgets('카테고리 버튼은 흰 알약·연회색 테두리(색 점·이름·연필), 누르면 시트가 열린다', (tester) async {
+    await _openDetail(tester);
+
+    final button = find.byKey(const ValueKey('category-chip-1'));
+    final pill = tester.widget<AppChip>(
+      find.descendant(of: button, matching: find.byType(AppChip)),
+    );
+    expect(pill.background, AppColors.white);
+    expect(pill.borderColor, AppColors.border);
+    expect(
+      find.descendant(of: button, matching: find.byType(CategoryDot)),
+      findsOneWidget,
+    );
+
+    await tester.tap(button);
+    await tester.pumpAndSettle();
+    expect(find.text('어느 서랍에 넣을까요?'), findsOneWidget);
   });
 }

@@ -18,6 +18,7 @@ import '../models/screenshot_item.dart';
 import '../widgets/app_button.dart';
 import '../widgets/capture_thumb.dart';
 import '../widgets/category_sheet.dart';
+import '../widgets/home_widgets.dart';
 import '../widgets/pressable_scale.dart';
 import '../widgets/small_widgets.dart';
 import '../widgets/thumb_placeholder.dart';
@@ -1158,13 +1159,11 @@ class _InfoCard extends StatelessWidget {
                         child: Center(
                           widthFactor: 1,
                           child: AppChip(
-                            background: AppColors.lemon, // 레몬 알약(테두리 없음) + 연필
+                            // 흰 알약 + 연회색 테두리: 카테고리 색 점 · 이름 · 연필
+                            background: AppColors.white,
+                            borderColor: AppColors.border,
                             label: item.category.label,
-                            leading: Icon(
-                              categoryIcon(item.category),
-                              size: 16,
-                              color: AppColors.ink,
-                            ),
+                            leading: CategoryDot(category: item.category),
                             trailing: item.id < 0
                                 ? null
                                 : const Icon(
