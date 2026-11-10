@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/foundation.dart' show ValueListenable;
@@ -18,6 +19,7 @@ import '../models/screenshot_item.dart';
 import '../widgets/app_button.dart';
 import '../widgets/capture_thumb.dart';
 import '../widgets/category_sheet.dart';
+import '../widgets/home_widgets.dart';
 import '../widgets/pressable_scale.dart';
 import '../widgets/small_widgets.dart';
 import '../widgets/thumb_placeholder.dart';
@@ -61,30 +63,29 @@ const trashSemanticsAction = CustomSemanticsAction(label: '휴지통으로 옮�
 /// 사진 비율을 모를 때 쓰는 이미지 카드 기본 비율(폭/높이).
 const double detailCardDefaultAspect = 0.62;
 
-/// 영역([areaWidth] × [areaHeight]) 안에 들어가는 **가장 큰** 이미지 카드의 바깥 폭.
+/// 영역([areaWidth] × [areaHeight]) 안에 들어가는 **가장 큰** 이미지 카드의 폭.
 ///
 /// 폭은 영역 폭의 78%([AppDetail.cardMaxWidthFraction])까지, 높이는 영역 높이까지이고 사진 비율([aspect], 폭/높이)을 지킨다.
-/// 흰 테두리는 두께가 고정(6px)이라 테두리를 포함한 카드 높이는 `(폭 − 12) / 비율 + 12`다.
-/// 세로로 긴 사진은 높이 기준으로 폭이 정해지고, 안쪽 사진 영역의 비율이 사진과 같아 `cover`로 그려도 잘리지 않는다.
+/// 테두리가 없어 카드 비율 = 사진 비율이라 `cover`로 그려도 잘리지 않는다.
+/// [tilt](라디안)만큼 기울여 그리면 모서리가 위아래로 삐져나오므로, 기울인 뒤의 높이(`h·cos + w·sin`)가
+/// 영역 높이 안에 들도록 높이를 줄인다(비율 유지).
 double detailCardWidth({
   required double areaWidth,
   required double areaHeight,
   double? aspect,
+  double tilt = 0,
 }) {
   final a = (aspect ?? detailCardDefaultAspect).clamp(0.2, 5.0);
-  final border2 = AppDetail.cardBorder * 2;
   final byWidth = areaWidth * AppDetail.cardMaxWidthFraction;
-  final byHeight = (areaHeight - border2) * a + border2;
-  final width = byWidth < byHeight ? byWidth : byHeight;
-  return width < border2 + 1 ? border2 + 1 : width;
+  // w = h·a를 h·cos + w·sin ≤ H에 넣어 h를 푼다. tilt 0이면 h = H.
+  final h = areaHeight / (math.cos(tilt.abs()) + a * math.sin(tilt.abs()));
+  final width = math.min(byWidth, h * a);
+  return width < 1 ? 1 : width;
 }
 
-/// [detailCardWidth]로 정한 폭의 카드 바깥 높이(테두리 포함).
-double detailCardHeight(double width, {double? aspect}) {
-  final a = (aspect ?? detailCardDefaultAspect).clamp(0.2, 5.0);
-  final border2 = AppDetail.cardBorder * 2;
-  return (width - border2) / a + border2;
-}
+/// [detailCardWidth]로 정한 폭의 카드 높이.
+double detailCardHeight(double width, {double? aspect}) =>
+    width / (aspect ?? detailCardDefaultAspect).clamp(0.2, 5.0);
 
 class _DetailScreenState extends State<DetailScreen> {
   late final List<ScreenshotItem> _items = [...widget.items];
@@ -245,16 +246,16 @@ class _DetailScreenState extends State<DetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.celadon,
-      // 배경은 끄는 거리에 비례해 다크그레이로 어두워진다(최대 불투명도는 AppGesture.trashDimMaxOpacity).
+      backgroundColor: AppColors.darkGray,
+      // 배경(차콜)은 끄는 거리에 비례해 잉크색으로 더 어두워진다(최대 불투명도는 AppGesture.trashDimMaxOpacity).
       body: ValueListenableBuilder<_ThrowView>(
         valueListenable: _view,
         builder: (context, view, child) {
           final dim = view.$1.clamp(0.0, 1.0) * AppGesture.trashDimMaxOpacity;
           return ColoredBox(
             color: Color.alphaBlend(
-              AppColors.darkGray.withValues(alpha: dim),
-              AppColors.celadon,
+              AppColors.ink.withValues(alpha: dim),
+              AppColors.darkGray,
             ),
             child: child,
           );
@@ -531,6 +532,9 @@ class _DetailPage extends StatefulWidget {
 
 class _DetailPageState extends State<_DetailPage> {
   int _sameInterestCount = 0;
+
+  /// 더 보기 버튼 썸네일: 같은 대표 태그의 다른 캡처 최대 3장(지금 보는 캡처 제외, 최신순).
+  List<ScreenshotItem> _sameInterestShots = const [];
   bool _requested = false;
 
   ScreenshotItem get _item => widget.item;
@@ -546,14 +550,21 @@ class _DetailPageState extends State<_DetailPage> {
     }
   }
 
-  /// "같은 관심사 캡처 N장 더 보기": 대표 태그가 같은 다른 캡처 수.
+  /// "#태그 캡처 N장 더 보기": 대표 태그가 같은 다른 캡처 수.
   Future<void> _loadSameInterest() async {
     final tag = _mainTag;
     if (tag == null) return;
+    // 지금 캡처가 끼어 있을 수 있어 4장을 받아 빼고 3장만 쓴다.
     final page = await RemineScope.of(context).repository
-        .list(tag: tag, size: 1);
+        .list(tag: tag, size: 4);
     if (!mounted) return;
-    setState(() => _sameInterestCount = page.totalElements - 1);
+    setState(() {
+      _sameInterestCount = page.totalElements - 1;
+      _sameInterestShots = [
+        for (final s in page.items)
+          if (s.id != _item.id) s,
+      ].take(3).toList();
+    });
   }
 
   Future<void> _editCategory() async {
@@ -610,10 +621,10 @@ class _DetailPageState extends State<_DetailPage> {
                       child: CustomSingleChildLayout(
                         delegate: const _FillAreaDelegate(),
                         child: Padding(
-                          // 상단 바 아래 최소 16px 여백, 아래는 정보 카드와 붙지 않게 8px.
+                          // 상단 바 아래 최소 16px, 기울어진 이미지의 실제 아래 모서리 ↔ 정보 카드 최소 24px.
                           padding: const EdgeInsets.only(
                             top: AppDetail.cardTopGap,
-                            bottom: AppSpacing.s8,
+                            bottom: AppDetail.cardBottomGap,
                           ),
                           child: _ThrowCard(
                             item: _item,
@@ -629,6 +640,8 @@ class _DetailPageState extends State<_DetailPage> {
                   _InfoCard(
                     item: _item,
                     sameInterestCount: _sameInterestCount,
+                    sameInterestShots: _sameInterestShots,
+                    interestTag: tag,
                     onEditCategory: _editCategory,
                     onMore: tag == null
                         ? null
@@ -939,25 +952,40 @@ class _ThrowCardState extends State<_ThrowCard> with TickerProviderStateMixin {
             areaWidth: box.maxWidth,
             areaHeight: box.maxHeight,
             aspect: _aspect,
+            tilt: AppDetail.cardTilt,
           );
+          final radius = BorderRadius.circular(AppRadii.card);
           final visual = Transform.rotate(
             angle: AppDetail
                 .cardTilt, // 가만히 있을 때 -2°. 드래그 중에는 바깥 Transform이 더 기울인다.
+            // 테두리 없이: 레몬 빛 번짐 + 아래로 깊은 그림자, 위에 1px 흰 10% 윤곽.
             child: DecoratedBox(
               decoration: BoxDecoration(
                 color: AppColors.white,
-                borderRadius: BorderRadius.circular(AppRadii.card),
+                borderRadius: radius,
                 boxShadow: const [
+                  BoxShadow(color: AppDetail.cardGlow, blurRadius: 80),
                   BoxShadow(
-                    color: AppColors.cardShadow,
-                    blurRadius: 24,
-                    offset: Offset(0, 8),
+                    color: AppDetail.cardShadow,
+                    blurRadius: 40,
+                    offset: Offset(0, 18),
                   ),
                 ],
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(AppDetail.cardBorder),
-                child: _CardContent(item: item, block: block, aspect: _aspect),
+              child: DecoratedBox(
+                position: DecorationPosition.foreground,
+                decoration: BoxDecoration(
+                  borderRadius: radius,
+                  border: Border.all(color: AppDetail.cardOutline),
+                ),
+                child: ClipRRect(
+                  borderRadius: radius,
+                  child: _CardContent(
+                    item: item,
+                    block: block,
+                    aspect: _aspect,
+                  ),
+                ),
               ),
             ),
           );
@@ -1034,39 +1062,43 @@ class _CardContent extends StatelessWidget {
       return CaptureThumb(
         assetId: item.localAssetId,
         seed: item.id,
-        radius: AppRadii.tile,
+        radius: AppRadii.card,
         size: 720,
         aspect: aspect,
       );
     }
-    return LayoutBuilder(
-      builder: (context, box) {
-        final showBars = box.maxHeight >= 150;
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: block.withValues(alpha: 0.55),
-                  borderRadius: BorderRadius.circular(AppRadii.tile),
+    return Padding(
+      // 가짜 모드: 흰 카드 안에 블록·막대가 붙지 않게 안쪽 여백.
+      padding: const EdgeInsets.all(AppSpacing.s12),
+      child: LayoutBuilder(
+        builder: (context, box) {
+          final showBars = box.maxHeight >= 150;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: block.withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(AppRadii.tile),
+                  ),
+                  child: const SizedBox.expand(),
                 ),
-                child: const SizedBox.expand(),
               ),
-            ),
-            if (showBars) ...[
-              const SizedBox(height: AppSpacing.s12),
-              _bar(1.0, AppColors.chip),
-              const SizedBox(height: AppSpacing.s8),
-              _bar(0.6, AppColors.chip),
-              const SizedBox(height: AppSpacing.s8),
-              _bar(0.3, AppColors.border),
-              const SizedBox(height: AppSpacing.s12),
-              _bar(1.0, AppColors.darkGray, height: 28),
+              if (showBars) ...[
+                const SizedBox(height: AppSpacing.s12),
+                _bar(1.0, AppColors.chip),
+                const SizedBox(height: AppSpacing.s8),
+                _bar(0.6, AppColors.chip),
+                const SizedBox(height: AppSpacing.s8),
+                _bar(0.3, AppColors.border),
+                const SizedBox(height: AppSpacing.s12),
+                _bar(1.0, AppColors.darkGray, height: 28),
+              ],
             ],
-          ],
-        );
-      },
+          );
+        },
+      ),
     );
   }
 
@@ -1093,22 +1125,25 @@ class _InfoCard extends StatelessWidget {
   const _InfoCard({
     required this.item,
     required this.sameInterestCount,
+    required this.sameInterestShots,
+    required this.interestTag,
     required this.onEditCategory,
     required this.onMore,
   });
 
   final ScreenshotItem item;
   final int sameInterestCount;
+  final List<ScreenshotItem> sameInterestShots;
+
+  /// "더 보기"가 여는 관심사 태그(첫 태그). 없으면 버튼도 없다.
+  final String? interestTag;
   final VoidCallback onEditCategory;
 
   final VoidCallback? onMore;
 
   @override
   Widget build(BuildContext context) {
-    final source = [
-      if (item.sourceApp != null) item.sourceApp!,
-      formatStamp(item.takenAt),
-    ].join(' · ');
+    final sourceApp = item.sourceApp;
     return DecoratedBox(
       key: ValueKey('info-card-${item.id}'),
       decoration: const BoxDecoration(
@@ -1126,13 +1161,20 @@ class _InfoCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  // 출처 글자는 남는 폭 안에서 줄바꿈·말줄임, 카테고리 칩도 폭이 모자라면 줄어든다.
+                  // 출처 칩 + 날짜는 남는 폭 안에서 줄바꿈, 카테고리 버튼도 폭이 모자라면 줄어든다.
+                  // 앱 이름이 없는 캡처(파일명에 없음)는 날짜만.
                   Expanded(
-                    child: Text(
-                      source,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppText.caption.copyWith(fontSize: 13),
+                    child: Wrap(
+                      spacing: AppSpacing.s8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        if (sourceApp != null) _SourceChip(sourceApp),
+                        Text(
+                          formatStamp(item.takenAt),
+                          style: AppText.caption.copyWith(fontSize: 13),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(width: AppSpacing.s8),
@@ -1154,13 +1196,11 @@ class _InfoCard extends StatelessWidget {
                         child: Center(
                           widthFactor: 1,
                           child: AppChip(
-                            background: AppColors.lemon, // 레몬 알약(테두리 없음) + 연필
+                            // 흰 알약 + 연회색 테두리: 카테고리 색 점 · 이름 · 연필
+                            background: AppColors.white,
+                            borderColor: AppColors.border,
                             label: item.category.label,
-                            leading: Icon(
-                              categoryIcon(item.category),
-                              size: 16,
-                              color: AppColors.ink,
-                            ),
+                            leading: CategoryDot(category: item.category),
                             trailing: item.id < 0
                                 ? null
                                 : const Icon(
@@ -1187,48 +1227,28 @@ class _InfoCard extends StatelessWidget {
                     style: AppText.cardTitle,
                   ),
                   const SizedBox(height: AppSpacing.s16),
+                  // 해시태그: 칩 대신 레몬 형광펜 밑줄 글자(홈 "꺼냈어요"와 같은 방식).
                   Wrap(
-                    spacing: AppSpacing.s8,
+                    spacing: AppSpacing.s12,
                     runSpacing: AppSpacing.s8,
                     children: [
-                      for (final t in item.tags) AppChip.hashtag(label: '#$t'),
+                      for (final t in item.tags)
+                        HighlighterText(
+                          before: '',
+                          highlight: '#$t',
+                          style: AppText.label,
+                        ),
                     ],
                   ),
-                  if (onMore != null && sameInterestCount > 0) ...[
+                  if (onMore != null &&
+                      interestTag != null &&
+                      sameInterestCount > 0) ...[
                     const SizedBox(height: AppSpacing.s20),
-                    PressableScale(
-                      onTap: onMore,
-                      child: ConstrainedBox(
-                        constraints: const BoxConstraints(minHeight: 56),
-                        child: DecoratedBox(
-                          decoration: BoxDecoration(
-                            color: AppColors.lemon,
-                            borderRadius: BorderRadius.circular(AppRadii.tile),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
-                            ),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    '같은 관심사 캡처 $sameInterestCount장 더 보기',
-                                    style: AppText.label.copyWith(fontSize: 15),
-                                  ),
-                                ),
-                                const SizedBox(width: AppSpacing.s8),
-                                const Icon(
-                                  LucideIcons.arrowRight,
-                                  size: 20,
-                                  color: AppColors.ink,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
+                    _MoreButton(
+                      tag: interestTag!,
+                      count: sameInterestCount,
+                      shots: sameInterestShots,
+                      onTap: onMore!,
                     ),
                   ],
                 ],
@@ -1241,7 +1261,181 @@ class _InfoCard extends StatelessWidget {
   }
 }
 
-/// 이미지 카드 위의 카테고리 스티커(아이콘 + 이름, 레몬 배경). 카드 오른쪽 위에 살짝 기울여 붙는다.
+/// 같은 관심사 모아보기 버튼(차콜, 높이 64): 썸네일 최대 3장 · "#태그 모아보기 / 같은 관심사 캡처 N장" · 레몬 원 화살표.
+class _MoreButton extends StatelessWidget {
+  const _MoreButton({
+    required this.tag,
+    required this.count,
+    required this.shots,
+    required this.onTap,
+  });
+
+  final String tag;
+  final int count;
+  final List<ScreenshotItem> shots;
+  final VoidCallback onTap;
+
+  /// 썸네일 1·2·3장일 때의 기울기(도).
+  static const _angles = {
+    1: [0.0],
+    2: [-6.0, 6.0],
+    3: [-6.0, 0.0, 6.0],
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final white = AppText.label.copyWith(
+      fontSize: 15,
+      fontWeight: FontWeight.w700,
+      color: AppColors.white,
+    );
+    return PressableScale(
+      key: const ValueKey('more-button'),
+      onTap: onTap,
+      label: '#$tag 모아보기, 같은 관심사 캡처 $count장',
+      child: Container(
+        height: 64,
+        decoration: BoxDecoration(
+          color: AppColors.darkGray,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 14),
+        child: LayoutBuilder(
+          builder: (context, box) {
+            // 아주 좁으면(크롬 창을 줄였을 때 등) 썸네일을 빼고 글자에 자리를 준다.
+            final thumbs = box.maxWidth >= 240 && shots.isNotEmpty;
+            return Row(
+              children: [
+                if (thumbs) ...[
+                  _thumbs(),
+                  const SizedBox(width: AppSpacing.s12),
+                ],
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // "#태그"만 말줄임, "모아보기"는 항상 보인다.
+                      Row(
+                        children: [
+                          // "#태그"만 레몬 글자(말줄임표도 같은 색), "모아보기"는 흰색.
+                          Flexible(
+                            child: Text(
+                              '#$tag',
+                              key: const ValueKey('more-tag'),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: white.copyWith(color: AppColors.lemon),
+                            ),
+                          ),
+                          Text(' 모아보기', maxLines: 1, style: white),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '같은 관심사 캡처 $count장',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: AppText.caption.copyWith(
+                          fontSize: 12,
+                          color: AppColors.onDarkSub,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: AppSpacing.s8),
+                Container(
+                  width: 34,
+                  height: 34,
+                  decoration: const BoxDecoration(
+                    color: AppColors.lemon,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    LucideIcons.arrowRight,
+                    size: 18,
+                    color: AppColors.ink,
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  /// 살짝 겹친 썸네일(흰 2px 테두리, 작은 해상도로 읽음).
+  Widget _thumbs() {
+    const w = 28.0, h = 38.0, step = 16.0;
+    final angles = _angles[shots.length]!;
+    return SizedBox(
+      width: w + step * (shots.length - 1),
+      height: h,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          for (var i = 0; i < shots.length; i++)
+            Positioned(
+              left: step * i,
+              child: Transform.rotate(
+                angle: angles[i] * math.pi / 180,
+                child: Container(
+                  key: ValueKey('more-thumb-${shots[i].id}'),
+                  width: w,
+                  height: h,
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: AppColors.white,
+                    borderRadius: BorderRadius.circular(7),
+                  ),
+                  child: CaptureThumb(
+                    assetId: shots[i].localAssetId,
+                    seed: shots[i].id,
+                    radius: 5,
+                    size: 96,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 출처 앱 칩: 차콜 배경, 흰 대문자(살짝 넓은 자간).
+class _SourceChip extends StatelessWidget {
+  const _SourceChip(this.name);
+
+  final String name;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    key: const ValueKey('source-chip'),
+    decoration: BoxDecoration(
+      color: AppColors.darkGray,
+      borderRadius: BorderRadius.circular(AppRadii.pill),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      child: Text(
+        sourceAppLabel(name),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: AppText.caption.copyWith(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.8,
+          color: AppColors.white,
+        ),
+      ),
+    ),
+  );
+}
+
+/// 이미지 카드 위의 카테고리 스티커(아이콘 + 이름, 카테고리 색 배경). 카드 오른쪽 위에 살짝 기울여 붙는다.
 class _CategorySticker extends StatelessWidget {
   const _CategorySticker({required this.category});
 
@@ -1252,8 +1446,10 @@ class _CategorySticker extends StatelessWidget {
     return Transform.rotate(
       angle: 0.1,
       child: DecoratedBox(
+        key: const ValueKey('category-sticker'),
+        // 카테고리 색 배경 + #111 글자. 7색 모두 차콜 배경 대비 4.3:1 이상, 글자 대비 9:1 이상.
         decoration: BoxDecoration(
-          color: AppColors.lemon,
+          color: AppCategoryColors.of(category),
           borderRadius: BorderRadius.circular(AppRadii.pill),
         ),
         child: Padding(
@@ -1263,7 +1459,13 @@ class _CategorySticker extends StatelessWidget {
             children: [
               Icon(categoryIcon(category), size: 14, color: AppColors.ink),
               const SizedBox(width: 6),
-              Text(category.label, style: AppText.label.copyWith(fontSize: 13)),
+              Text(
+                category.label,
+                style: AppText.label.copyWith(
+                  fontSize: 13,
+                  color: AppColors.ink,
+                ),
+              ),
             ],
           ),
         ),

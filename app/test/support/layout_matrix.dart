@@ -208,7 +208,7 @@ void defineLayoutMatrix({
         await _tap(tester, find.text('#니트가디건')); // 관심사 카드 → 카테고리(태그 선택)
         await _tap(tester, find.byType(Hero)); // 첫 타일 → 상세("더 보기" 버튼이 있는 항목)
         expect(
-          find.textContaining('같은 관심사 캡처'),
+          find.byKey(const ValueKey('more-button')),
           findsOneWidget,
           reason: '상세 화면(더 보기 버튼)이 아님',
         );

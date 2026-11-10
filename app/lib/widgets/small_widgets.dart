@@ -187,13 +187,28 @@ class CountBadge extends StatelessWidget {
         color: AppColors.chip,
         borderRadius: BorderRadius.circular(AppRadii.pill),
       ),
-      child: Text(
-        '$count',
-        style: AppText.numBadge(),
-      ),
+      child: Text('$count', style: AppText.numBadge()),
     );
   }
 }
+
+/// 형광펜 밑줄: 글자 상자의 아래 [height](비율)만 [color]로 칠한다. 말줄임된 글자에 두르면 말줄임 끝까지 이어진다.
+BoxDecoration highlighterDecoration({
+  double height = 0.5,
+  Color color = AppColors.lemon,
+}) => BoxDecoration(
+  gradient: LinearGradient(
+    begin: Alignment.topCenter,
+    end: Alignment.bottomCenter,
+    stops: [0, 1 - height, 1 - height, 1],
+    colors: [
+      color.withValues(alpha: 0),
+      color.withValues(alpha: 0),
+      color,
+      color,
+    ],
+  ),
+);
 
 /// 제목의 핵심 단어에 레몬 형광펜(글자 아래쪽 절반을 칠한 띠)을 긋는다.
 ///
@@ -223,19 +238,7 @@ class HighlighterText extends StatelessWidget {
             alignment: PlaceholderAlignment.baseline,
             baseline: TextBaseline.alphabetic,
             child: DecoratedBox(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  stops: [0, 0.5, 0.5, 1],
-                  colors: [
-                    Color(0x00EDE7B3),
-                    Color(0x00EDE7B3),
-                    AppColors.lemon,
-                    AppColors.lemon,
-                  ],
-                ),
-              ),
+              decoration: highlighterDecoration(),
               child: Text(highlight, style: textStyle),
             ),
           ),

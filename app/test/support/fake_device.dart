@@ -110,6 +110,14 @@ class FakeGalleryReader implements GalleryReader {
   Future<double?> aspectRatio(String photoId) async => aspects[photoId];
 
   @override
+  Future<String?> fileName(String photoId) async {
+    for (final p in photos) {
+      if (p.id == photoId) return p.fileName;
+    }
+    return null;
+  }
+
+  @override
   Future<Uint8List?> bytes(String photoId) async =>
       photoId == 'missing' ? null : Uint8List.fromList(photoId.codeUnits);
 }

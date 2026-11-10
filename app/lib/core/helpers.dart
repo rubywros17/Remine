@@ -21,14 +21,32 @@ String _two(int n) => n.toString().padLeft(2, '0');
 String formatMonthDay(DateTime d) => '${_two(d.month)}.${_two(d.day)}';
 
 /// "MON 10.19"
-String formatWeekdayDate(DateTime d) {
-  const days = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
-  return '${days[d.weekday - 1]} ${formatMonthDay(d)}';
+String formatWeekdayDate(DateTime d) =>
+    '${_weekdays[d.weekday - 1]} ${formatMonthDay(d)}';
+
+const _weekdays = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+
+/// 출처 칩 표기: 대문자, 자주 나오는 붙여 쓴 앱 이름만 띄어 쓴다(공백·대소문자 무관하게 비교). 사전에 없으면 대문자 그대로.
+String sourceAppLabel(String name) {
+  final upper = name.trim().toUpperCase();
+  return _sourceAppSpacing[upper.replaceAll(' ', '')] ?? upper;
 }
 
-/// "10.19 14:14"
+const _sourceAppSpacing = {
+  'KAKAOMAP': 'KAKAO MAP',
+  'NAVERMAP': 'NAVER MAP',
+  'NMAP': 'NAVER MAP',
+  'GOOGLEMAPS': 'GOOGLE MAPS',
+  'KAKAOTALK': 'KAKAO TALK',
+  'KAKAOPAGE': 'KAKAO PAGE',
+  'NAVERWEBTOON': 'NAVER WEBTOON',
+  'YOUTUBEMUSIC': 'YOUTUBE MUSIC',
+};
+
+/// "2026.11.06 (TUE)  |  13:58" — 캡처 상세의 촬영 시각(24시간제, 구분선 앞뒤 공백 2칸).
 String formatStamp(DateTime d) =>
-    '${formatMonthDay(d)} ${_two(d.hour)}:${_two(d.minute)}';
+    '${d.year}.${formatMonthDay(d)} (${_weekdays[d.weekday - 1]})'
+    '  |  ${_two(d.hour)}:${_two(d.minute)}';
 
 /// 화면 전환 라우트: 페이드. 시간은 모션 토큰이고, "애니메이션 줄이기"면 0이라 즉시 바뀐다.
 ///

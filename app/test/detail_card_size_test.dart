@@ -1,8 +1,10 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:remine/app.dart';
+import 'package:remine/core/tokens.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
 import 'package:remine/screens/detail_screen.dart';
 
@@ -84,12 +86,11 @@ void main() {
       );
     });
 
-    test('안쪽 사진 영역의 비율이 사진과 같다(테두리를 뺀 크기)', () {
+    test('카드 비율이 사진 비율과 같다(테두리 없음)', () {
       for (final a in [0.45, 0.62, 1.0, 1.5]) {
         final w = detailCardWidth(areaWidth: 390, areaHeight: 500, aspect: a);
         final h = detailCardHeight(w, aspect: a);
-        const border = 6.0; // 흰 테두리는 고정 6px
-        expect((w - 2 * border) / (h - 2 * border), closeTo(a, 0.001));
+        expect(w / h, closeTo(a, 0.001));
       }
     });
 
@@ -137,8 +138,7 @@ void main() {
       expect(card.bottom, lessThanOrEqualTo(info.top + 0.5));
 
       // 안쪽(테두리 제외) 사진 영역의 비율이 사진과 같다 → cover여도 잘리지 않는다.
-      const border = 6.0;
-      final inner = (card.width - 2 * border) / (card.height - 2 * border);
+      final inner = card.width / card.height;
       expect(inner, closeTo(0.45, 0.01));
       // 세로로 긴 사진이라 높이 기준: 폭이 78%보다 작다.
       expect(card.width, lessThan(390 * 0.78 - 1));
@@ -151,22 +151,14 @@ void main() {
 
       final card = tester.getRect(_card);
       expect(card.width, closeTo(390 * 0.78, 1));
-      const border = 6.0;
-      expect(
-        (card.width - 2 * border) / (card.height - 2 * border),
-        closeTo(1.5, 0.01),
-      );
+      expect(card.width / card.height, closeTo(1.5, 0.01));
     });
 
     testWidgets('비율을 못 얻으면(null) 기본 0.62로 그린다', (tester) async {
       await _openDetail(tester, reader: _RatioReader(null));
 
       final card = tester.getRect(_card);
-      const border = 6.0;
-      expect(
-        (card.width - 2 * border) / (card.height - 2 * border),
-        closeTo(detailCardDefaultAspect, 0.01),
-      );
+      expect(card.width / card.height, closeTo(detailCardDefaultAspect, 0.01));
     });
   });
 
@@ -177,5 +169,63 @@ void main() {
       expect(tester.getRect(_card).height, greaterThanOrEqualTo(200));
       expect(tester.takeException(), isNull);
     });
+  });
+
+  group('기울어진 이미지 실제 아래 모서리 ↔ 정보 패널 최소 24px', () {
+    test('기울이면 기울인 뒤의 높이가 영역 안에 들고, 비율은 그대로다', () {
+      for (final a in [0.3, 0.45, 0.62, 1.0]) {
+        final w = detailCardWidth(
+          areaWidth: 390,
+          areaHeight: 500,
+          aspect: a,
+          tilt: AppDetail.cardTilt,
+        );
+        final h = detailCardHeight(w, aspect: a);
+        final t = AppDetail.cardTilt.abs();
+        expect(h * math.cos(t) + w * math.sin(t), lessThanOrEqualTo(500.01));
+        expect(w / h, closeTo(a, 0.001));
+      }
+    });
+
+    /// 기울어진 카드(그림자 있는 DecoratedBox) 자체의 화면상 바깥 사각형 — 그림자·빛 번짐은 포함하지 않는다.
+    Rect visibleCard(WidgetTester tester) {
+      final box = find.descendant(
+        of: _card,
+        matching: find.byWidgetPredicate(
+          (w) =>
+              w is DecoratedBox &&
+              (w.decoration as BoxDecoration).boxShadow != null,
+        ),
+      );
+      final render = tester.renderObject<RenderBox>(box.first);
+      return MatrixUtils.transformRect(
+        render.getTransformTo(null),
+        Offset.zero & render.size,
+      );
+    }
+
+    for (final size in const [Size(360, 800), Size(412, 915)]) {
+      testWidgets(
+        '세로로 긴 사진도 아래 모서리가 패널에서 24 이상 떨어지고, 패널은 비율과 상관없이 같다 · $size',
+        (tester) async {
+          Rect? panel;
+          for (final ratio in [0.3, 0.45, 1.5, null]) {
+            await tester.pumpWidget(const SizedBox()); // 앞 비율의 화면을 비운다
+            await _openDetail(tester, reader: _RatioReader(ratio), size: size);
+            final info = tester.getRect(
+              find.byKey(const ValueKey('info-card-5')),
+            );
+            final card = visibleCard(tester);
+            expect(
+              info.top - card.bottom,
+              greaterThanOrEqualTo(24 - 0.5),
+              reason: '비율 $ratio: 간격 ${info.top - card.bottom}',
+            );
+            expect(info, panel ?? info, reason: '비율 $ratio에서 패널이 움직였다');
+            panel = info;
+          }
+        },
+      );
+    }
   });
 }

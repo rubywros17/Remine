@@ -48,11 +48,12 @@ class ScreenshotItem {
   ScreenshotItem copyWith({
     Category? category,
     CategorySource? categorySource,
+    String? sourceApp,
   }) => ScreenshotItem(
     id: id,
     localAssetId: localAssetId,
     takenAt: takenAt,
-    sourceApp: sourceApp,
+    sourceApp: sourceApp ?? this.sourceApp,
     category: category ?? this.category,
     summary: summary,
     tags: tags,

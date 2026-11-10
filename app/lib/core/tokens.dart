@@ -15,6 +15,7 @@ abstract final class AppColors {
   static const ink = Color(0xFF111111);
   static const inkSub = Color(0xFF6F6F71); // 칩·셀라돈 위에는 쓰지 않는다(대비 부족)
   static const darkGray = Color(0xFF4A4B4E); // 위 글자는 흰색
+  static const onDarkSub = Color(0xFFBDBEC1); // 다크그레이 위 보조 글자(대비 4.6:1)
   static const celadon = Color(0xFF7DC4CE); // 면·버튼용
   static const celadonDeep = Color(0xFF3E8D98); // 바탕 위 큰 숫자 전용
   static const celadonSoft = Color(0xFFDDEFF2);
@@ -117,10 +118,17 @@ abstract final class AppInterestCard {
 
 /// 상세 화면의 이미지 카드·배경 값. 값의 근거는 docs/design.md.
 abstract final class AppDetail {
-  /// 이미지 카드 최대 폭(영역 폭 비율), 흰 테두리 두께(px), 상단 바 아래 최소 여백(px), 기울기(-2°, 라디안).
+  /// 이미지 카드 최대 폭(영역 폭 비율), 상단 바 아래 최소 여백(px), 기울기(-2°, 라디안).
   static const double cardMaxWidthFraction = 0.78;
-  static const double cardBorder = 6;
   static const double cardTopGap = 16;
+
+  /// 테두리 대신: 1px 흰 10% 윤곽, 깊은 그림자(검정 45%, 0·18, blur 40), 레몬 10% 빛 번짐(blur 80).
+  static const cardOutline = Color(0x1AFFFFFF);
+  static const cardShadow = Color(0x73000000);
+  static const cardGlow = Color(0x1AEDE7B3);
+
+  /// 기울어진 이미지 카드의 실제 아래 모서리(그림자·빛 번짐 제외) ↔ 정보 패널 위 끝 최소 간격(px).
+  static const double cardBottomGap = 24;
   static const double cardTilt = -2 * math.pi / 180;
 }
 
@@ -366,7 +374,7 @@ abstract final class AppGesture {
   /// 휴지통 플링으로 인정하려면 최소한 이만큼(px)은 끌어야 한다(스치기 방지).
   static const double trashFlingMinDistance = 24;
 
-  /// 끄는 거리에 비례해 어두워지는 배경(다크그레이)의 최대 불투명도.
+  /// 끄는 거리에 비례해 상세 배경(차콜) 위에 덮는 잉크색의 최대 불투명도.
   static const double trashDimMaxOpacity = 0.72;
 
   /// 끌수록 카드가 줄어드는 최소 배율, 기울어지는 최대 각도(라디안).

@@ -107,6 +107,10 @@ class PhotoManagerGalleryReader implements GalleryReader {
   }
 
   @override
+  Future<String?> fileName(String photoId) async =>
+      (await AssetEntity.fromId(photoId))?.title;
+
+  @override
   Future<Uint8List?> bytes(String photoId) async {
     final a = await AssetEntity.fromId(photoId);
     return a?.originBytes;

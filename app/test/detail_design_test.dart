@@ -49,14 +49,14 @@ Finder get _blur => find.byWidgetPredicate(
 
 void main() {
   group('배경', () {
-    testWidgets('원래 셀라돈 단색이다(블러 사진 배경 없음), 기기 모드에서도 같다', (tester) async {
+    testWidgets('차콜 단색이다(블러 사진 배경 없음), 기기 모드에서도 같다', (tester) async {
       await _openDetail(tester, reader: FakeGalleryReader());
 
       expect(_blur, findsNothing);
       expect(find.byType(AnimatedSwitcher), findsNothing);
       expect(
         tester.widget<Scaffold>(find.byType(Scaffold).last).backgroundColor,
-        AppColors.celadon,
+        AppColors.darkGray,
       );
     });
 
@@ -78,29 +78,6 @@ void main() {
       final card = tester.getRect(_card);
       expect(card.width, lessThanOrEqualTo(390 * 0.78 + 0.5));
       expect(card.top - 56, greaterThanOrEqualTo(16 - 0.5));
-    });
-
-    testWidgets('흰 테두리 6px + 부드러운 그림자', (tester) async {
-      await _openDetail(tester);
-
-      final box = tester.widget<DecoratedBox>(
-        find.descendant(of: _card, matching: find.byType(DecoratedBox)).first,
-      );
-      final decoration = box.decoration as BoxDecoration;
-      expect(decoration.color, AppColors.white);
-      expect(decoration.boxShadow, isNotEmpty);
-      expect(decoration.boxShadow!.first.blurRadius, greaterThanOrEqualTo(16));
-      final padding = tester.widget<Padding>(
-        find
-            .descendant(
-              of: find
-                  .descendant(of: _card, matching: find.byType(DecoratedBox))
-                  .first,
-              matching: find.byType(Padding),
-            )
-            .first,
-      );
-      expect(padding.padding, const EdgeInsets.all(6));
     });
 
     testWidgets('가만히 있을 때 기울기는 -2°다', (tester) async {
@@ -169,7 +146,7 @@ void main() {
   });
 
   group('정보 카드·상단 바', () {
-    testWidgets('카테고리 버튼은 레몬 배경을 채운 알약 + 연필(검은 테두리 없음)', (tester) async {
+    testWidgets('카테고리 버튼은 흰 알약 + 연회색 테두리 + 연필', (tester) async {
       await _openDetail(tester);
 
       final chip = find.descendant(
@@ -188,8 +165,8 @@ void main() {
                   )
                   .decoration
               as BoxDecoration;
-      expect(deco.color, AppColors.lemon);
-      expect(deco.border, isNull);
+      expect(deco.color, AppColors.white);
+      expect((deco.border! as Border).top.color, AppColors.border);
       expect(
         find.descendant(of: chip, matching: find.byIcon(LucideIcons.pencil)),
         findsOneWidget,
