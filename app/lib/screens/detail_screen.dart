@@ -547,7 +547,7 @@ class _DetailPageState extends State<_DetailPage> {
     }
   }
 
-  /// "같은 관심사 캡처 N장 더 보기": 대표 태그가 같은 다른 캡처 수.
+  /// "#태그 캡처 N장 더 보기": 대표 태그가 같은 다른 캡처 수.
   Future<void> _loadSameInterest() async {
     final tag = _mainTag;
     if (tag == null) return;
@@ -630,6 +630,7 @@ class _DetailPageState extends State<_DetailPage> {
                   _InfoCard(
                     item: _item,
                     sameInterestCount: _sameInterestCount,
+                    interestTag: tag,
                     onEditCategory: _editCategory,
                     onMore: tag == null
                         ? null
@@ -1094,12 +1095,16 @@ class _InfoCard extends StatelessWidget {
   const _InfoCard({
     required this.item,
     required this.sameInterestCount,
+    required this.interestTag,
     required this.onEditCategory,
     required this.onMore,
   });
 
   final ScreenshotItem item;
   final int sameInterestCount;
+
+  /// "더 보기"가 여는 관심사 태그(첫 태그). 없으면 버튼도 없다.
+  final String? interestTag;
   final VoidCallback onEditCategory;
 
   final VoidCallback? onMore;
@@ -1203,7 +1208,9 @@ class _InfoCard extends StatelessWidget {
                         ),
                     ],
                   ),
-                  if (onMore != null && sameInterestCount > 0) ...[
+                  if (onMore != null &&
+                      interestTag != null &&
+                      sameInterestCount > 0) ...[
                     const SizedBox(height: AppSpacing.s20),
                     PressableScale(
                       onTap: onMore,
@@ -1221,10 +1228,28 @@ class _InfoCard extends StatelessWidget {
                             ),
                             child: Row(
                               children: [
+                                // "#태그"만 말줄임, "캡처 N장 더 보기"는 항상 보인다.
                                 Expanded(
-                                  child: Text(
-                                    '같은 관심사 캡처 $sameInterestCount장 더 보기',
-                                    style: AppText.label.copyWith(fontSize: 15),
+                                  child: Row(
+                                    children: [
+                                      Flexible(
+                                        child: Text(
+                                          '#$interestTag',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: AppText.label.copyWith(
+                                            fontSize: 15,
+                                          ),
+                                        ),
+                                      ),
+                                      Text(
+                                        ' 캡처 $sameInterestCount장 더 보기',
+                                        maxLines: 1,
+                                        style: AppText.label.copyWith(
+                                          fontSize: 15,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
                                 const SizedBox(width: AppSpacing.s8),

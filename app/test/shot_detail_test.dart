@@ -13,8 +13,14 @@ import 'package:remine/widgets/small_widgets.dart';
 
 final _now = DateTime(2026, 11, 10, 12);
 
-Future<void> _openDetail(WidgetTester tester, {String? sourceApp}) async {
-  tester.view.physicalSize = const Size(360, 800);
+Future<void> _openDetail(
+  WidgetTester tester, {
+  String? sourceApp,
+  List<String> tags = const ['가디건', '재입고'],
+  int sameTag = 0,
+  Size size = const Size(360, 800),
+}) async {
+  tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1.0;
   addTearDown(tester.view.reset);
   final shot = ScreenshotItem(
@@ -23,12 +29,26 @@ Future<void> _openDetail(WidgetTester tester, {String? sourceApp}) async {
     takenAt: DateTime(2026, 11, 6, 13, 58),
     category: Category.shopping,
     summary: '가디건 재입고',
-    tags: const ['가디건', '재입고'],
+    tags: tags,
     sourceApp: sourceApp,
   );
+  // 같은 대표 태그를 가진 다른 캡처(더 오래된 것) — "더 보기" 개수.
+  final others = [
+    for (var i = 0; i < sameTag; i++)
+      ScreenshotItem(
+        id: 100 + i,
+        localAssetId: 'o$i',
+        takenAt: DateTime(2026, 11, 1, 9, i),
+        category: Category.place,
+        tags: [tags.first],
+      ),
+  ];
   await tester.pumpWidget(
     RemineApp(
-      repository: FakeScreenshotRepository(now: () => _now, seed: [shot]),
+      repository: FakeScreenshotRepository(
+        now: () => _now,
+        seed: [shot, ...others],
+      ),
       now: () => _now,
     ),
   );
@@ -125,4 +145,32 @@ void main() {
       expect(contrast(color, AppColors.ink), greaterThan(4.5), reason: '$c');
     }
   });
+
+  testWidgets('더 보기 버튼은 "#태그 캡처 N장 더 보기"', (tester) async {
+    await _openDetail(tester, tags: const ['숙소'], sameTag: 7);
+
+    expect(find.text('#숙소'), findsNWidgets(2)); // 해시태그 + 버튼
+    expect(find.text(' 캡처 7장 더 보기'), findsOneWidget);
+  });
+
+  for (final size in const [Size(360, 800), Size(412, 915)]) {
+    testWidgets('태그가 길면 태그만 말줄임, "캡처 N장 더 보기"는 다 보인다 · $size', (tester) async {
+      const long = '아주아주아주긴관심사태그이름이라서한줄에다안들어가는태그';
+      await _openDetail(tester, tags: const [long], sameTag: 12, size: size);
+
+      final rest = find.text(' 캡처 12장 더 보기');
+      expect(rest, findsOneWidget);
+      final painter = TextPainter(
+        text: TextSpan(
+          text: ' 캡처 12장 더 보기',
+          style: tester.widget<Text>(rest).style,
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      expect(tester.getSize(rest).width, greaterThanOrEqualTo(painter.width));
+      final tag = tester.widget<Text>(find.text('#$long').last);
+      expect(tag.overflow, TextOverflow.ellipsis);
+      expect(tester.takeException(), isNull);
+    });
+  }
 }
