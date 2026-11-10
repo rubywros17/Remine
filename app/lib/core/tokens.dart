@@ -162,6 +162,16 @@ abstract final class AppRadii {
   static const double pill = 999;
 }
 
+/// 카드 양감: 가까운 얇은 그림자 + 멀리 퍼지는 그림자 2겹과 1px 테두리. 그리드 카드에 같이 쓴다.
+/// 아래로 최대 약 28px(8 + blur 20) 번지므로 감싸는 스크롤의 좌우·아래 여백이 이보다 작으면 잘린다.
+abstract final class AppShadow {
+  static const card = [
+    BoxShadow(color: Color(0x0F000000), offset: Offset(0, 1), blurRadius: 2),
+    BoxShadow(color: Color(0x1A000000), offset: Offset(0, 8), blurRadius: 20),
+  ];
+  static const cardBorderColor = Color(0x0D000000);
+}
+
 /// 홈 세로 여백. 제목 ↔ 관심사 카드와 관심사 카드 ↔ 서랍 제목은 보이는 글자 끝 기준으로 같은 간격이고,
 /// 화면이 남으면 둘 다 남는 높이의 [cardGapShare](각각 최대 +[cardGapMaxExtra])만큼 같이 는다.
 /// 나머지는 알약 아래로. 알약 ↔ 탭바는 최소 [pillsToTabMin](모자라면 스크롤).

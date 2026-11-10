@@ -220,6 +220,7 @@ class _TagScreenState extends State<TagScreen> {
                   items: const [],
                   keyFor: _keyFor,
                   onOpen: _openDetail,
+                  depth: true,
                 ),
               if (recent.isNotEmpty) ...[
                 _SectionTitle('최근 $window'),
@@ -227,6 +228,7 @@ class _TagScreenState extends State<TagScreen> {
                   items: recent,
                   keyFor: _keyFor,
                   onOpen: _openDetail,
+                  depth: true,
                 ),
               ],
               if (older.isNotEmpty) ...[
@@ -236,6 +238,7 @@ class _TagScreenState extends State<TagScreen> {
                   items: older,
                   keyFor: _keyFor,
                   onOpen: _openDetail,
+                  depth: true,
                   indexOffset: recent.length,
                 ),
               ],
