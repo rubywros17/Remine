@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:remine/app.dart';
@@ -97,5 +99,30 @@ void main() {
 
     expect(find.byType(HighlighterText), findsNWidgets(2));
     expect(find.text('#가디건'), findsOneWidget);
+  });
+
+  testWidgets('캡처 위 이름표는 카테고리 색 배경', (tester) async {
+    await _openDetail(tester);
+
+    final sticker = tester.widget<DecoratedBox>(
+      find.byKey(const ValueKey('category-sticker')),
+    );
+    expect(
+      (sticker.decoration as BoxDecoration).color,
+      AppCategoryColors.of(Category.shopping),
+    );
+  });
+
+  test('7개 카테고리 색 모두 차콜 배경 위에서 보이고(3:1 이상), #111 글자도 읽힌다(4.5:1 이상)', () {
+    double contrast(Color a, Color b) {
+      final (x, y) = (a.computeLuminance(), b.computeLuminance());
+      return (math.max(x, y) + 0.05) / (math.min(x, y) + 0.05);
+    }
+
+    for (final c in Category.values) {
+      final color = AppCategoryColors.of(c);
+      expect(contrast(color, AppColors.darkGray), greaterThan(3), reason: '$c');
+      expect(contrast(color, AppColors.ink), greaterThan(4.5), reason: '$c');
+    }
   });
 }

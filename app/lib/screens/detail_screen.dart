@@ -1280,7 +1280,7 @@ class _SourceChip extends StatelessWidget {
   );
 }
 
-/// 이미지 카드 위의 카테고리 스티커(아이콘 + 이름, 레몬 배경). 카드 오른쪽 위에 살짝 기울여 붙는다.
+/// 이미지 카드 위의 카테고리 스티커(아이콘 + 이름, 카테고리 색 배경). 카드 오른쪽 위에 살짝 기울여 붙는다.
 class _CategorySticker extends StatelessWidget {
   const _CategorySticker({required this.category});
 
@@ -1291,8 +1291,10 @@ class _CategorySticker extends StatelessWidget {
     return Transform.rotate(
       angle: 0.1,
       child: DecoratedBox(
+        key: const ValueKey('category-sticker'),
+        // 카테고리 색 배경 + #111 글자. 7색 모두 차콜 배경 대비 4.3:1 이상, 글자 대비 9:1 이상.
         decoration: BoxDecoration(
-          color: AppColors.lemon,
+          color: AppCategoryColors.of(category),
           borderRadius: BorderRadius.circular(AppRadii.pill),
         ),
         child: Padding(
@@ -1302,7 +1304,13 @@ class _CategorySticker extends StatelessWidget {
             children: [
               Icon(categoryIcon(category), size: 14, color: AppColors.ink),
               const SizedBox(width: 6),
-              Text(category.label, style: AppText.label.copyWith(fontSize: 13)),
+              Text(
+                category.label,
+                style: AppText.label.copyWith(
+                  fontSize: 13,
+                  color: AppColors.ink,
+                ),
+              ),
             ],
           ),
         ),
