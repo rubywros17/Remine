@@ -366,7 +366,7 @@ abstract final class AppGesture {
   /// 휴지통 플링으로 인정하려면 최소한 이만큼(px)은 끌어야 한다(스치기 방지).
   static const double trashFlingMinDistance = 24;
 
-  /// 끄는 거리에 비례해 어두워지는 배경(다크그레이)의 최대 불투명도.
+  /// 끄는 거리에 비례해 상세 배경(차콜) 위에 덮는 잉크색의 최대 불투명도.
   static const double trashDimMaxOpacity = 0.72;
 
   /// 끌수록 카드가 줄어드는 최소 배율, 기울어지는 최대 각도(라디안).

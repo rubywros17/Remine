@@ -49,14 +49,14 @@ Finder get _blur => find.byWidgetPredicate(
 
 void main() {
   group('배경', () {
-    testWidgets('원래 셀라돈 단색이다(블러 사진 배경 없음), 기기 모드에서도 같다', (tester) async {
+    testWidgets('차콜 단색이다(블러 사진 배경 없음), 기기 모드에서도 같다', (tester) async {
       await _openDetail(tester, reader: FakeGalleryReader());
 
       expect(_blur, findsNothing);
       expect(find.byType(AnimatedSwitcher), findsNothing);
       expect(
         tester.widget<Scaffold>(find.byType(Scaffold).last).backgroundColor,
-        AppColors.celadon,
+        AppColors.darkGray,
       );
     });
 

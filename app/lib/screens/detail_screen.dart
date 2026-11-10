@@ -246,16 +246,16 @@ class _DetailScreenState extends State<DetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.celadon,
-      // 배경은 끄는 거리에 비례해 다크그레이로 어두워진다(최대 불투명도는 AppGesture.trashDimMaxOpacity).
+      backgroundColor: AppColors.darkGray,
+      // 배경(차콜)은 끄는 거리에 비례해 잉크색으로 더 어두워진다(최대 불투명도는 AppGesture.trashDimMaxOpacity).
       body: ValueListenableBuilder<_ThrowView>(
         valueListenable: _view,
         builder: (context, view, child) {
           final dim = view.$1.clamp(0.0, 1.0) * AppGesture.trashDimMaxOpacity;
           return ColoredBox(
             color: Color.alphaBlend(
-              AppColors.darkGray.withValues(alpha: dim),
-              AppColors.celadon,
+              AppColors.ink.withValues(alpha: dim),
+              AppColors.darkGray,
             ),
             child: child,
           );
