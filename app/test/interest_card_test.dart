@@ -7,6 +7,7 @@ import 'package:remine/models/category.dart';
 import 'package:remine/models/interest.dart';
 import 'package:remine/models/screenshot_item.dart';
 import 'package:remine/screens/interests_screen.dart';
+import 'package:remine/widgets/capture_thumb.dart';
 import 'package:remine/widgets/home_widgets.dart';
 import 'package:remine/widgets/small_widgets.dart';
 
@@ -175,6 +176,57 @@ void main() {
         }
       },
     );
+
+    for (final width in const [360.0, 412.0]) {
+      testWidgets(
+        'SHOTS 스티커: 맨 앞 사진 오른쪽 위에 걸치고, 카드 안쪽에 있고, 글자와 안 겹친다 (폭 $width)',
+        (tester) async {
+          for (final scale in const [1.0, 1.3]) {
+            for (final dormant in const [1, 12]) {
+              for (final recent in const [1, 3]) {
+                await tester.pumpWidget(
+                  _card(
+                    _interest(dormantDays: dormant, recent: recent),
+                    width: width,
+                    scale: scale,
+                  ),
+                );
+                final why = '$width/$scale/$dormant/$recent';
+                final card = tester.getRect(find.byType(InterestCard));
+                final c = tester.getCenter(
+                  find.byKey(const ValueKey('shots-sticker')),
+                );
+                const r = AppInterestCard.shotsSize / 2;
+                final sticker = Rect.fromCircle(center: c, radius: r);
+                // 카드 가장자리에서 안쪽 여백 이상 떨어져 잘리지 않는다.
+                final inside = card.deflate(
+                  AppInterestCard.shotsEdgeInset - 0.5,
+                );
+                expect(inside.contains(sticker.topLeft), isTrue, reason: why);
+                expect(
+                  inside.contains(sticker.bottomRight),
+                  isTrue,
+                  reason: why,
+                );
+                // 맨 앞 사진(마지막에 그려진 썸네일)의 오른쪽 위에 걸친다.
+                final front = tester.getRect(find.byType(CaptureThumb).last);
+                expect(sticker.overlaps(front), isTrue, reason: why);
+                expect(c.dx, greaterThan(front.center.dx), reason: why);
+                expect(c.dy, lessThan(front.center.dy), reason: why);
+                // 태그 제목·상태 스티커와 겹치지 않는다.
+                for (final f in [find.text('#뜨개질'), find.byType(Sticker)]) {
+                  expect(
+                    sticker.overlaps(tester.getRect(f)),
+                    isFalse,
+                    reason: why,
+                  );
+                }
+              }
+            }
+          }
+        },
+      );
+    }
 
     testWidgets('360×800, 글자 1.0: 관심사 탭에 카드 3장이 탭바 위로 다 보인다', (tester) async {
       tester.view.physicalSize = const Size(360, 800);

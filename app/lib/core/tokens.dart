@@ -94,9 +94,12 @@ abstract final class AppBrain {
 abstract final class AppInterestCard {
   static const double minHeight = 168;
 
-  /// 콜라주 위 원형 스티커 "19 / SHOTS": 지름, 기울기(10°).
+  /// 콜라주 맨 앞 사진 오른쪽 위에 걸친 원형 스티커 "19 / SHOTS": 지름, 기울기(10°).
   static const double shotsSize = 58;
   static const double shotsTilt = 10 * math.pi / 180;
+
+  /// 스티커는 콜라주 맨 앞 사진의 오른쪽 위 모서리에 걸치되, 카드 가장자리에서 이만큼 안쪽에 둔다.
+  static const double shotsEdgeInset = 8;
 
   /// 카드 뒤 큰 숫자 워터마크: 크기, 외곽선 두께, 색(흰색 14%).
   static const double watermarkSize = 132;
@@ -149,6 +152,22 @@ abstract final class AppRadii {
   static const double sheet = 30;
   static const double tile = 18;
   static const double pill = 999;
+}
+
+/// 홈 세로 여백. 제목 ↔ 관심사 카드와 관심사 카드 ↔ 서랍 제목은 보이는 글자 끝 기준으로 같은 간격이고,
+/// 화면이 남으면 둘 다 남는 높이의 [cardGapShare](각각 최대 +[cardGapMaxExtra])만큼 같이 는다.
+/// 나머지는 알약 아래로. 알약 ↔ 탭바는 최소 [pillsToTabMin](모자라면 스크롤).
+abstract final class AppHome {
+  static const double cardGapShare = 1 / 3;
+  static const double cardGapMaxExtra = 32;
+  static const double pillsToTabMin = 20;
+
+  // ponytail: Pretendard Bold 한글을 픽셀로 재서 맞춘 보정값(글자 크기 대비). 폰트를 바꾸면 home_ink_gap_test로 다시 잰다.
+  /// 제목(`display`) 글자 아래 끝이 글자 박스 아래보다 위에 있는 거리 ÷ 글자 크기.
+  static const double titleInkBottom = 0.245;
+
+  /// 서랍 제목(`sectionTitle`) 글자 위 끝이 글자 박스 위보다 아래에 있는 거리 ÷ 글자 크기.
+  static const double drawerTitleInkTop = 0.23;
 }
 
 /// 간격(4 단위)과 화면 좌우 여백.
