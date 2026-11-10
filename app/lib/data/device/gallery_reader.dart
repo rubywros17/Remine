@@ -135,6 +135,9 @@ abstract interface class GalleryReader {
   /// 사진의 폭/높이 비율(회전 반영). 알 수 없으면 null.
   Future<double?> aspectRatio(String photoId);
 
+  /// 사진의 파일명(예: `Screenshot_20261110_121217_Instagram.jpg`). 없으면 null. 화면 표시용 — 서버로 보내지 않는다.
+  Future<String?> fileName(String photoId);
+
   /// OCR 입력용 원본 바이트.
   Future<Uint8List?> bytes(String photoId);
 

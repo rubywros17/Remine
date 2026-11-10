@@ -1105,10 +1105,7 @@ class _InfoCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final source = [
-      if (item.sourceApp != null) item.sourceApp!,
-      formatStamp(item.takenAt),
-    ].join(' · ');
+    final sourceApp = item.sourceApp;
     return DecoratedBox(
       key: ValueKey('info-card-${item.id}'),
       decoration: const BoxDecoration(
@@ -1126,13 +1123,20 @@ class _InfoCard extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  // 출처 글자는 남는 폭 안에서 줄바꿈·말줄임, 카테고리 칩도 폭이 모자라면 줄어든다.
+                  // 출처 칩 + 날짜는 남는 폭 안에서 줄바꿈, 카테고리 버튼도 폭이 모자라면 줄어든다.
+                  // 앱 이름이 없는 캡처(파일명에 없음)는 날짜만.
                   Expanded(
-                    child: Text(
-                      source,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppText.caption.copyWith(fontSize: 13),
+                    child: Wrap(
+                      spacing: AppSpacing.s8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        if (sourceApp != null) _SourceChip(sourceApp),
+                        Text(
+                          formatStamp(item.takenAt),
+                          style: AppText.caption.copyWith(fontSize: 13),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(width: AppSpacing.s8),
@@ -1239,6 +1243,36 @@ class _InfoCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 출처 앱 칩: 차콜 배경, 흰 대문자(살짝 넓은 자간).
+class _SourceChip extends StatelessWidget {
+  const _SourceChip(this.name);
+
+  final String name;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    key: const ValueKey('source-chip'),
+    decoration: BoxDecoration(
+      color: AppColors.darkGray,
+      borderRadius: BorderRadius.circular(AppRadii.pill),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      child: Text(
+        name.toUpperCase(),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: AppText.caption.copyWith(
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.8,
+          color: AppColors.white,
+        ),
+      ),
+    ),
+  );
 }
 
 /// 이미지 카드 위의 카테고리 스티커(아이콘 + 이름, 레몬 배경). 카드 오른쪽 위에 살짝 기울여 붙는다.

@@ -106,6 +106,10 @@ class _RemineAppState extends State<RemineApp> {
             base,
             device.capture.verdicts,
             trash: device.trash.store,
+            // OCR 기록에 저장된 파일명을 먼저 쓰고, 없으면(OCR 안 한 메신저 캡처 등) 갤러리에서 찾는다.
+            fileNameOf: (id) async =>
+                (await device.capture.store.find(id))?.fileName ??
+                await device.reader.fileName(id),
           );
   }
 

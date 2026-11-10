@@ -3,6 +3,7 @@ import '../models/category_summary.dart';
 import '../models/category_update.dart';
 import '../models/interest.dart';
 import '../models/screenshot_item.dart';
+import 'device/privacy/app_rules.dart';
 import 'device/privacy/local_verdict_store.dart';
 import 'device/trash_store.dart';
 import 'screenshot_repository.dart';
@@ -14,13 +15,47 @@ import 'screenshot_repository.dart';
 /// - 서버 id와 겹치지 않게 기기 판정 캡처의 id는 음수(`-localId`)다.
 /// - 한계: 기기 판정 캡처의 카테고리 수정은 아직 안 된다(서버 연동 브랜치에서 로컬 저장을 붙인다).
 /// - 휴지통은 [TrashStore]에 남는다. 기기 판정 캡처는 서버에 없으니 어떤 요청도 보내지 않는다.
+/// - 출처(`sourceApp`)는 서버로 보내지 않으므로 서버 응답엔 없다. 목록을 돌려줄 때 [fileNameOf]로 찾은
+///   갤럭시 파일명의 앱 이름(대문자)을 기기에서 채운다.
 class LocalMergedRepository implements ScreenshotRepository {
-  LocalMergedRepository(this._base, this._verdicts, {TrashStore? trash})
-    : _trash = trash ?? InMemoryTrashStore();
+  LocalMergedRepository(
+    this._base,
+    this._verdicts, {
+    TrashStore? trash,
+    this.fileNameOf,
+  }) : _trash = trash ?? InMemoryTrashStore();
 
   final ScreenshotRepository _base;
   final LocalVerdictStore _verdicts;
   final TrashStore _trash;
+
+  /// asset id → 파일명. 없으면 출처를 채우지 않는다.
+  final Future<String?> Function(String assetId)? fileNameOf;
+
+  /// asset id → 앱 이름(없으면 null). 한 번 찾은 건 다시 찾지 않는다(파일명은 바뀌지 않는다).
+  final _sourceApps = <String, String?>{};
+
+  Future<List<ScreenshotItem>> _withSourceApp(
+    List<ScreenshotItem> items,
+  ) async {
+    final lookup = fileNameOf;
+    if (lookup == null) return items;
+    final missing = {
+      for (final s in items)
+        if (!_sourceApps.containsKey(s.localAssetId)) s.localAssetId,
+    };
+    final names = await Future.wait(missing.map(lookup));
+    var i = 0;
+    for (final id in missing) {
+      _sourceApps[id] = appNameFromFileName(names[i++] ?? '')?.toUpperCase();
+    }
+    return [
+      for (final s in items)
+        s.sourceApp != null
+            ? s
+            : s.copyWith(sourceApp: _sourceApps[s.localAssetId]),
+    ];
+  }
 
   static const _recentCount = 4;
 
@@ -55,6 +90,27 @@ class LocalMergedRepository implements ScreenshotRepository {
     String? tag,
     int page = 0,
     int size = 30,
+  }) async {
+    final p = await _merged(
+      category: category,
+      tag: tag,
+      page: page,
+      size: size,
+    );
+    return ScreenshotPage(
+      items: await _withSourceApp(p.items),
+      page: p.page,
+      size: p.size,
+      totalElements: p.totalElements,
+      totalPages: p.totalPages,
+    );
+  }
+
+  Future<ScreenshotPage> _merged({
+    required Category? category,
+    required String? tag,
+    required int page,
+    required int size,
   }) async {
     final hasTag = tag != null && tag.isNotEmpty;
     // 기기 판정 캡처에는 태그가 없다 → 태그로 거르면 서버 결과만 남는다.
