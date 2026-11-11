@@ -124,11 +124,11 @@ abstract final class AppBrain {
   static const linkGap = 110;
   static const linkDraw = 300;
 
-  /// 제목: 페이드 + [titleRise]px 위로. 제목 자리는 예전보다 [titleDrop]px 아래.
+  /// 제목: 페이드 + [titleRise]px 위로. 제목 자리는 원래보다 [titleDrop]px 아래(처음 40 → 24로 조금 올림).
   static const titleStart = 4500;
   static const titleFade = 400;
   static const double titleRise = 10;
-  static const double titleDrop = 40;
+  static const double titleDrop = 24;
 
   /// 처음 얼굴 크기: 최종 뇌 크기의 이 배수(얼굴 전체가 화면 가운데 들어온다).
   static const double headStartScale = 0.46;
