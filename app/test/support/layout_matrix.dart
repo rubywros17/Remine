@@ -20,6 +20,7 @@ import 'package:remine/widgets/category_sheet.dart';
 import 'package:remine/models/category.dart';
 import 'package:remine/screens/debug_ocr_screen.dart';
 import 'package:remine/widgets/drawer_stage.dart';
+import 'package:remine/widgets/interest_brain_map.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:remine/widgets/small_widgets.dart';
@@ -111,6 +112,33 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
   await tester.pumpAndSettle();
 }
 
+/// 긴 키워드 관심사 7개(많이 캡처한 순 = 9, 8, … 3장). 첫 키워드가 가장 길다.
+List<ScreenshotItem> _sevenLongInterests() {
+  const tags = [
+    '겨울캠핑장비추천리스트총정리',
+    '니트가디건코디',
+    '제주도한달살기숙소',
+    '홈카페레시피',
+    '아이폰케이스',
+    '주말브런치맛집',
+    '전시회일정정리',
+  ];
+  var id = 0;
+  return [
+    for (final (i, tag) in tags.indexed)
+      for (var k = 0; k < 9 - i; k++)
+        ScreenshotItem(
+          id: ++id,
+          localAssetId: 'long$id',
+          takenAt: _now.subtract(Duration(days: k % 5, hours: k)),
+          category: Category.values[i % Category.values.length],
+          // 앞 키워드와 한 장씩 함께 → 연결선
+          tags: [tag, if (k == 0 && i > 0) tags[i - 1]],
+          summary: '캡처 $id',
+        ),
+  ];
+}
+
 void _expectClean(String where, List<String> errors) {
   expect(errors, isEmpty, reason: '$where\n  ${errors.toSet().join('\n  ')}');
 }
@@ -158,6 +186,54 @@ void defineLayoutMatrix({
         expect(find.text('#니트가디건', skipOffstage: true), findsWidgets);
       });
       _expectClean('관심사 탭 $label', errors);
+    });
+
+    testWidgets('관심사 지도 긴 키워드 7개 · $label', (tester) async {
+      final errors = await _errorsDuring(() async {
+        await _pump(
+          tester,
+          size,
+          scale,
+          repository: FakeScreenshotRepository(
+            now: () => _now,
+            seed: _sevenLongInterests(),
+          ),
+        );
+        await tester.tap(find.byIcon(LucideIcons.star));
+        await tester.pumpAndSettle();
+        expect(find.text('목록 보기').hitTestable(), findsOneWidget);
+        final paint = find
+            .descendant(
+              of: find.byType(InterestBrainMap),
+              matching: find.byType(CustomPaint),
+            )
+            .evaluate()
+            .map((e) => e.widget as CustomPaint)
+            .firstWhere((c) => c.painter is BrainPainter);
+        final chips = (paint.painter! as BrainPainter).chips;
+        final canvas = (Offset.zero & tester.getSize(find.byWidget(paint)))
+            .inflate(0.5);
+        // 아주 작은 화면·큰 글자에서는 뒤 순위 칩부터 빠진다(목록에는 그대로).
+        if (size.width >= 360 && scale == 1.0) {
+          expect(chips, hasLength(7), reason: '보통 폰에서는 7개 다');
+        }
+        for (final (i, a) in chips.indexed) {
+          expect(
+            canvas.contains(a.rect.topLeft) &&
+                canvas.contains(a.rect.bottomRight),
+            isTrue,
+            reason: '${a.node.interest.tag} 칩이 캔버스 밖',
+          );
+          for (final b in chips.skip(i + 1)) {
+            expect(
+              a.rect.deflate(0.5).overlaps(b.rect.deflate(0.5)),
+              isFalse,
+              reason: '${a.node.interest.tag} ↔ ${b.node.interest.tag} 겹침',
+            );
+          }
+        }
+      });
+      _expectClean('관심사 지도 긴 키워드 $label', errors);
     });
 
     testWidgets('관심사 탭 빈 상태 · $label', (tester) async {

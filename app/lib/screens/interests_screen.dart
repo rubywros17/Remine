@@ -69,7 +69,10 @@ class _InterestsScreenState extends State<InterestsScreen> {
     final interests = _interests;
     if (interests == null) return const SizedBox.shrink();
     final map = _showMap && widget.active && interests.isNotEmpty;
+    // 탭에 들어올 때마다(_entry) 새 AnimatedSwitcher: 이전 목록과 크로스페이드하지 않아 첫 프레임부터 지도만 보인다.
+    // 지도 → 목록은 같은 AnimatedSwitcher 안이라 크로스페이드한다.
     return AnimatedSwitcher(
+      key: ValueKey('switcher-$_entry'),
       duration: MediaQuery.disableAnimationsOf(context)
           ? Duration.zero
           : AppBrain.crossfade,

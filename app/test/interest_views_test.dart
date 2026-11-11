@@ -684,6 +684,19 @@ void main() {
   });
 
   group('관심사 탭 머릿속 지도', () {
+    setUp(InterestBrainMap.resetIntro);
+
+    BrainPainter painterOf(WidgetTester tester) => tester
+        .widgetList<CustomPaint>(
+          find.descendant(
+            of: find.byType(InterestBrainMap),
+            matching: find.byType(CustomPaint),
+          ),
+        )
+        .map((c) => c.painter)
+        .whereType<BrainPainter>()
+        .single;
+
     testWidgets('탭에 들어올 때마다 지도부터, 다 그려져도 저절로 넘어가지 않고 [목록 보기]로 목록', (
       tester,
     ) async {
@@ -696,10 +709,15 @@ void main() {
       );
 
       await tester.pumpWidget(_scoped(const InterestsScreen(active: true)));
-      await tester.pump();
       expect(find.byType(InterestBrainMap), findsOneWidget);
+      expect(
+        find.byType(InterestCard),
+        findsNothing,
+        reason: '첫 프레임부터 지도만(목록이 비치지 않는다)',
+      );
+      expect(painterOf(tester).intro, isTrue, reason: '첫 진입은 얼굴부터');
 
-      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(seconds: 8));
       await tester.pumpAndSettle();
       expect(
         find.byType(InterestBrainMap),
@@ -721,29 +739,40 @@ void main() {
         findsOneWidget,
         reason: '다시 들어오면 또 지도부터',
       );
-      final painter =
-          tester
-                  .widget<CustomPaint>(
-                    find
-                        .descendant(
-                          of: find.byType(InterestBrainMap),
-                          matching: find.byType(CustomPaint),
-                        )
-                        .first,
-                  )
-                  .painter
-              as BrainPainter;
-      expect(painter.t, lessThan(0.1), reason: '처음부터 다시 그린다');
+      final again = painterOf(tester);
+      expect(again.intro, isFalse, reason: '두 번째부터는 얼굴·확대 없이');
+      expect(
+        again.ms,
+        closeTo(AppBrain.brainStart, 20),
+        reason: '뇌 그리기부터 다시 그린다',
+      );
     });
 
-    testWidgets('그리는 중에도 아무 데나 누르면 목록', (tester) async {
+    testWidgets('그리는 중에 누르면 바로 마지막 상태, 다 그려진 뒤 누르면 목록', (tester) async {
       await tester.pumpWidget(_scoped(const InterestsScreen()));
       await tester.pump();
-      expect(find.byType(InterestBrainMap), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(painterOf(tester).ms, lessThan(AppBrain.brainStart));
+
+      await tester.tapAt(const Offset(200, 300));
+      await tester.pump();
+      expect(
+        find.byType(InterestBrainMap),
+        findsOneWidget,
+        reason: '목록으로 가지 않는다',
+      );
+      final p = painterOf(tester);
+      expect(
+        p.ms,
+        brainTotalMs(
+          p.chips.length,
+          brainLinks([for (final c in p.chips) c.node]).length,
+        ),
+      );
+      expect(tester.hasRunningAnimations, isFalse);
 
       await tester.tapAt(const Offset(200, 300));
       await tester.pumpAndSettle();
-
       expect(find.byType(InterestBrainMap), findsNothing);
       expect(find.byType(InterestCard), findsWidgets);
     });
@@ -755,19 +784,15 @@ void main() {
       await tester.pump();
 
       expect(find.byType(InterestBrainMap), findsOneWidget);
-      final painter =
-          tester
-                  .widget<CustomPaint>(
-                    find
-                        .descendant(
-                          of: find.byType(InterestBrainMap),
-                          matching: find.byType(CustomPaint),
-                        )
-                        .first,
-                  )
-                  .painter
-              as BrainPainter;
-      expect(painter.t, 1.0);
+      final p = painterOf(tester);
+      expect(
+        p.ms,
+        brainTotalMs(
+          p.chips.length,
+          brainLinks([for (final c in p.chips) c.node]).length,
+        ),
+      );
+      expect(tester.hasRunningAnimations, isFalse);
 
       await tester.tap(find.text('목록 보기'));
       await tester.pump();
@@ -789,7 +814,7 @@ void main() {
       expect(find.text('아직 반복해서 캡처한 게 없어요'), findsOneWidget);
     });
 
-    test('원 배치: 많이 캡처할수록 크고, 7일 이상 지난 관심사는 잊은 것, 연결은 같은 캡처를 공유한 관심사', () async {
+    test('순서: 많이 캡처한 순, 7일 이상 지난 관심사는 잊은 것, 연결은 같은 캡처를 공유한 관심사', () async {
       final interests = await FakeScreenshotRepository(
         now: () => _now,
         seed: _seed,
@@ -798,10 +823,89 @@ void main() {
 
       // 횟수 많은 순(동점은 이름순): 뜨개질 4 → 가방 3 → 도안 3
       expect(nodes.map((n) => n.interest.tag), ['뜨개질', '가방', '도안']);
-      expect(nodes[0].radius, greaterThan(nodes[1].radius));
+      expect(brainLinks(nodes), [(0, 2)]);
       expect(nodes.map((n) => n.interest.forgotten), [false, true, false]);
       expect(nodes[0].interest.linkedTags, ['도안']);
       expect(nodes[1].interest.linkedTags, isEmpty);
+    });
+
+    Interest interest(String tag, int count, {int dormant = 0}) => Interest(
+      tag: tag,
+      category: Category.etc,
+      captureCount: count,
+      spanDays: 14,
+      dormantDays: dormant,
+      recent: const [],
+    );
+
+    final longSeven = [
+      interest('겨울캠핑장비추천리스트총정리', 9),
+      interest('니트가디건코디', 8),
+      interest('제주도한달살기숙소', 7, dormant: 9),
+      interest('홈카페레시피', 6),
+      interest('아이폰케이스', 5),
+      interest('주말브런치맛집', 4, dormant: 8),
+      interest('전시회일정정리', 3),
+    ];
+
+    for (final (name, size, scale) in [
+      ('360×800', const Size(320, 470), 1.0),
+      ('360×640', const Size(320, 320), 1.0),
+      ('360×800 글자 1.3배', const Size(320, 470), 1.3),
+    ]) {
+      test('칩: 긴 키워드 7개도 서로 안 겹치고 캔버스 안 · $name', () {
+        final chips = layoutChips(
+          layoutNodes(longSeven),
+          size,
+          TextScaler.linear(scale),
+        );
+        expect(chips, hasLength(7));
+        final canvas = Offset.zero & size;
+        for (final (i, a) in chips.indexed) {
+          expect(
+            canvas.inflate(0.5).contains(a.rect.topLeft) &&
+                canvas.inflate(0.5).contains(a.rect.bottomRight),
+            isTrue,
+            reason: '${a.node.interest.tag} ${a.rect} 캔버스 $canvas',
+          );
+          for (final b in chips.skip(i + 1)) {
+            expect(
+              a.rect.deflate(0.5).overlaps(b.rect.deflate(0.5)),
+              isFalse,
+              reason: '${a.node.interest.tag} ↔ ${b.node.interest.tag}',
+            );
+          }
+        }
+        if (scale == 1.0 && size.height > 400) {
+          final brain = chipBrainBounds(size).inflate(0.5);
+          for (final c in chips) {
+            expect(
+              brain.contains(c.rect.topLeft) &&
+                  brain.contains(c.rect.bottomRight),
+              isTrue,
+              reason: '${c.node.interest.tag}는 뇌 안',
+            );
+          }
+        }
+      });
+    }
+
+    test('칩: # 없이 키워드만, 1위·잊은 관심사는 레몬, 나머지는 연셀라돈', () {
+      final chips = layoutChips(
+        layoutNodes(longSeven),
+        const Size(320, 470),
+        TextScaler.noScaling,
+      );
+      expect(chips.map((c) => c.color), [
+        AppBrain.chipTop, // 1위
+        AppBrain.chip,
+        AppBrain.chipTop, // 잊은 관심사
+        AppBrain.chip,
+        AppBrain.chip,
+        AppBrain.chipTop, // 잊은 관심사
+        AppBrain.chip,
+      ]);
+      expect(chips.first.rect.height, greaterThan(chips[1].rect.height));
     });
 
     test('서버 응답의 linkedTags를 읽고, 옛 응답(필드 없음)은 빈 목록', () {
