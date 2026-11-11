@@ -22,13 +22,6 @@ abstract final class AppColors {
   static const lemon = Color(0xFFEDE7B3);
   static const chip = Color(0xFFEEF0F0);
   static const border = Color(0xFFE1E3E3);
-
-  /// 뉴모피즘 화면(태그 모아보기) 바탕. 이 위 보조 글자는 [neuInkSub]([inkSub]는 4.08:1로 모자람).
-  static const neuBg = Color(0xFFE8E8E4);
-  static const neuInkSub = Color(0xFF636365); // neuBg 위 4.88:1
-  static const neuBarEmpty = Color(
-    0xFFCFCFC9,
-  ); // 날짜별 막대 0장(border는 neuBg 위 1.05:1이라 안 보임)
   static const white = Color(0xFFFFFFFF);
 
   /// 휴지통 기준선을 넘었을 때 아이콘 배경(원)과 아이콘.
@@ -70,7 +63,6 @@ abstract final class AppCategoryColors {
 
   /// 카테고리 알약 테두리(검정보다 부드러운 차콜).
   static const pillBorder = AppColors.darkGray;
-  static const double pillBorderWidth = 1.2;
 
   static const double dotSize = 9;
   static const double barHeight = 30;
@@ -178,20 +170,6 @@ abstract final class AppShadow {
     BoxShadow(color: Color(0x1A000000), offset: Offset(0, 8), blurRadius: 20),
   ];
   static const cardBorderColor = Color(0x0D000000);
-
-  /// 뉴모피즘 볼록 사진 카드(바탕 [AppColors.neuBg] 위 전용): 오른쪽 아래 어둠 + 왼쪽 위 빛.
-  /// 사방으로 약 23px(7 + blur 16) 번지므로 카드 사이·카드 위 글자와 간격을 넉넉히 둔다.
-  static const neuRaised = [
-    BoxShadow(color: Color(0x8CA3A39B), offset: Offset(7, 7), blurRadius: 16),
-    BoxShadow(color: Color(0xF2FFFFFF), offset: Offset(-7, -7), blurRadius: 16),
-  ];
-  static const double neuRaisedRadius = 22;
-
-  /// [neuRaised]를 작게 줄인 것. 뉴모 카드 위 흰 날짜 알약.
-  static const neuRaisedSmall = [
-    BoxShadow(color: Color(0x8CA3A39B), offset: Offset(3, 3), blurRadius: 7),
-    BoxShadow(color: Color(0xF2FFFFFF), offset: Offset(-3, -3), blurRadius: 7),
-  ];
 }
 
 /// 홈 세로 여백. 제목 ↔ 관심사 카드와 관심사 카드 ↔ 서랍 제목은 보이는 글자 끝 기준으로 같은 간격이고,

@@ -16,7 +16,7 @@ class CaptureGrid extends StatelessWidget {
     required this.keyFor,
     required this.onOpen,
     this.indexOffset = 0,
-    this.raised = false,
+    this.depth = false,
   });
 
   final List<ScreenshotItem> items;
@@ -27,8 +27,8 @@ class CaptureGrid extends StatelessWidget {
   /// 한 목록을 여러 구역(태그 화면의 "최근 2주"/"그 전")으로 나눠 그릴 때 이 구역이 시작하는 위치.
   final int indexOffset;
 
-  /// 사진 카드에 바로 뉴모피즘 그림자([AppShadow.neuRaised]), 날짜 알약엔 작은 뉴모 그림자(태그 화면). 바탕이 [AppColors.neuBg]여야 한다.
-  final bool raised;
+  /// 카드에 [AppShadow.card] 그림자와 테두리를 넣는다(태그 화면).
+  final bool depth;
 
   static const _heights = [230.0, 170.0, 200.0, 250.0, 160.0];
 
@@ -40,20 +40,18 @@ class CaptureGrid extends StatelessWidget {
         child: Center(child: Text('아직 여기엔 아무것도 없어', style: AppText.body)),
       );
     }
-    // 볼록 카드는 그림자가 옆 카드 쪽으로 약 26px 번져 간격을 넓힌다.
-    final gap = raised ? AppSpacing.s20 : AppSpacing.s12;
     final left = <Widget>[];
     final right = <Widget>[];
     for (var i = 0; i < items.length; i++) {
       final tile = Padding(
-        padding: EdgeInsets.only(bottom: gap),
+        padding: const EdgeInsets.only(bottom: AppSpacing.s12),
         child: _Tile(
           key: ValueKey('tile-${items[i].id}'),
           item: items[i],
           height: _heights[(items[i].id + indexOffset + i) % _heights.length],
           anchorKey: keyFor(items[i].id),
           onTap: () => onOpen(indexOffset + i),
-          raised: raised,
+          depth: depth,
         ),
       );
       (i.isEven ? left : right).add(tile);
@@ -62,7 +60,7 @@ class CaptureGrid extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(child: Column(children: left)),
-        SizedBox(width: gap),
+        const SizedBox(width: AppSpacing.s12),
         // 오른쪽 열을 아래로 밀어 엇갈리게
         Expanded(
           child: Padding(
@@ -82,7 +80,7 @@ class _Tile extends StatelessWidget {
     required this.height,
     required this.anchorKey,
     required this.onTap,
-    required this.raised,
+    required this.depth,
   });
 
   final ScreenshotItem item;
@@ -91,55 +89,10 @@ class _Tile extends StatelessWidget {
   /// 상세에서 돌아올 때 이 타일이 보이게 스크롤하려고 쓰는 키.
   final GlobalKey anchorKey;
   final VoidCallback onTap;
-  final bool raised;
+  final bool depth;
 
   @override
   Widget build(BuildContext context) {
-    final radius = raised ? AppShadow.neuRaisedRadius : AppRadii.card;
-    final pillInset = raised ? 10.0 : 12.0;
-    Widget thumb = CaptureThumb(
-      assetId: item.localAssetId,
-      seed: item.id,
-      radius: radius,
-      child: Positioned(
-        left: pillInset,
-        bottom: pillInset,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: AppColors.white,
-            borderRadius: BorderRadius.circular(AppRadii.pill),
-            boxShadow: raised ? AppShadow.neuRaisedSmall : null,
-            // 카테고리 알약과 같은 테두리. DecoratedBox의 테두리는 안쪽에 그려져 알약 크기는 그대로다.
-            border: raised
-                ? Border.all(
-                    color: AppCategoryColors.pillBorder,
-                    width: AppCategoryColors.pillBorderWidth,
-                  )
-                : null,
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            child: Text(
-              formatMonthDay(item.takenAt),
-              style: AppText.numBadge(),
-            ),
-          ),
-        ),
-      ),
-    );
-    if (raised) {
-      // 그림자는 Hero 안: 상세로 갈 때 빈 자리에 그림자 틀만 남지 않게.
-      // RepaintBoundary: 블러 그림자를 타일마다 한 번만 그리고 스크롤 중엔 다시 그리지 않게.
-      thumb = RepaintBoundary(
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(radius),
-            boxShadow: AppShadow.neuRaised,
-          ),
-          child: thumb,
-        ),
-      );
-    }
     return PressableScale(
       onTap: onTap,
       label:
@@ -147,7 +100,56 @@ class _Tile extends StatelessWidget {
       child: SizedBox(
         key: anchorKey,
         height: height,
-        child: Hero(tag: 'screenshot-${item.id}', child: thumb),
+        child: Hero(
+          tag: 'screenshot-${item.id}',
+          child: _depthBox(
+            CaptureThumb(
+              assetId: item.localAssetId,
+              seed: item.id,
+              child: Positioned(
+                left: 12,
+                bottom: 12,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: AppColors.white,
+                    borderRadius: BorderRadius.circular(AppRadii.pill),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 5,
+                    ),
+                    child: Text(
+                      formatMonthDay(item.takenAt),
+                      style: AppText.numBadge(),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // 그림자·테두리를 Hero 안에 둬서 상세로 날아갈 때 빈 자리에 그림자만 남지 않게 한다.
+  // 테두리는 사진 위에 그려야 보이므로 foregroundDecoration.
+  // RepaintBoundary: 블러 그림자를 타일마다 한 번만 그리고 스크롤 중엔 다시 그리지 않게.
+  Widget _depthBox(Widget thumb) {
+    if (!depth) return thumb;
+    final radius = BorderRadius.circular(AppRadii.card);
+    return RepaintBoundary(
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: radius,
+          boxShadow: AppShadow.card,
+        ),
+        foregroundDecoration: BoxDecoration(
+          borderRadius: radius,
+          border: Border.all(color: AppShadow.cardBorderColor),
+        ),
+        child: thumb,
       ),
     );
   }

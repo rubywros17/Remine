@@ -149,9 +149,7 @@ class _TagScreenState extends State<TagScreen> {
           )
         : null;
     if (insight != null) _lastInsight[widget.tag] = insight.id;
-    // 이 화면만 뉴모피즘 회색 바탕(상태바 영역까지: SafeArea가 Scaffold 안쪽이라 그대로 칠해진다).
     return Scaffold(
-      backgroundColor: AppColors.neuBg,
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(
@@ -206,7 +204,7 @@ class _TagScreenState extends State<TagScreen> {
                     if (_items.isNotEmpty)
                       lastSeenLabel(_items.first.takenAt, _today),
                   ].join(' · '),
-                  style: AppText.caption.copyWith(color: AppColors.neuInkSub),
+                  style: AppText.caption.copyWith(color: AppColors.inkSub),
                 ),
                 // 결론(해석 문장) → 근거(막대) 순서
                 if (insight != null) ...[
@@ -222,7 +220,7 @@ class _TagScreenState extends State<TagScreen> {
                   items: const [],
                   keyFor: _keyFor,
                   onOpen: _openDetail,
-                  raised: true,
+                  depth: true,
                 ),
               if (recent.isNotEmpty) ...[
                 _SectionTitle('최근 $window'),
@@ -230,7 +228,7 @@ class _TagScreenState extends State<TagScreen> {
                   items: recent,
                   keyFor: _keyFor,
                   onOpen: _openDetail,
-                  raised: true,
+                  depth: true,
                 ),
               ],
               if (older.isNotEmpty) ...[
@@ -240,7 +238,7 @@ class _TagScreenState extends State<TagScreen> {
                   items: older,
                   keyFor: _keyFor,
                   onOpen: _openDetail,
-                  raised: true,
+                  depth: true,
                   indexOffset: recent.length,
                 ),
               ],
@@ -423,7 +421,7 @@ const insightPhrases = {
   );
 }
 
-/// 날짜별 캡처 수 막대. 있는 날은 셀라돈, 0인 날은 neuBarEmpty 낮은 막대. 아래 양끝에 시작 날짜와 "오늘".
+/// 날짜별 캡처 수 막대. 있는 날은 셀라돈, 0인 날은 테두리색 낮은 막대. 아래 양끝에 시작 날짜와 "오늘".
 /// 처음 그려질 때 막대가 아래에서 올라온다("애니메이션 줄이기"면 시간 0이라 바로 다 그려진다).
 ///
 /// [Flutter 메모] TweenAnimationBuilder는 처음 만들어질 때 begin → end로 한 번 움직이고, 값이 같으면 다시 움직이지 않는다.
@@ -440,7 +438,7 @@ class DailyBars extends StatelessWidget {
     final start = today.subtract(Duration(days: counts.length - 1));
     final caption = AppText.caption.copyWith(
       fontSize: AppTagBars.labelSize,
-      color: AppColors.neuInkSub,
+      color: AppColors.inkSub,
     );
     return Semantics(
       label: '최근 ${counts.length}일 중 $activeDays일 캡처',
@@ -465,9 +463,7 @@ class DailyBars extends StatelessWidget {
                             ? AppTagBars.emptyHeight
                             : AppTagBars.height * c / max * t,
                         decoration: BoxDecoration(
-                          color: c == 0
-                              ? AppColors.neuBarEmpty
-                              : AppColors.celadon,
+                          color: c == 0 ? AppColors.border : AppColors.celadon,
                           borderRadius: BorderRadius.circular(
                             AppTagBars.radius,
                           ),
@@ -499,8 +495,7 @@ class _SectionTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    // 볼록 카드의 흰 빛이 위로 번져 제목 글자를 덮지 않게 12 대신 24.
-    padding: const EdgeInsets.only(bottom: AppSpacing.s24),
+    padding: const EdgeInsets.only(bottom: AppSpacing.s12),
     child: Semantics(header: true, child: Text(text, style: AppText.cardTitle)),
   );
 }
