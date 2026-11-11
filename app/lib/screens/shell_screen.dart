@@ -26,14 +26,11 @@ class _ShellScreenState extends State<ShellScreen>
   /// 페이드 스루 중 사라지는 탭. 없으면 null.
   int? _from;
 
-  late final AnimationController _fade = AnimationController(
-    vsync: this,
-    duration: const Duration(
-      milliseconds: AppBrain.tabInStart + AppBrain.tabIn,
-    ),
-  )..addStatusListener((s) {
-      if (s.isCompleted) setState(() => _from = null);
-    });
+  late final AnimationController _fade =
+      AnimationController(vsync: this, duration: AppMotion.fadeThroughForward)
+        ..addStatusListener((s) {
+          if (s.isCompleted) setState(() => _from = null);
+        });
 
   @override
   void dispose() {
@@ -57,15 +54,16 @@ class _ShellScreenState extends State<ShellScreen>
 
   double _opacity(int i) {
     if (_from == null) return 1;
-    final ms = _fade.value * (AppBrain.tabInStart + AppBrain.tabIn);
+    final ms = _fade.value * AppMotion.fadeThroughForward.inMilliseconds;
     if (i == _from) {
       return 1 -
-          AppBrain.faceOutCurve.transform(
-            (ms / AppBrain.tabOut).clamp(0.0, 1.0),
+          AppMotion.fadeThroughOut.transform(
+            (ms / AppMotion.fadeThroughOutMs).clamp(0.0, 1.0),
           );
     }
-    return AppBrain.faceInCurve.transform(
-      ((ms - AppBrain.tabInStart) / AppBrain.tabIn).clamp(0.0, 1.0),
+    return AppMotion.fadeThroughIn.transform(
+      ((ms - AppMotion.fadeThroughInStartMs) / AppMotion.fadeThroughForwardInMs)
+          .clamp(0.0, 1.0),
     );
   }
 
