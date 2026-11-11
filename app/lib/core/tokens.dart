@@ -83,12 +83,78 @@ abstract final class AppBrain {
   static const brainstem = AppColors.celadonDeep;
   static const subtitle = Color(0xFFC9CBCC); // 어두운 바탕 위 보조 글자
 
-  /// 전체 길이(윤곽 → … → 잊은 관심사가 깨어남)와 목록으로 넘어가는 크로스페이드.
-  static const duration = Duration(seconds: 3);
+  /// 지도 → 목록 크로스페이드.
   static const crossfade = Duration(milliseconds: 400);
 
   /// 지도에 올리는 관심사 수(많이 캡처한 순). 나머지는 목록에서만.
   static const maxNodes = 7;
+
+  // ── 인트로 시간표(ms, 지도 시작 기준). 디자인 캔버스 19안 A. ──
+
+  /// 옆얼굴 선이 나타남(250~950) → 머릿속으로 확대(1300~2700) → 얼굴이 사라짐(1800~3100).
+  static const faceIn = (250, 950);
+  static const zoom = (1300, 2700);
+  static const faceOut = (1800, 3100);
+  static const Curve faceInCurve = Cubic(0.05, 0.7, 0.1, 1);
+  static const Curve zoomCurve = Cubic(0.65, 0, 0.35, 1);
+  static const Curve faceOutCurve = Cubic(0.4, 0, 1, 1);
+
+  /// 머리 안쪽 셀라돈 빛: 나타났다 사라진다. 가장 밝을 때 불투명도.
+  static const glow = (1000, 2700);
+  static const double glowAlpha = 0.22;
+
+  /// 뇌 그리기 시작. 두 번째 진입부터는 여기서 시작한다(얼굴·확대 생략).
+  static const brainStart = 2100;
+
+  /// [brainStart]부터 잰 단계: 윤곽 → 안쪽 채움 → 소뇌·뇌간 → 주름.
+  static const outlineMs = (0, 900);
+  static const fillMs = (794, 1324);
+  static const baseMs = (1165, 1694);
+  static const foldsMs = (1482, 2224);
+
+  /// 키워드 칩: 1위부터 [chipGap] 간격으로 [chipPop] 동안 0.6→1배.
+  static const chipsStart = 3700;
+  static const chipGap = 140;
+  static const chipPop = 380;
+  static const double chipFromScale = 0.6;
+  static const Curve chipCurve = Curves.easeOutBack; // 살짝 튀는 곡선
+
+  /// 연결선: [linkGap] 간격으로 하나씩 [linkDraw] 동안 그려진다.
+  static const linksStart = 4200;
+  static const linkGap = 110;
+  static const linkDraw = 300;
+
+  /// 제목: 페이드 + [titleRise]px 위로. 제목 자리는 예전보다 [titleDrop]px 아래.
+  static const titleStart = 4500;
+  static const titleFade = 400;
+  static const double titleRise = 10;
+  static const double titleDrop = 40;
+
+  /// 처음 얼굴 크기: 최종 뇌 크기의 이 배수(얼굴 전체가 화면 가운데 들어온다).
+  static const double headStartScale = 0.46;
+
+  /// 최종 뇌가 캔버스 너비(또는 높이)를 이만큼 채운다.
+  static const double brainFill = 0.96;
+
+  // ── 옆얼굴 선·키워드 칩 ──
+  static const face = subtitle; // #C9CBCC
+  static const double faceStroke = 3;
+  static const chip = Color(0xFFE4F1F3);
+  static const chipTop = AppColors.lemon; // 1위·잊은 관심사
+  static const double chipTopFont = 17;
+  static const double chipFont = 13;
+  static const chipTopPadding = EdgeInsets.symmetric(
+    vertical: 9,
+    horizontal: 16,
+  );
+  static const chipPadding = EdgeInsets.symmetric(vertical: 6, horizontal: 12);
+  static const chipShadow = BoxShadow(
+    color: Color(0x40000000),
+    offset: Offset(0, 4),
+    blurRadius: 12,
+  );
+  static const double chipSpacing = 6; // 칩 사이 최소 간격
+  static const double linkStroke = 1.8;
 }
 
 /// 관심사 카드(홈·관심사 탭). 한 화면(360×800)에 3장이 들어가는 높이.
