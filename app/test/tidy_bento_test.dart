@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:remine/app.dart';
 import 'package:remine/core/tokens.dart';
+import 'package:remine/data/device/ocr_store.dart';
 import 'package:remine/data/device/trash_store.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
 import 'package:remine/data/screenshot_repository.dart';
@@ -12,6 +13,7 @@ import 'package:remine/models/category_update.dart';
 import 'package:remine/models/interest.dart';
 import 'package:remine/models/screenshot_item.dart';
 import 'package:remine/screens/tidy_bundle_screen.dart';
+import 'package:remine/widgets/selectable_thumb.dart';
 
 import 'support/fake_device.dart';
 
@@ -151,6 +153,157 @@ void main() {
       expect(sizeLabel(10 * 1024 * 1024), '약 10MB');
       expect(sizeLabel((1.24 * 1024 * 1024 * 1024).round()), '약 1.2GB');
       expect(sizeLabel(12 * 1024 * 1024 * 1024), '약 12GB');
+    });
+  });
+
+  group('쌍둥이 캡처', () {
+    final t0 = DateTime(2026, 10, 20, 9);
+    TwinInput twin(
+      String id,
+      int sec,
+      String text, {
+      String app = 'INSTAGRAM',
+    }) => TwinInput(id, app, t0.add(Duration(seconds: sec)), text);
+    const page = '성수동 브런치 카페 메뉴판 아메리카노 사천오백원 라떼 오천원';
+
+    test('글자 바이그램 Jaccard: 같으면 1, 공백은 무시', () {
+      expect(textSimilarity(page, page.replaceAll(' ', '')), 1);
+      expect(textSimilarity('가나다라', '마바사아'), 0);
+      expect(textSimilarity('가나다', '가나다라'), closeTo(2 / 3, 1e-9));
+    });
+
+    test('같은 앱·60초 안·유사도 0.9 이상만 묶고, 묶음 안은 최신순', () {
+      expect(findTwins([twin('a', 0, page), twin('b', 30, page)]), [
+        ['b', 'a'],
+      ]);
+      expect(
+        findTwins([twin('a', 0, page), twin('b', 61, page)]),
+        isEmpty,
+        reason: '61초는 창 밖',
+      );
+      expect(
+        findTwins([twin('a', 0, page), twin('b', 10, page, app: 'NAVER')]),
+        isEmpty,
+        reason: '다른 앱',
+      );
+      expect(
+        findTwins([twin('a', 0, page), twin('b', 10, '$page 쿠폰 적용 시 삼천원 할인')]),
+        isEmpty,
+        reason: '유사도 0.9 미만',
+      );
+      expect(
+        findTwins([twin('a', 0, '가'), twin('b', 10, '가')]),
+        isEmpty,
+        reason: '글자가 없으면(2자 미만) 뺀다',
+      );
+    });
+
+    test('창 안에서 이어지면 한 묶음(a–b 50초, b–c 50초 → a·b·c)', () {
+      expect(
+        findTwins([
+          twin('a', 0, page),
+          twin('b', 50, page),
+          twin('c', 100, page),
+        ]),
+        [
+          ['c', 'b', 'a'],
+        ],
+      );
+    });
+
+    test('후보는 같은 앱 캡처가 60초 안에 더 있는 것만', () {
+      ScreenshotItem item(int id, int sec, String? app) => ScreenshotItem(
+        id: id,
+        localAssetId: 'a$id',
+        takenAt: t0.add(Duration(seconds: sec)),
+        category: Category.info,
+        tags: const [],
+        sourceApp: app,
+      );
+      expect(
+        twinCandidates([
+          item(1, 0, 'INSTAGRAM'),
+          item(2, 40, 'INSTAGRAM'),
+          item(3, 500, 'INSTAGRAM'),
+          item(4, 10, 'NAVER'),
+          item(5, 20, null),
+        ]).map((s) => s.id),
+        [1, 2],
+      );
+    });
+
+    testWidgets('묶음 화면: 쌍둥이끼리 붙여 보여 주고, 묶음마다 가장 최근 1장은 선택하지 않는다', (
+      tester,
+    ) async {
+      final ocr = InMemoryOcrStore();
+      ScreenshotItem item(int id, int sec) => ScreenshotItem(
+        id: id,
+        localAssetId: 'a$id',
+        takenAt: t0.add(Duration(seconds: sec)),
+        category: Category.place,
+        tags: const [],
+        sourceApp: 'INSTAGRAM',
+      );
+      final seed = [item(1, 0), item(2, 20), item(3, 40), item(4, 3000)];
+      for (final s in seed) {
+        await ocr.save(
+          OcrRecord(
+            assetId: s.localAssetId,
+            fileName: 'Screenshot_${s.id}.jpg',
+            modifiedAt: 1,
+            text: s.id == 4 ? '전혀 다른 화면입니다' : page,
+            charCount: 10,
+            ocrAt: t0,
+            engine: 'test',
+          ),
+        );
+      }
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        RemineApp(
+          repository: FakeScreenshotRepository(now: () => _now, seed: seed),
+          now: () => _now,
+          device: fakeServices(
+            FakeGalleryReader(),
+            store: ocr,
+            trash: InMemoryTrashStore(),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('정리'));
+      // 쌍둥이 비교는 다른 isolate에서 돈다 → 화면 시계와 실제 시간을 번갈아 흘려 결과를 기다린다.
+      for (var i = 0; i < 20 && find.text('거의 똑같아요').evaluate().isEmpty; i++) {
+        await tester.pump();
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)),
+        );
+      }
+      await tester.pumpAndSettle();
+
+      expect(find.text('거의 똑같아요'), findsOneWidget);
+      expect(
+        find.bySemanticsLabel('쌍둥이 캡처 2장. 거의 똑같아요'),
+        findsOneWidget,
+        reason: '3장 중 가장 최근 1장은 남긴다',
+      );
+
+      await _tap(tester, find.byKey(const ValueKey('tidy-twins')));
+      expect(find.text('쌍둥이 캡처 3장'), findsOneWidget);
+      expect(find.text('휴지통으로 2장'), findsOneWidget);
+      bool selected(int id) => tester
+          .widget<SelectableThumb>(
+            find.descendant(
+              of: find.byKey(ValueKey('tidy-shot-$id')),
+              matching: find.byType(SelectableThumb),
+            ),
+          )
+          .selected;
+      expect(selected(3), isFalse, reason: '가장 최근 1장은 남긴다');
+      expect(selected(2), isTrue);
+      expect(selected(1), isTrue);
     });
   });
 

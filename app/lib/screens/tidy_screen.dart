@@ -1,10 +1,13 @@
+import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 
 import '../core/helpers.dart';
 import '../core/tokens.dart';
 import '../data/device/device_services.dart';
+import '../data/device/ocr_store.dart';
 import '../data/remine_store.dart';
 import '../data/tidy_bundles.dart';
+import '../models/screenshot_item.dart';
 import '../widgets/tidy_bento.dart';
 import 'tidy_bundle_screen.dart';
 import 'trash_screen.dart';
@@ -75,9 +78,15 @@ class _TidyScreenState extends State<TidyScreen> {
     var bundles = _bundles;
     if (bundles == null || key != _computedFor) {
       final items = await store.repository.all();
-      bundles = device == null
+      bundles = trash == null
           ? demoBundles(items, now)
-          : computeBundles(items, now, skip: hidden);
+          : computeBundles(
+              items,
+              now,
+              skip: hidden,
+              twins: await _twins(items, hidden, trash.ocr),
+              twinsReady: true,
+            );
     }
     if (!mounted || token != _loadToken) return;
     setState(() {
@@ -102,6 +111,31 @@ class _TidyScreenState extends State<TidyScreen> {
         _sizes[id] = read[id] ?? 0;
       }
     });
+  }
+
+  /// 쌍둥이 묶음. 후보(같은 앱 60초 안)만 OCR 원문을 메인에서 읽고, 비교는 다른 isolate에서 한다(탭이 버벅이지 않게).
+  static Future<List<List<ScreenshotItem>>> _twins(
+    List<ScreenshotItem> items,
+    Set<String> hidden,
+    OcrStore ocr,
+  ) async {
+    final candidates = twinCandidates([
+      for (final s in items)
+        if (!hidden.contains(s.localAssetId)) s,
+    ]);
+    if (candidates.isEmpty) return const [];
+    final inputs = <TwinInput>[];
+    for (final s in candidates) {
+      final text = (await ocr.find(s.localAssetId))?.text ?? '';
+      if (text.isNotEmpty) {
+        inputs.add(TwinInput(s.localAssetId, s.sourceApp!, s.takenAt, text));
+      }
+    }
+    final groups = await compute(findTwins, inputs);
+    final byAsset = {for (final s in candidates) s.localAssetId: s};
+    return [
+      for (final g in groups) [for (final id in g) byAsset[id]!],
+    ];
   }
 
   String? get _sizeText {

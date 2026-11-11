@@ -76,17 +76,120 @@ TidyBundles computeBundles(
   );
 }
 
-/// 가짜 데이터 모드(크롬)용 묶음. 가짜 캡처는 다 최근 것이라, 가장 오래된 3장을 "석 달째 안 봄"으로 보여 준다.
+/// 가짜 데이터 모드(크롬)용 묶음. 가짜 캡처는 다 최근 것이고 OCR 원문도 없어서,
+/// 가장 오래된 3장을 "석 달째 안 봄"으로, 같은 출처 앱 2장씩 두 묶음을 쌍둥이로 보여 준다.
 TidyBundles demoBundles(List<ScreenshotItem> items, DateTime now) {
   final real = computeBundles(items, now);
   final oldest = [...items]..sort((a, b) => a.takenAt.compareTo(b.takenAt));
+  final byApp = <String, List<ScreenshotItem>>{};
+  for (final s in items) {
+    if (s.sourceApp != null) byApp.putIfAbsent(s.sourceApp!, () => []).add(s);
+  }
   return TidyBundles(
     stale: oldest.take(3).toList().reversed.toList(),
     etc: real.etc,
-    twins: real.twins,
-    twinsReady: real.twinsReady,
+    twins: [
+      for (final g in byApp.values.where((g) => g.length > 1).take(2))
+        g.take(2).toList(),
+    ],
+    twinsReady: true,
   );
 }
+
+// ── 쌍둥이 캡처 ──
+
+/// 쌍둥이 비교에 넘기는 한 장. OCR 원문은 기기 안(isolate)에서 비교만 하고 버린다.
+class TwinInput {
+  const TwinInput(this.assetId, this.app, this.takenAt, this.text);
+
+  final String assetId;
+  final String app;
+  final DateTime takenAt;
+  final String text;
+}
+
+/// 쌍둥이 후보: 같은 출처 앱 캡처가 [AppTidy.twinWindow] 안에 하나라도 더 있는 것.
+/// OCR 원문은 이 후보만 읽는다(메인 isolate에서 DB를 묻는 횟수를 줄인다).
+List<ScreenshotItem> twinCandidates(List<ScreenshotItem> items) {
+  final byApp = <String, List<ScreenshotItem>>{};
+  for (final s in items) {
+    final app = s.sourceApp;
+    if (app != null) byApp.putIfAbsent(app, () => []).add(s);
+  }
+  final out = <ScreenshotItem>[];
+  for (final g in byApp.values) {
+    g.sort((a, b) => a.takenAt.compareTo(b.takenAt));
+    for (var i = 0; i < g.length; i++) {
+      bool near(int j) =>
+          j >= 0 &&
+          j < g.length &&
+          g[j].takenAt.difference(g[i].takenAt).abs() <= AppTidy.twinWindow;
+      if (near(i - 1) || near(i + 1)) out.add(g[i]);
+    }
+  }
+  return out;
+}
+
+/// 쌍둥이 묶음(asset id, 묶음마다 최신순 · 묶음끼리도 최신순).
+/// 같은 앱 + [AppTidy.twinWindow] 안 + 글자 바이그램 Jaccard ≥ [AppTidy.twinSimilarity]. 글자가 2자 미만이면 뺀다.
+/// 시간순으로 정렬한 뒤 창 안의 쌍만 비교한다(전체 n² 비교를 하지 않는다).
+///
+/// [Flutter 메모] `compute(findTwins, inputs)`로 다른 isolate(별도 스레드)에서 돌린다. isolate에서는 DB·플러그인을
+/// 부를 수 없어서, 원문은 메인에서 읽어 [TwinInput]으로 넘기고 여기서는 비교만 한다.
+List<List<String>> findTwins(List<TwinInput> inputs) {
+  final xs = [
+    for (final x in inputs)
+      if (x.text.replaceAll(RegExp(r'\s'), '').runes.length >= 2) x,
+  ]..sort((a, b) => a.takenAt.compareTo(b.takenAt));
+  final grams = [for (final x in xs) _bigrams(x.text)];
+  final parent = List.generate(xs.length, (i) => i);
+  int root(int i) {
+    while (parent[i] != i) {
+      i = parent[i] = parent[parent[i]];
+    }
+    return i;
+  }
+
+  for (var i = 0; i < xs.length; i++) {
+    for (var j = i + 1; j < xs.length; j++) {
+      if (xs[j].takenAt.difference(xs[i].takenAt) > AppTidy.twinWindow) break;
+      if (xs[j].app != xs[i].app) continue;
+      if (jaccard(grams[i], grams[j]) >= AppTidy.twinSimilarity) {
+        parent[root(j)] = root(i);
+      }
+    }
+  }
+  final groups = <int, List<TwinInput>>{};
+  for (var i = 0; i < xs.length; i++) {
+    groups.putIfAbsent(root(i), () => []).add(xs[i]);
+  }
+  final out = [
+    for (final g in groups.values)
+      if (g.length > 1) (g..sort((a, b) => b.takenAt.compareTo(a.takenAt))),
+  ]..sort((a, b) => b.first.takenAt.compareTo(a.first.takenAt));
+  return [
+    for (final g in out) [for (final x in g) x.assetId],
+  ];
+}
+
+/// 공백을 뺀 글자 2개씩 묶음(바이그램) 집합.
+Set<String> _bigrams(String text) {
+  final s = text.replaceAll(RegExp(r'\s'), '').runes.toList();
+  return {
+    for (var i = 0; i + 1 < s.length; i++)
+      String.fromCharCodes([s[i], s[i + 1]]),
+  };
+}
+
+/// 두 집합의 Jaccard 유사도(교집합 / 합집합).
+double jaccard(Set<String> a, Set<String> b) {
+  if (a.isEmpty && b.isEmpty) return 0;
+  final inter = a.where(b.contains).length;
+  return inter / (a.length + b.length - inter);
+}
+
+/// 글자 바이그램 Jaccard(테스트·디버그용).
+double textSimilarity(String a, String b) => jaccard(_bigrams(a), _bigrams(b));
 
 /// 이번 주 월요일 0시.
 DateTime weekStart(DateTime now) =>
