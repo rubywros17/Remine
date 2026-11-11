@@ -113,6 +113,9 @@ class _Tile extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: AppColors.white,
                     borderRadius: BorderRadius.circular(AppRadii.pill),
+                    // 카드와 같은 얇은 양감(카테고리·태그 화면 공통). 테두리는 안쪽에 그려져 알약 크기는 그대로다.
+                    boxShadow: AppShadow.card,
+                    border: Border.all(color: AppShadow.cardBorderColor),
                   ),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
