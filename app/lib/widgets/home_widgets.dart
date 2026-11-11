@@ -255,7 +255,7 @@ class CategoryPill extends StatelessWidget {
 ///
 /// 숫자는 세 가지로 보여 준다: 맨 앞 사진 오른쪽 위 원형 스티커 "19 / SHOTS", 카드 뒤 옅은 외곽선 워터마크, 왼쪽 아래 점 5칸 게이지.
 /// 상태: 마지막 캡처가 [Interest.forgottenAfterDays]일 미만이면 셀라돈 "요즘 빠진 것" + "오늘/어제/N일 전 마지막",
-/// 그 이상이면 레몬 "잊은 관심사" + 레몬 테두리 + "N일째 잠자는 중". 누르면 태그 모아보기.
+/// 그 이상이면 레몬 "잊은 관심사" + "N일째 잠자는 중". 누르면 태그 모아보기.
 class InterestCard extends StatelessWidget {
   const InterestCard({super.key, required this.interest, required this.onTap});
 
@@ -397,22 +397,6 @@ class InterestCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // 잊은 관심사 레몬 테두리: 맨 위에 그려 콜라주가 덮지 않게 한다.
-                  if (i.forgotten)
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: DecoratedBox(
-                          key: const ValueKey('forgotten-border'),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(AppRadii.card),
-                            border: Border.all(
-                              color: AppColors.lemon,
-                              width: AppInterestCard.forgottenBorder,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
                 ],
               );
             },

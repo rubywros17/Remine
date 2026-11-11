@@ -111,9 +111,6 @@ abstract final class AppInterestCard {
   static const gaugeSteps = [3, 6, 10, 15, 20];
   static const double gaugeDot = 7;
   static const gaugeEmpty = Color(0x40FFFFFF); // 빈 칸: 흰색 25%
-
-  /// 잊은 관심사 레몬 테두리 두께.
-  static const double forgottenBorder = 2;
 }
 
 /// 상세 화면의 이미지 카드·배경 값. 값의 근거는 docs/design.md.
@@ -290,6 +287,29 @@ abstract final class AppMotion {
   static const Curve standard = Curves.easeOutCubic;
   static const Curve emphasized = Cubic(0.2, 0, 0, 1);
   static const Curve exit = Curves.easeInCubic;
+
+  /// 페이드 스루(관심사 목록 ↔ 태그 화면). 나가는 화면이 먼저 빠지고, 들어오는 화면이 뒤이어 들어온다.
+  /// 시각은 전환 시작부터 잰 ms. 들어갈 때 전체 [fadeThroughForward], 돌아올 때 [fadeThroughReverse].
+  static const Curve fadeThroughOut = Cubic(0.4, 0, 1, 1);
+  static const Curve fadeThroughIn = Cubic(0.05, 0.7, 0.1, 1);
+  static const fadeThroughOutMs = 225; // 나가는 화면: 0 ~ 225
+  static const fadeThroughInStartMs = 180; // 들어오는 화면 시작
+  static const fadeThroughForwardInMs = 570; // 들어갈 때 태그 화면: 180 ~ 750
+  static const fadeThroughReverseInMs = 450; // 돌아올 때 목록: 180 ~ 630
+  static const fadeThroughForward = Duration(
+    milliseconds: fadeThroughInStartMs + fadeThroughForwardInMs,
+  );
+  static const fadeThroughReverse = Duration(
+    milliseconds: fadeThroughInStartMs + fadeThroughReverseInMs,
+  );
+  static const double fadeThroughListScale =
+      0.97; // 목록: 나갈 때 1→0.97, 돌아올 때 0.97→1
+  static const double fadeThroughTagInScale = 1.03; // 태그 화면: 들어올 때 1.03→1
+  static const double fadeThroughTagOutScale = 1.02; // 태그 화면: 나갈 때 1→1.02
+
+  /// 태그 화면 막대: 그려진 뒤 [barsDelay]부터 [barsGrow] 동안 자란다(화면이 보인 뒤에 자라는 게 보이게).
+  static const barsDelay = Duration(milliseconds: 390);
+  static const barsGrow = Duration(milliseconds: 750);
 
   /// 시트·눌림 반응용 스프링.
   static const spring = SpringDescription(mass: 1, stiffness: 300, damping: 22);

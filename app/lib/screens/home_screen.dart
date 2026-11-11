@@ -78,8 +78,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _open(BuildContext context, Widget screen) {
-    Navigator.of(context).push(appRoute(context, (_) => screen));
+  /// [heroes]: 관심사 카드 콜라주처럼 Hero가 돌아올 때 빈 바탕 위를 날면 어수선한 곳은 false.
+  void _open(BuildContext context, Widget screen, {bool heroes = true}) {
+    Navigator.of(context)
+        .push(fadeThroughRoute(context, (_) => screen, heroes: heroes));
   }
 
   @override
@@ -169,6 +171,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         tag: interest.tag,
                         windowDays: interest.spanDays,
                       ),
+                      heroes: false,
                     ),
                   ),
                   GrowGap(
