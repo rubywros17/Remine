@@ -111,9 +111,6 @@ abstract final class AppInterestCard {
   static const gaugeSteps = [3, 6, 10, 15, 20];
   static const double gaugeDot = 7;
   static const gaugeEmpty = Color(0x40FFFFFF); // 빈 칸: 흰색 25%
-
-  /// 잊은 관심사 레몬 테두리 두께.
-  static const double forgottenBorder = 2;
 }
 
 /// 상세 화면의 이미지 카드·배경 값. 값의 근거는 docs/design.md.

@@ -59,6 +59,17 @@ int _gaugeOn(WidgetTester tester) => find
 Color _stickerColor(WidgetTester tester, String label) =>
     tester.widget<Sticker>(find.widgetWithText(Sticker, label)).color;
 
+/// 카드 안에 레몬색 테두리(Border.all)가 있는지.
+bool _hasLemonBorder(WidgetTester tester) => tester
+    .widgetList<DecoratedBox>(find.byType(DecoratedBox))
+    .map((b) => b.decoration)
+    .whereType<BoxDecoration>()
+    .any(
+      (d) =>
+          d.border is Border &&
+          (d.border! as Border).top.color == AppColors.lemon,
+    );
+
 void main() {
   group('관심사 카드 내용', () {
     testWidgets('7일 미만: 셀라돈 "요즘 빠진 것" + 오늘/어제/N일 전 마지막, 테두리 없음', (
@@ -78,15 +89,17 @@ void main() {
           findsNothing,
           reason: '"0일째 잠자는 중" 같은 문구 없음',
         );
-        expect(find.byKey(const ValueKey('forgotten-border')), findsNothing);
+        expect(_hasLemonBorder(tester), isFalse);
       }
     });
 
-    testWidgets('7일 이상: 레몬 "잊은 관심사" + 레몬 테두리 + "N일째 잠자는 중"', (tester) async {
+    testWidgets('7일 이상: 레몬 "잊은 관심사" + "N일째 잠자는 중", 테두리는 다른 카드처럼 없음', (
+      tester,
+    ) async {
       await tester.pumpWidget(_card(_interest(dormantDays: 9)));
       expect(_stickerColor(tester, '잊은 관심사'), AppColors.lemon);
       expect(find.text('9일째 잠자는 중'), findsOneWidget);
-      expect(find.byKey(const ValueKey('forgotten-border')), findsOneWidget);
+      expect(_hasLemonBorder(tester), isFalse);
       final shots = tester.widget<Container>(
         find.byKey(const ValueKey('shots-sticker')),
       );
