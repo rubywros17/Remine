@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
+import 'package:remine/core/helpers.dart';
 import 'package:remine/core/tokens.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
 import 'package:remine/data/remine_store.dart';
@@ -621,6 +622,56 @@ void main() {
         isTrue,
         reason: '끝나면 목록은 원래대로',
       );
+    });
+
+    testWidgets('heroes: false면 들어갈 때·돌아올 때 Hero가 날지 않고, 다 들어온 뒤에는 그대로', (
+      tester,
+    ) async {
+      // 같은 tag의 Hero: 첫 화면은 왼쪽 위, 새 화면은 오른쪽 아래. 날면 중간 위치에 보인다.
+      Widget page(Alignment at) => Scaffold(
+        body: Align(
+          alignment: at,
+          child: const Hero(
+            tag: 'h',
+            child: SizedBox(width: 40, height: 40, child: Text('H')),
+          ),
+        ),
+      );
+      bool flying() => tester
+          .widgetList<Text>(find.text('H'))
+          .indexed
+          .map((e) => tester.getCenter(find.text('H').at(e.$1)))
+          .any((c) => c.dy > 100 && c.dy < 500); // 끝점(위·아래)이 아닌 곳
+
+      for (final heroes in [true, false]) {
+        final nav = GlobalKey<NavigatorState>();
+        await tester.pumpWidget(
+          MaterialApp(navigatorKey: nav, home: page(Alignment.topLeft)),
+        );
+        nav.currentState!.push(
+          fadeThroughRoute(
+            nav.currentContext!,
+            (_) => page(Alignment.bottomRight),
+            heroes: heroes,
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(flying(), heroes, reason: 'push, heroes=$heroes');
+        await tester.pumpAndSettle();
+        expect(
+          tester
+              .widgetList<HeroMode>(find.byType(HeroMode))
+              .every((m) => m.enabled),
+          isTrue,
+          reason: '다 들어온 뒤에는 이 화면에서 상세로 가는 Hero가 난다',
+        );
+        nav.currentState!.pop();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(flying(), heroes, reason: 'pop, heroes=$heroes');
+        await tester.pumpAndSettle();
+      }
     });
 
     testWidgets('애니메이션 줄이기면 즉시 바뀐다', (tester) async {

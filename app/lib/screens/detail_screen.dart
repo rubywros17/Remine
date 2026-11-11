@@ -645,9 +645,12 @@ class _DetailPageState extends State<_DetailPage> {
                     onEditCategory: _editCategory,
                     onMore: tag == null
                         ? null
-                        : () => Navigator.of(
-                            context,
-                          ).push(appRoute(context, (_) => TagScreen(tag: tag))),
+                        : () => Navigator.of(context).push(
+                            fadeThroughRoute(
+                              context,
+                              (_) => TagScreen(tag: tag),
+                            ),
+                          ),
                   ),
                 ],
               ),

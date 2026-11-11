@@ -71,17 +71,27 @@ Route<T> appRoute<T>(BuildContext context, WidgetBuilder builder) {
   );
 }
 
-/// 관심사 목록 → 태그 화면 전환: 페이드 스루. 나가는 화면이 0~225ms에 빠지고, 들어오는 화면이 180ms부터 들어온다.
+/// 목록 → 태그·카테고리 화면 전환: 페이드 스루. 나가는 화면이 0~225ms에 빠지고, 들어오는 화면이 180ms부터 들어온다.
 /// "애니메이션 줄이기"면 시간 0이라 즉시 바뀐다.
 ///
 /// [Flutter 메모] `delegatedTransition`은 이 라우트가 올라오거나 내려갈 때 **아래 화면(목록)**에
 /// 씌울 전환이다. 그때 `secondaryAnimation`이 이 라우트의 진행값(0→1, 돌아올 땐 1→0)이다.
-Route<T> fadeThroughRoute<T>(BuildContext context, WidgetBuilder builder) {
+///
+/// [heroes]가 false면 이 전환(들어갈 때·돌아올 때)에서만 Hero가 날지 않는다. 다 들어온 뒤
+/// 이 화면에서 상세로 가는 Hero는 그대로 난다.
+/// [Flutter 메모] Hero는 두 화면에 같은 tag가 있으면 전환 동안 위층에서 날아간다. `HeroMode(enabled: false)`
+/// 아래의 Hero는 짝을 찾을 때 빠진다.
+Route<T> fadeThroughRoute<T>(
+  BuildContext context,
+  WidgetBuilder builder, {
+  bool heroes = true,
+}) {
   final reduced = AppMotion.reduced(context);
   return _FadeThroughRoute<T>(
     builder: builder,
     forward: reduced ? Duration.zero : AppMotion.fadeThroughForward,
     reverse: reduced ? Duration.zero : AppMotion.fadeThroughReverse,
+    heroes: heroes,
   );
 }
 
@@ -90,6 +100,7 @@ class _FadeThroughRoute<T> extends PageRouteBuilder<T> {
     required WidgetBuilder builder,
     required Duration forward,
     required Duration reverse,
+    required this.heroes,
   }) : super(
          opaque: true,
          transitionDuration: forward,
@@ -104,6 +115,23 @@ class _FadeThroughRoute<T> extends PageRouteBuilder<T> {
            child: child,
          ),
        );
+
+  final bool heroes;
+
+  /// Hero는 페이지 본문 안에서만 찾으니 HeroMode도 본문 안에 둔다. `animation` 대신 [controller]를 보는 이유:
+  /// 들어갈 때 HeroController가 위치를 재는 한 프레임 동안 라우트를 offstage로 두면서 `animation`을
+  /// 완료(1)로 바꿔 끼우기 때문이다. controller는 실제 진행 상태 그대로다.
+  @override
+  Widget buildPage(
+    BuildContext context,
+    Animation<double> animation,
+    Animation<double> secondaryAnimation,
+  ) {
+    final page = super.buildPage(context, animation, secondaryAnimation);
+    return heroes
+        ? page
+        : _HeroesWhenSettled(animation: controller!, child: page);
+  }
 
   @override
   DelegatedTransitionBuilder? get delegatedTransition =>
@@ -123,6 +151,49 @@ class _FadeThroughRoute<T> extends PageRouteBuilder<T> {
               child: child,
             ),
           );
+}
+
+/// [animation]이 다 들어온 상태(completed)일 때만 Hero를 켠다.
+///
+/// [Flutter 메모] HeroController는 pop 직후 **다음 프레임 끝**에 Hero 짝을 찾는다. 진행값은 그 프레임엔
+/// 아직 1이라 값만 보면 늦고, 상태(reverse)가 바뀌는 순간 setState로 다시 그려야 그 프레임에 꺼져 있다.
+class _HeroesWhenSettled extends StatefulWidget {
+  const _HeroesWhenSettled({required this.animation, required this.child});
+
+  final Animation<double> animation;
+  final Widget child;
+
+  @override
+  State<_HeroesWhenSettled> createState() => _HeroesWhenSettledState();
+}
+
+class _HeroesWhenSettledState extends State<_HeroesWhenSettled> {
+  void _onStatus(AnimationStatus _) => setState(() {});
+
+  @override
+  void initState() {
+    super.initState();
+    widget.animation.addStatusListener(_onStatus);
+  }
+
+  @override
+  void didUpdateWidget(_HeroesWhenSettled old) {
+    super.didUpdateWidget(old);
+    if (old.animation != widget.animation) {
+      old.animation.removeStatusListener(_onStatus);
+      widget.animation.addStatusListener(_onStatus);
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.animation.removeStatusListener(_onStatus);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      HeroMode(enabled: widget.animation.isCompleted, child: widget.child);
 }
 
 Widget _faded(double opacity, double scale, Widget child) => Opacity(

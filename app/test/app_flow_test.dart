@@ -6,6 +6,7 @@ import 'package:remine/core/tokens.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
 import 'package:remine/models/category.dart';
 import 'package:remine/screens/analysis_screen.dart';
+import 'package:remine/screens/category_screen.dart';
 import 'package:remine/screens/tag_screen.dart';
 import 'package:remine/widgets/drawer_stage.dart';
 import 'package:remine/widgets/home_widgets.dart';
@@ -159,6 +160,48 @@ void main() {
       expect(find.byType(BackButtonCircle), findsOneWidget);
       expect(find.text('#니트가디건'), findsWidgets);
     });
+  });
+
+  group('홈 → 태그·카테고리 화면 페이드 스루', () {
+    double opacityAbove(WidgetTester tester, Finder of) => tester
+        .widget<Opacity>(
+          find.ancestor(of: of, matching: find.byType(Opacity)).first,
+        )
+        .opacity;
+
+    for (final (name, tap, screen) in [
+      ('관심사 카드 → 태그 화면', find.byType(InterestCard), find.byType(TagScreen)),
+      (
+        '카테고리 버튼 → 카테고리 화면',
+        find.widgetWithText(CategoryPill, Category.shopping.label),
+        find.byType(CategoryScreen),
+      ),
+    ]) {
+      testWidgets('$name: 홈이 먼저 빠지고 새 화면이 뒤이어, 돌아올 땐 반대로', (tester) async {
+        await _pumpApp(tester);
+        await tester.tap(tap);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        final home = find.byType(Wordmark);
+        expect(opacityAbove(tester, home), allOf(greaterThan(0), lessThan(1)));
+        expect(opacityAbove(tester, screen), 0, reason: '180ms 전');
+        await tester.pump(const Duration(milliseconds: 150)); // 250ms
+        expect(opacityAbove(tester, home), 0, reason: '225ms에 다 빠진다');
+        expect(opacityAbove(tester, screen), greaterThan(0));
+        await tester.pumpAndSettle();
+
+        await tester.binding.handlePopRoute();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(opacityAbove(tester, home), 0, reason: '180ms 전');
+        expect(
+          opacityAbove(tester, screen),
+          allOf(greaterThan(0), lessThan(1)),
+        );
+        await tester.pumpAndSettle();
+        expect(screen, findsNothing);
+      });
+    }
   });
 
   group('카테고리 화면', () {

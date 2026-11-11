@@ -79,7 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _open(BuildContext context, Widget screen) {
-    Navigator.of(context).push(appRoute(context, (_) => screen));
+    Navigator.of(context).push(fadeThroughRoute(context, (_) => screen));
   }
 
   @override

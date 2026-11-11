@@ -95,7 +95,7 @@ class _RemineAppState extends State<RemineApp> {
       WidgetsBinding.instance.addPostFrameCallback((_) => _openTarget(target));
       return;
     }
-    nav.push(appRoute(nav.context, (_) => TagScreen(tag: target.tag)));
+    nav.push(fadeThroughRoute(nav.context, (_) => TagScreen(tag: target.tag)));
   }
 
   ScreenshotRepository _withLocal(ScreenshotRepository base) {
