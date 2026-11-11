@@ -47,6 +47,19 @@ class RemoteRepository implements ScreenshotRepository {
     totalPages: 0,
   );
 
+  /// 서버는 한 페이지에 최대 [_maxPage]장이라 페이지를 돌며 모은다.
+  @override
+  Future<List<ScreenshotItem>> all() async {
+    final items = <ScreenshotItem>[];
+    for (var page = 0; ; page++) {
+      final p = await list(page: page, size: _maxPage);
+      items.addAll(p.items);
+      if (page + 1 >= p.totalPages || p.items.isEmpty) return items;
+    }
+  }
+
+  static const _maxPage = 100; // 서버 ScreenshotController의 @Max(100)
+
   @override
   Future<ScreenshotPage> list({
     Category? category,

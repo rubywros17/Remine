@@ -120,6 +120,21 @@ class FakeGalleryReader implements GalleryReader {
   @override
   Future<Uint8List?> bytes(String photoId) async =>
       photoId == 'missing' ? null : Uint8List.fromList(photoId.codeUnits);
+
+  /// 사진 id별 파일 크기(테스트가 채운다). 없으면 못 읽음.
+  final Map<String, int> sizes = {};
+
+  /// [fileSizes]로 물어본 id(캐시 확인용).
+  final List<String> sizeAsked = [];
+
+  @override
+  Future<Map<String, int>> fileSizes(List<String> photoIds) async {
+    sizeAsked.addAll(photoIds);
+    return {
+      for (final id in photoIds)
+        if (sizes[id] != null) id: sizes[id]!,
+    };
+  }
 }
 
 List<GalleryPhoto> fakePhotos(int n) => [

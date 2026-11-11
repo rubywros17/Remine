@@ -59,6 +59,9 @@ abstract interface class TrashStore {
   Future<void> restoreSent(Iterable<String> assetIds);
   Future<void> forgetSent(Iterable<String> assetIds);
 
+  /// [since] 이후 휴지통에 넣은 날짜들. 휴지통을 비워도(갤러리에서 삭제) 남고, 되살리면 빠진다.
+  Future<List<DateTime>> trashedSince(DateTime since);
+
   /// 기기를 재등록하면 서버 쪽 표시가 사라진다. 휴지통에 있는 서버 캡처를 다시 대기로 돌린다.
   Future<void> resendAll();
 }
@@ -89,14 +92,37 @@ class SqfliteTrashStore implements TrashStore {
         shot.onServer ? 1 : 0,
       ],
     );
+    await db.rawInsert(
+      'INSERT OR REPLACE INTO trash_log (asset_id, trashed_at) VALUES (?, ?)',
+      [shot.assetId, shot.trashedAt.millisecondsSinceEpoch],
+    );
   }
 
   @override
-  Future<void> restore(String assetId) => _leave([assetId], _restoring);
+  Future<void> restore(String assetId) async {
+    await _leave([assetId], _restoring);
+    final db = await _local.db;
+    await db.delete('trash_log', where: 'asset_id = ?', whereArgs: [assetId]);
+  }
 
   @override
   Future<void> markDeleted(Iterable<String> assetIds) =>
       _leave(assetIds, _forgetting);
+
+  @override
+  Future<List<DateTime>> trashedSince(DateTime since) async {
+    final db = await _local.db;
+    final rows = await db.query(
+      'trash_log',
+      columns: ['trashed_at'],
+      where: 'trashed_at >= ?',
+      whereArgs: [since.millisecondsSinceEpoch],
+    );
+    return [
+      for (final r in rows)
+        DateTime.fromMillisecondsSinceEpoch(r['trashed_at'] as int),
+    ];
+  }
 
   /// 휴지통에서 내보낸다. 기기 전용은 바로 지우고, 서버 캡처는 알릴 때까지 [state]로 남긴다.
   Future<void> _leave(Iterable<String> assetIds, String state) async {
@@ -213,13 +239,25 @@ class SqfliteTrashStore implements TrashStore {
 /// 메모리 구현(가짜 데이터·테스트). 앱을 다시 켜면 사라진다.
 class InMemoryTrashStore implements TrashStore {
   final Map<String, _Row> _rows = {};
+  final Map<String, DateTime> _log = {};
 
   @override
-  Future<void> add(TrashedShot shot) async =>
-      _rows[shot.assetId] = _Row(shot, _trashed, shot.onServer);
+  Future<void> add(TrashedShot shot) async {
+    _rows[shot.assetId] = _Row(shot, _trashed, shot.onServer);
+    _log[shot.assetId] = shot.trashedAt;
+  }
 
   @override
-  Future<void> restore(String assetId) async => _leave([assetId], _restoring);
+  Future<void> restore(String assetId) async {
+    _leave([assetId], _restoring);
+    _log.remove(assetId);
+  }
+
+  @override
+  Future<List<DateTime>> trashedSince(DateTime since) async => [
+    for (final at in _log.values)
+      if (!at.isBefore(since)) at,
+  ];
 
   @override
   Future<void> markDeleted(Iterable<String> assetIds) async =>

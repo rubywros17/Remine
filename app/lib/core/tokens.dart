@@ -218,6 +218,54 @@ abstract final class AppTagBars {
   static const double labelSize = 10;
 }
 
+/// 정리 탭 벤토 그리드(디자인 캔버스 20안 O)와 묶음 기준.
+abstract final class AppTidy {
+  // ── 그리드 ──
+  static const int leftFlex = 11; // 왼쪽 : 오른쪽 = 1.1 : 1
+  static const int rightFlex = 10;
+  static const double gap = 10;
+  static const double radius = 26;
+  static const double padding = 16;
+
+  // ── 타일 색 ──
+  static const big = AppColors.darkGray; // #4A4B4E 차콜
+  static const twins = AppColors.celadon;
+  static const stale = AppColors.lemon;
+  static const etc = AppColors.white;
+  static const etcBorder = Color(0xFFE3E3DE);
+  static const double etcBorderWidth = 1;
+  static const trash = Color(0xFFF1F1EE);
+
+  /// 숫자가 0인 묶음 타일의 투명도(누를 수 없다).
+  static const double emptyOpacity = 0.5;
+
+  // ── 글자 ──
+  static const double bigNumber = 64; // 큰 타일 숫자(Space Grotesk, 레몬)
+  static const double tileNumber = 34; // 작은 타일 숫자
+  static const double tileLabel = 15;
+
+  // ── 큰 타일 썸네일 3장 ──
+  static const double thumbWidth = 54;
+  static const double thumbHeight = 76;
+  static const double thumbOverlap = 22; // 다음 장이 이만큼 겹친다
+  static const List<double> thumbTilts = [-0.10, 0.03, 0.12]; // 라디안
+
+  // ── 이번 주 비운 캡처 막대 ──
+  static const weekToday = AppColors.celadonDeep; // #3E8D98
+  static const weekOther = Color(0xFFDCEEF1);
+  static const double weekBarHeight = 34;
+  static const double weekBarMin = 4; // 0장인 날
+  static const double weekBarWidth = 14;
+
+  // ── 묶음 기준(기기 안에서만 계산) ──
+  /// 이 날수보다 오래된 캡처 = "석 달째 안 봄".
+  static const staleDays = 90;
+
+  /// 쌍둥이: 같은 출처 앱 + 찍은 시각이 이 안 + OCR 글자 유사도(글자 바이그램 Jaccard)가 이 이상.
+  static const twinWindow = Duration(seconds: 60);
+  static const double twinSimilarity = 0.9;
+}
+
 abstract final class AppRadii {
   static const double card = 28;
   static const double sheet = 30;

@@ -116,6 +116,20 @@ class PhotoManagerGalleryReader implements GalleryReader {
     return a?.originBytes;
   }
 
+  @override
+  Future<Map<String, int>> fileSizes(List<String> photoIds) async {
+    final sizes = <String, int>{};
+    for (final id in photoIds) {
+      try {
+        final file = await (await AssetEntity.fromId(id))?.originFile;
+        if (file != null) sizes[id] = await file.length();
+      } catch (_) {
+        // 못 읽은 장은 뺀다(합이 모자라면 화면이 용량 줄을 숨긴다).
+      }
+    }
+    return sizes;
+  }
+
   static const _trashMinSdk = 30; // MediaStore.createTrashRequest
 
   @override

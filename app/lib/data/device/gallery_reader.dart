@@ -141,6 +141,9 @@ abstract interface class GalleryReader {
   /// OCR 입력용 원본 바이트.
   Future<Uint8List?> bytes(String photoId);
 
+  /// 사진 파일 크기(바이트). 읽은 것만 돌려준다(없거나 못 읽으면 빠진다). 정리 탭 "약 N GB" 용 — 서버로 보내지 않는다.
+  Future<Map<String, int>> fileSizes(List<String> photoIds);
+
   /// 갤러리 휴지통으로 옮길 수 있는 기기인지(Android 11+).
   Future<bool> canMoveToTrash();
 

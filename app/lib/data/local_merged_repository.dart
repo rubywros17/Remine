@@ -137,6 +137,11 @@ class LocalMergedRepository implements ScreenshotRepository {
   }
 
   @override
+  Future<List<ScreenshotItem>> all() async => _withSourceApp(
+    [...await _base.all(), ...await _localItems(null)]..sort(_newestFirst),
+  );
+
+  @override
   Future<CategorySummary> summary() async {
     final base = await _base.summary();
     final local = await _localItems(null);

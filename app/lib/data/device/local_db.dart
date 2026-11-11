@@ -9,7 +9,8 @@ import 'privacy/local_verdict_store.dart';
 ///
 /// 버전: 1 = `ocr_result`만, 2 = `local_verdict`·`setting` 추가 + 기존 OCR 행을 필터에 다시 통과,
 /// 3 = `server_map`(asset id ↔ 서버 id·동기화 상태)·`server_cache`(마지막으로 받은 목록·요약) 추가,
-/// 4 = `trash`(앱 휴지통과 서버 반영 대기열) 추가.
+/// 4 = `trash`(앱 휴지통과 서버 반영 대기열) 추가,
+/// 5 = `trash_log`(휴지통에 넣은 날짜. 휴지통을 비워도 남아 정리 탭 "이번 주 비운 캡처"를 센다) 추가.
 class LocalDb {
   /// [path]·[factory]는 테스트용(실제 SQLite 파일로 업그레이드를 검증). 기본은 앱 DB 폴더의 [fileName].
   LocalDb({
@@ -19,7 +20,7 @@ class LocalDb {
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now;
 
-  static const version = 4;
+  static const version = 5;
 
   final String fileName;
   final String? path;
@@ -60,6 +61,7 @@ class LocalDb {
       await _createV2Tables(db);
       await _createV3Tables(db);
       await _createV4Tables(db);
+      await _createV5Tables(db);
     },
     onUpgrade: (db, from, to) async {
       if (from < 2) {
@@ -68,6 +70,14 @@ class LocalDb {
       }
       if (from < 3) await _createV3Tables(db);
       if (from < 4) await _createV4Tables(db);
+      if (from < 5) {
+        await _createV5Tables(db);
+        // 이미 휴지통에 있던 캡처의 날짜를 옮겨 둔다(되살리는 중인 것은 뺀다).
+        await db.execute(
+          'INSERT OR IGNORE INTO trash_log (asset_id, trashed_at) '
+          "SELECT asset_id, trashed_at FROM trash WHERE state != 'RESTORING'",
+        );
+      }
     },
   );
 
@@ -115,6 +125,15 @@ class LocalDb {
       'on_server INTEGER NOT NULL, '
       'state TEXT NOT NULL, '
       'pending INTEGER NOT NULL)',
+    );
+  }
+
+  /// 휴지통에 넣은 기록: asset id와 날짜뿐(카테고리·원문 없음). 되살리면 지운다.
+  static Future<void> _createV5Tables(Database db) async {
+    await db.execute(
+      'CREATE TABLE trash_log ('
+      'asset_id TEXT PRIMARY KEY, '
+      'trashed_at INTEGER NOT NULL)',
     );
   }
 

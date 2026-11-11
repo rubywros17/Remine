@@ -35,6 +35,11 @@ Future<void> _pumpApp(WidgetTester tester, InMemoryTrashStore store) async {
   await tester.pumpAndSettle();
 }
 
+Finder _inTrashTile(String text) => find.descendant(
+  of: find.byKey(const ValueKey('tidy-trash')),
+  matching: find.text(text),
+);
+
 Future<void> _tap(WidgetTester tester, Finder finder) async {
   await tester.tap(finder);
   await tester.runAsync(pumpEventQueue);
@@ -56,8 +61,12 @@ void main() {
 
     expect(find.text('지워도 될 만한 캡처를 모아 드릴게요'), findsOneWidget);
     expect(find.text('휴지통'), findsOneWidget);
-    expect(find.text('2장'), findsOneWidget);
-    expect(find.text('정리 제안은 곧 생겨요'), findsOneWidget);
+    expect(_inTrashTile('2장'), findsOneWidget);
+    expect(
+      find.bySemanticsLabel('이번 주 비운 캡처 2장'),
+      findsOneWidget,
+      reason: '휴지통에 넣은 날짜로 센다',
+    );
 
     await _tap(tester, find.text('휴지통'));
     expect(find.byType(TrashScreen), findsOneWidget);
@@ -72,7 +81,12 @@ void main() {
     await store.restore('a');
     await _tap(tester, find.byType(BackButtonCircle).first);
     expect(find.byType(TrashScreen), findsNothing);
-    expect(find.text('1장'), findsOneWidget);
+    expect(_inTrashTile('1장'), findsOneWidget);
+    expect(
+      find.bySemanticsLabel('이번 주 비운 캡처 1장'),
+      findsOneWidget,
+      reason: '되살린 장은 비운 기록에서도 빠진다',
+    );
   });
 
   testWidgets('설정은 홈 오른쪽 위 톱니에서 열리고, 설정 > 휴지통도 그대로 있다', (tester) async {

@@ -8,6 +8,7 @@ import 'package:remine/data/device/ocr_store.dart';
 import 'package:remine/data/device/privacy/local_verdict_store.dart';
 import 'package:remine/data/device/privacy/privacy_filter.dart';
 import 'package:remine/data/device/settings_store.dart';
+import 'package:remine/data/device/trash_store.dart';
 import 'package:remine/data/remote/remote_state_store.dart';
 import 'package:remine/models/category.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -209,6 +210,86 @@ void main() {
     final remote = SqfliteRemoteStateStore(local);
     await remote.putCache('k', 'v');
     expect(await remote.cached('k'), 'v');
+    await local.close();
+  });
+
+  /// 휴지통 기록 표 전(v4)의 DB 파일: 휴지통에 한 장(TRASHED), 되살리는 중인 한 장(RESTORING).
+  Future<void> createV4() async {
+    final db = await factory.openDatabase(
+      path,
+      options: OpenDatabaseOptions(
+        version: 4,
+        onCreate: (db, _) async {
+          for (final sql in [
+            'CREATE TABLE ocr_result (asset_id TEXT PRIMARY KEY, file_name TEXT NOT NULL, '
+                'date_modified INTEGER NOT NULL, text TEXT NOT NULL, char_count INTEGER NOT NULL, '
+                'ocr_at INTEGER NOT NULL, engine TEXT NOT NULL)',
+            'CREATE TABLE local_verdict (local_id INTEGER PRIMARY KEY AUTOINCREMENT, '
+                'asset_id TEXT NOT NULL UNIQUE, taken_at INTEGER NOT NULL, modified_at INTEGER NOT NULL, '
+                'route TEXT NOT NULL, category TEXT, hidden INTEGER NOT NULL, reasons TEXT NOT NULL, '
+                'decided_at INTEGER NOT NULL)',
+            'CREATE TABLE setting (key TEXT PRIMARY KEY, value TEXT NOT NULL)',
+            'CREATE TABLE server_map (asset_id TEXT PRIMARY KEY, server_id INTEGER, '
+                'modified_at INTEGER NOT NULL, status TEXT NOT NULL)',
+            'CREATE TABLE server_cache (key TEXT PRIMARY KEY, json TEXT NOT NULL, saved_at INTEGER NOT NULL)',
+            'CREATE TABLE trash (asset_id TEXT PRIMARY KEY, category TEXT NOT NULL, '
+                'taken_at INTEGER NOT NULL, trashed_at INTEGER NOT NULL, on_server INTEGER NOT NULL, '
+                'state TEXT NOT NULL, pending INTEGER NOT NULL)',
+          ]) {
+            await db.execute(sql);
+          }
+          Future<void> trash(String id, String state) => db.insert('trash', {
+            'asset_id': id,
+            'category': 'ETC',
+            'taken_at': 1,
+            'trashed_at': DateTime(2026, 10, 20).millisecondsSinceEpoch,
+            'on_server': 1,
+            'state': state,
+            'pending': 0,
+          });
+          await trash('kept', 'TRASHED');
+          await trash('back', 'RESTORING');
+        },
+      ),
+    );
+    await db.close();
+  }
+
+  test('v4 → v5: 휴지통 기록 표가 생기고, 휴지통에 있던 캡처 날짜를 옮긴다(되살리는 중인 건 빼고)', () async {
+    await createV4();
+    final local = open();
+    final trash = SqfliteTrashStore(local);
+
+    expect(await (await local.db).getVersion(), LocalDb.version);
+    expect(await trash.trashedSince(DateTime(2026, 10, 19)), [
+      DateTime(2026, 10, 20),
+    ]);
+    expect((await trash.all()).map((t) => t.assetId), [
+      'kept',
+    ], reason: '기존 휴지통 그대로');
+    await local.close();
+  });
+
+  test('새 설치(v5): 휴지통에 넣으면 기록이 남고, 갤러리에서 지워도 남고, 되살리면 빠진다', () async {
+    final local = open();
+    final trash = SqfliteTrashStore(local);
+    TrashedShot shot(String id, int day) => TrashedShot(
+      assetId: id,
+      category: Category.etc,
+      takenAt: DateTime(2026, 1, 1),
+      trashedAt: DateTime(2026, 10, day),
+      onServer: false,
+    );
+    await trash.add(shot('a', 19));
+    await trash.add(shot('b', 20));
+    await trash.add(shot('old', 1));
+    await trash.markDeleted(['a']); // 휴지통 비우기(기기 전용이라 trash 행은 사라진다)
+    await trash.restore('b');
+
+    expect(await trash.trashedSince(DateTime(2026, 10, 19)), [
+      DateTime(2026, 10, 19),
+    ]);
+    expect(await trash.all(), hasLength(1), reason: 'old만 휴지통에');
     await local.close();
   });
 
