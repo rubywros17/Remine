@@ -448,8 +448,16 @@ class DailyBars extends StatelessWidget {
         children: [
           TweenAnimationBuilder<double>(
             tween: Tween(begin: 0, end: 1),
-            duration: AppMotion.duration(context, MotionDuration.slow),
-            curve: AppMotion.standard,
+            // 앞의 [barsDelay]는 0에 머물고 남은 [barsGrow] 동안 자란다.
+            duration: AppMotion.reduced(context)
+                ? Duration.zero
+                : AppMotion.barsDelay + AppMotion.barsGrow,
+            curve: Interval(
+              AppMotion.barsDelay.inMilliseconds /
+                  (AppMotion.barsDelay + AppMotion.barsGrow).inMilliseconds,
+              1,
+              curve: AppMotion.standard,
+            ),
             builder: (context, t, _) => SizedBox(
               height: AppTagBars.height,
               child: Row(

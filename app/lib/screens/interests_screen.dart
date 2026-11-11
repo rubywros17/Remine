@@ -104,7 +104,7 @@ class _InterestsScreenState extends State<InterestsScreen> {
               InterestCard(
                 interest: interest,
                 onTap: () => Navigator.of(context).push(
-                  appRoute(
+                  fadeThroughRoute(
                     context,
                     (_) => TagScreen(
                       tag: interest.tag,

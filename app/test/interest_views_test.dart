@@ -486,8 +486,10 @@ void main() {
 
       await tester.pumpWidget(_scoped(const TagScreen(tag: '뜨개질')));
       await tester.pump(); // 목록 로드
-      await tester.pump(const Duration(milliseconds: 16));
-      expect(barHeight(), lessThan(AppTagBars.height));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(barHeight(), 0, reason: '화면이 다 보일 때까지(390ms) 기다린다');
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(barHeight(), allOf(greaterThan(0), lessThan(AppTagBars.height)));
       await tester.pumpAndSettle();
       expect(barHeight(), AppTagBars.height, reason: '최댓값인 날이 높이를 꽉 채운다');
 
@@ -551,6 +553,82 @@ void main() {
       final detail = tester.widget<DetailScreen>(find.byType(DetailScreen));
       expect(detail.items.map((s) => s.id), [1, 2, 3, 9, 7, 8]);
       expect(detail.initialIndex, 4);
+    });
+  });
+
+  group('관심사 목록 → 태그 화면 페이드 스루', () {
+    double opacityOf(WidgetTester tester, Finder of) => tester
+        .widget<Opacity>(
+          find.ancestor(of: of, matching: find.byType(Opacity)).first,
+        )
+        .opacity;
+
+    Future<void> openList(WidgetTester tester, {bool reduce = false}) async {
+      await tester.pumpWidget(
+        _scoped(
+          const InterestsScreen(),
+          reduceMotion: reduce,
+          // 카드 하나: 두 카드가 같은 캡처를 보이면 Hero 태그가 겹친다(전환과 별개).
+          seed: [
+            for (var i = 1; i <= 4; i++)
+              _shot(i, i, Category.shopping, ['뜨개질']),
+          ],
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.text('목록 보기'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('목록이 먼저 빠지고 태그 화면이 뒤이어, 돌아올 땐 반대로', (tester) async {
+      await openList(tester);
+      await tester.tap(find.byType(InterestCard).first);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      final list = find.byType(InterestCard).first;
+      expect(opacityOf(tester, list), allOf(greaterThan(0), lessThan(1)));
+      expect(opacityOf(tester, find.byType(TagScreen)), 0, reason: '180ms 전');
+
+      await tester.pump(const Duration(milliseconds: 150)); // 250ms
+      expect(opacityOf(tester, list), 0, reason: '225ms에 다 빠진다');
+      expect(opacityOf(tester, find.byType(TagScreen)), greaterThan(0));
+      await tester.pumpAndSettle();
+      expect(opacityOf(tester, find.byType(TagScreen)), 1);
+
+      // 뒤로 버튼·시스템 뒤로(스와이프)는 둘 다 pop이다.
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(opacityOf(tester, find.byType(TagScreen)), lessThan(1));
+      expect(
+        opacityOf(tester, find.byType(InterestCard).first),
+        0,
+        reason: '180ms 전',
+      );
+      await tester.pump(const Duration(milliseconds: 150)); // 250ms
+      expect(opacityOf(tester, find.byType(TagScreen)), 0);
+      await tester.pumpAndSettle();
+      expect(find.byType(TagScreen), findsNothing);
+      expect(
+        tester
+            .widgetList<Opacity>(
+              find.ancestor(
+                of: find.byType(InterestCard).first,
+                matching: find.byType(Opacity),
+              ),
+            )
+            .every((o) => o.opacity == 1),
+        isTrue,
+        reason: '끝나면 목록은 원래대로',
+      );
+    });
+
+    testWidgets('애니메이션 줄이기면 즉시 바뀐다', (tester) async {
+      await openList(tester, reduce: true);
+      await tester.tap(find.byType(InterestCard).first);
+      await tester.pump();
+      await tester.pump();
+      expect(opacityOf(tester, find.byType(TagScreen)), 1);
     });
   });
 

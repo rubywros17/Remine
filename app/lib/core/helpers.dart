@@ -71,6 +71,102 @@ Route<T> appRoute<T>(BuildContext context, WidgetBuilder builder) {
   );
 }
 
+/// 관심사 목록 → 태그 화면 전환: 페이드 스루. 나가는 화면이 0~225ms에 빠지고, 들어오는 화면이 180ms부터 들어온다.
+/// "애니메이션 줄이기"면 시간 0이라 즉시 바뀐다.
+///
+/// [Flutter 메모] `delegatedTransition`은 이 라우트가 올라오거나 내려갈 때 **아래 화면(목록)**에
+/// 씌울 전환이다. 그때 `secondaryAnimation`이 이 라우트의 진행값(0→1, 돌아올 땐 1→0)이다.
+Route<T> fadeThroughRoute<T>(BuildContext context, WidgetBuilder builder) {
+  final reduced = AppMotion.reduced(context);
+  return _FadeThroughRoute<T>(
+    builder: builder,
+    forward: reduced ? Duration.zero : AppMotion.fadeThroughForward,
+    reverse: reduced ? Duration.zero : AppMotion.fadeThroughReverse,
+  );
+}
+
+class _FadeThroughRoute<T> extends PageRouteBuilder<T> {
+  _FadeThroughRoute({
+    required WidgetBuilder builder,
+    required Duration forward,
+    required Duration reverse,
+  }) : super(
+         opaque: true,
+         transitionDuration: forward,
+         reverseTransitionDuration: reverse,
+         pageBuilder: (context, _, _) => builder(context),
+         transitionsBuilder: (context, animation, _, child) => AnimatedBuilder(
+           animation: animation,
+           builder: (context, child) {
+             final (opacity, scale) = _fadeThrough(animation, incoming: true);
+             return _faded(opacity, scale, child!);
+           },
+           child: child,
+         ),
+       );
+
+  @override
+  DelegatedTransitionBuilder? get delegatedTransition =>
+      (context, animation, secondaryAnimation, allowSnapshotting, child) =>
+          // 목록이 빠진 자리에 검은 창이 보이지 않게 바탕색을 깐다(목록 라우트가 맨 아래라 여기가 배경).
+          ColoredBox(
+            color: AppColors.background,
+            child: AnimatedBuilder(
+              animation: secondaryAnimation,
+              builder: (context, child) {
+                final (opacity, scale) = _fadeThrough(
+                  secondaryAnimation,
+                  incoming: false,
+                );
+                return _faded(opacity, scale, child!);
+              },
+              child: child,
+            ),
+          );
+}
+
+Widget _faded(double opacity, double scale, Widget child) => Opacity(
+  opacity: opacity,
+  child: Transform.scale(scale: scale, child: child),
+);
+
+/// 페이드 스루 한 순간의 (투명도, 크기). [a]는 태그 라우트의 진행값이고, 돌아올 때(reverse)는
+/// 1→0으로 줄어드니 경과 시간으로 바꿔 계산한다. [incoming]이면 태그 화면, 아니면 목록.
+(double, double) _fadeThrough(Animation<double> a, {required bool incoming}) {
+  const outMs = AppMotion.fadeThroughOutMs;
+  const inStart = AppMotion.fadeThroughInStartMs;
+  double phase(double ms, int start, int length) =>
+      ((ms - start) / length).clamp(0.0, 1.0);
+
+  if (a.status == AnimationStatus.reverse) {
+    final ms = (1 - a.value) * AppMotion.fadeThroughReverse.inMilliseconds;
+    if (incoming) {
+      final t = AppMotion.fadeThroughOut.transform(phase(ms, 0, outMs));
+      return (1 - t, 1 + (AppMotion.fadeThroughTagOutScale - 1) * t);
+    }
+    final t = AppMotion.fadeThroughIn.transform(
+      phase(ms, inStart, AppMotion.fadeThroughReverseInMs),
+    );
+    return (
+      t,
+      AppMotion.fadeThroughListScale + (1 - AppMotion.fadeThroughListScale) * t,
+    );
+  }
+  final ms = a.value * AppMotion.fadeThroughForward.inMilliseconds;
+  if (incoming) {
+    final t = AppMotion.fadeThroughIn.transform(
+      phase(ms, inStart, AppMotion.fadeThroughForwardInMs),
+    );
+    return (
+      t,
+      AppMotion.fadeThroughTagInScale -
+          (AppMotion.fadeThroughTagInScale - 1) * t,
+    );
+  }
+  final t = AppMotion.fadeThroughOut.transform(phase(ms, 0, outMs));
+  return (1 - t, 1 - (1 - AppMotion.fadeThroughListScale) * t);
+}
+
 /// 집계 기간 이름: 7의 배수면 "2주", 아니면 "10일".
 String windowLabel(int days) => days % 7 == 0 ? '${days ~/ 7}주' : '$days일';
 
