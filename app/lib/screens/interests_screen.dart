@@ -110,6 +110,8 @@ class _InterestsScreenState extends State<InterestsScreen> {
                       tag: interest.tag,
                       windowDays: interest.spanDays,
                     ),
+                    // 콜라주 Hero가 돌아올 때 빈 바탕 위를 날지 않게.
+                    heroes: false,
                   ),
                 ),
               ),

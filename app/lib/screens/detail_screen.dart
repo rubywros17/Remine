@@ -649,6 +649,7 @@ class _DetailPageState extends State<_DetailPage> {
                             fadeThroughRoute(
                               context,
                               (_) => TagScreen(tag: tag),
+                              heroes: false,
                             ),
                           ),
                   ),
