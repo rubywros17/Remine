@@ -10,6 +10,7 @@ import 'package:remine/screens/category_screen.dart';
 import 'package:remine/screens/tag_screen.dart';
 import 'package:remine/widgets/drawer_stage.dart';
 import 'package:remine/widgets/home_widgets.dart';
+import 'package:remine/widgets/interest_brain_map.dart';
 import 'package:remine/widgets/small_widgets.dart';
 import 'package:remine/widgets/thumb_placeholder.dart';
 import 'package:remine/widgets/wordmark.dart';
@@ -163,11 +164,12 @@ void main() {
   });
 
   group('홈 → 태그·카테고리 화면 페이드 스루', () {
+    // 실제로 보이는 투명도: 위에 있는 Opacity(라우트 전환·셸 탭 전환)를 모두 곱한다.
     double opacityAbove(WidgetTester tester, Finder of) => tester
-        .widget<Opacity>(
-          find.ancestor(of: of, matching: find.byType(Opacity)).first,
+        .widgetList<Opacity>(
+          find.ancestor(of: of, matching: find.byType(Opacity)),
         )
-        .opacity;
+        .fold(1.0, (a, o) => a * o.opacity);
 
     for (final (name, tap, screen) in [
       ('관심사 카드 → 태그 화면', find.byType(InterestCard), find.byType(TagScreen)),
@@ -202,6 +204,37 @@ void main() {
         expect(screen, findsNothing);
       });
     }
+  });
+
+  group('홈 → 관심사 탭 페이드 스루', () {
+    // 실제로 보이는 투명도: 위에 있는 Opacity(라우트 전환·셸 탭 전환)를 모두 곱한다.
+    double opacityAbove(WidgetTester tester, Finder of) => tester
+        .widgetList<Opacity>(
+          find.ancestor(of: of, matching: find.byType(Opacity)),
+        )
+        .fold(1.0, (a, o) => a * o.opacity);
+
+    testWidgets('홈이 먼저 사라지고(225ms) 지도 바탕이 뒤이어, 다른 탭은 즉시', (tester) async {
+      await _pumpApp(tester);
+      await tester.tap(find.byIcon(LucideIcons.star));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      final home = find.byType(Wordmark);
+      final map = find.byType(InterestBrainMap);
+      expect(opacityAbove(tester, home), allOf(greaterThan(0), lessThan(1)));
+      expect(opacityAbove(tester, map), 0, reason: '180ms 전');
+      expect(find.byType(InterestCard), findsOneWidget, reason: '목록은 없고 홈 카드뿐');
+
+      await tester.pump(const Duration(milliseconds: 150)); // 250ms
+      expect(opacityAbove(tester, home), 0);
+      expect(opacityAbove(tester, map), greaterThan(0));
+      await tester.pumpAndSettle();
+      expect(find.byType(Wordmark), findsNothing, reason: '끝나면 홈은 숨는다');
+
+      await tester.tap(find.byIcon(LucideIcons.broom));
+      await tester.pump();
+      expect(map, findsNothing, reason: '다른 탭으로는 즉시');
+    });
   });
 
   group('카테고리 화면', () {

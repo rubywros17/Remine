@@ -155,6 +155,12 @@ abstract final class AppBrain {
   );
   static const double chipSpacing = 6; // 칩 사이 최소 간격
   static const double linkStroke = 1.8;
+
+  /// 홈 → 관심사 탭: 이전 탭이 0~[tabOut]ms에 사라지고, [tabInStart]ms부터 [tabIn]ms 동안 지도 바탕이 들어온다.
+  /// feat/ui-tag-motion의 AppMotion.fadeThrough*와 같은 값(그 브랜치가 머지되면 합친다).
+  static const tabOut = 225;
+  static const tabInStart = 180;
+  static const tabIn = 570;
 }
 
 /// 관심사 카드(홈·관심사 탭). 한 화면(360×800)에 3장이 들어가는 높이.
