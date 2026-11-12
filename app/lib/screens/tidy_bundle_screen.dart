@@ -5,6 +5,7 @@ import '../data/remine_store.dart';
 import '../models/screenshot_item.dart';
 import '../widgets/app_button.dart';
 import '../widgets/capture_thumb.dart';
+import '../widgets/peek_preview.dart';
 import '../widgets/selectable_thumb.dart';
 import '../widgets/small_widgets.dart';
 
@@ -42,6 +43,29 @@ class _TidyBundleScreenState extends State<TidyBundleScreen> {
         if (!s.keep.contains(item.id)) item.id,
   };
   bool _busy = false;
+  PeekHandle? _peek;
+
+  /// 꾹 누른 썸네일 자리(화면 좌표)에서 미리 보기를 띄운다.
+  void _peekAt(ScreenshotItem item) {
+    final box =
+        _thumbKeys[item.id]?.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return;
+    _closePeek();
+    _peek = showPeek(context, item, box.localToGlobal(Offset.zero) & box.size);
+  }
+
+  void _closePeek() {
+    _peek?.close();
+    _peek = null;
+  }
+
+  final Map<int, GlobalKey> _thumbKeys = {};
+
+  @override
+  void dispose() {
+    _closePeek();
+    super.dispose();
+  }
 
   static List<TidySection> _dedupe(List<TidySection> sections) {
     final seen = <int>{};
@@ -247,17 +271,24 @@ class _TidyBundleScreenState extends State<TidyBundleScreen> {
     );
   }
 
+  /// 탭은 선택/해제, 꾹 누르면 크게 보기(손 떼면 닫힘). 꾹 누르는 동안엔 선택이 바뀌지 않는다.
+  /// [Flutter 메모] 길게 누르기는 약 0.5초가 지나야 이긴다. 그 전에 손가락이 움직이면 스크롤이 이겨서 서로 겹치지 않는다.
   Widget _tile(ScreenshotItem item) {
     final on = _selected.contains(item.id);
     return Semantics(
       button: true,
       selected: on,
       label: '${item.category.label} 캡처',
+      hint: '길게 눌러 미리 보기',
       excludeSemantics: true,
       child: GestureDetector(
         key: ValueKey('tidy-shot-${item.id}'),
         onTap: _busy ? null : () => _toggle(item.id),
+        onLongPressStart: (_) => _peekAt(item),
+        onLongPressEnd: (_) => _closePeek(),
+        onLongPressCancel: _closePeek,
         child: SelectableThumb(
+          key: _thumbKeys.putIfAbsent(item.id, GlobalKey.new),
           selected: on,
           child: CaptureThumb(
             key: ValueKey(item.localAssetId),

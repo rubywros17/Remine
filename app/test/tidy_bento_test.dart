@@ -1,10 +1,13 @@
+import 'package:flutter/gestures.dart' show kLongPressTimeout;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:remine/app.dart';
 import 'package:remine/core/tokens.dart';
 import 'package:remine/data/device/ocr_store.dart';
 import 'package:remine/data/device/trash_store.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
+import 'package:remine/data/remine_store.dart';
 import 'package:remine/data/screenshot_repository.dart';
 import 'package:remine/data/tidy_bundles.dart';
 import 'package:remine/models/category.dart';
@@ -13,6 +16,7 @@ import 'package:remine/models/category_update.dart';
 import 'package:remine/models/interest.dart';
 import 'package:remine/models/screenshot_item.dart';
 import 'package:remine/screens/tidy_bundle_screen.dart';
+import 'package:remine/widgets/peek_preview.dart';
 import 'package:remine/widgets/selectable_thumb.dart';
 
 import 'support/fake_device.dart';
@@ -304,6 +308,135 @@ void main() {
       expect(selected(3), isFalse, reason: '가장 최근 1장은 남긴다');
       expect(selected(2), isTrue);
       expect(selected(1), isTrue);
+    });
+  });
+
+  group('꾹 눌러 크게 보기', () {
+    Future<List<MethodCall>> pumpBundle(
+      WidgetTester tester, {
+      bool reduce = false,
+    }) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final calls = <MethodCall>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          calls.add(call);
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
+      final items = [
+        for (var i = 1; i <= 12; i++)
+          ScreenshotItem(
+            id: i,
+            localAssetId: 'a$i',
+            takenAt: DateTime(2026, 11, 6, 13, 58),
+            category: Category.etc,
+            tags: const [],
+            sourceApp: 'KAKAOTALK',
+          ),
+      ];
+      await tester.pumpWidget(
+        RemineScope(
+          store: RemineStore(FakeScreenshotRepository(now: () => _now)),
+          child: MaterialApp(
+            home: MediaQuery(
+              data: MediaQueryData(
+                size: const Size(360, 800),
+                disableAnimations: reduce,
+              ),
+              child: TidyBundleScreen(
+                title: '갈 곳 없는 캡처',
+                sections: [TidySection('갈 곳 없는 캡처', items)],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return calls;
+    }
+
+    bool selected(WidgetTester tester, int id) => tester
+        .widget<SelectableThumb>(
+          find.descendant(
+            of: find.byKey(ValueKey('tidy-shot-$id')),
+            matching: find.byType(SelectableThumb),
+          ),
+        )
+        .selected;
+
+    testWidgets('꾹 누르면 햅틱과 함께 크게, 손 떼면 닫히고 선택은 그대로', (tester) async {
+      final calls = await pumpBundle(tester);
+      expect(selected(tester, 2), isTrue);
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(const ValueKey('tidy-shot-2'))),
+      );
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+      await tester.pump(); // 비율 읽기
+      await tester.pump(AppPeek.open);
+      expect(find.byType(PeekPreview), findsOneWidget);
+      expect(
+        find.text('2026.11.06 (FRI)  |  13:58  ·  KAKAO TALK'),
+        findsOneWidget,
+      );
+      expect(
+        calls.where((c) => c.method == 'HapticFeedback.vibrate'),
+        isNotEmpty,
+      );
+      final photo = tester.getRect(
+        find.descendant(
+          of: find.byType(PeekPreview),
+          matching: find.byType(ClipRRect),
+        ),
+      );
+      expect(photo.left, greaterThanOrEqualTo(AppPeek.sidePadding - 0.5));
+      expect(photo.width / photo.height, closeTo(AppPeek.fallbackAspect, 0.01));
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(find.byType(PeekPreview), findsNothing);
+      expect(selected(tester, 2), isTrue, reason: '꾹 누르기는 선택을 바꾸지 않는다');
+
+      await tester.tap(find.byKey(const ValueKey('tidy-shot-2')));
+      await tester.pump();
+      expect(selected(tester, 2), isFalse, reason: '탭은 지금처럼 선택/해제');
+    });
+
+    testWidgets('누르자마자 움직이면 스크롤이 이기고 미리 보기는 안 뜬다', (tester) async {
+      await pumpBundle(tester);
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(const ValueKey('tidy-shot-5'))),
+      );
+      await gesture.moveBy(const Offset(0, -80));
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(find.byType(PeekPreview), findsNothing);
+      expect(selected(tester, 5), isTrue);
+    });
+
+    testWidgets('애니메이션 줄이기면 커지는 효과 없이 바로', (tester) async {
+      await pumpBundle(tester, reduce: true);
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(const ValueKey('tidy-shot-1'))),
+      );
+      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+      await tester.pump();
+      expect(find.byType(PeekPreview), findsOneWidget);
+      expect(tester.hasRunningAnimations, isFalse);
+      await gesture.up();
+      await tester.pump();
+      expect(find.byType(PeekPreview), findsNothing);
     });
   });
 

@@ -266,6 +266,23 @@ abstract final class AppTidy {
   static const double twinSimilarity = 0.9;
 }
 
+/// 꾹 눌러 크게 보기(정리 묶음 그리드). 썸네일 자리에서 화면 가운데로 커지고, 손을 떼면 줄어들며 닫힌다.
+abstract final class AppPeek {
+  static const double sidePadding = 20;
+  static const double radius = 22;
+  static const double thumbRadius = 12; // 그리드 썸네일 모서리(커지기 시작하는 모양)
+  static const open = Duration(milliseconds: 220);
+  static const close = Duration(milliseconds: 160);
+  static const Curve curve = Cubic(0.05, 0.7, 0.1, 1);
+  static const double blur = 14;
+  static const scrim = Color(0x66000000); // 검정 40%
+  static const double captionGap = 12;
+  static const double captionHeight = 20;
+
+  /// 비율을 모를 때(가짜 데이터 모드) 쓰는 세로 화면 비율.
+  static const double fallbackAspect = 9 / 19.5;
+}
+
 abstract final class AppRadii {
   static const double card = 28;
   static const double sheet = 30;
