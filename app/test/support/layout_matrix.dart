@@ -236,6 +236,42 @@ void defineLayoutMatrix({
       _expectClean('관심사 지도 긴 키워드 $label', errors);
     });
 
+    testWidgets('정리 탭 벤토·한 번에 보기 · $label', (tester) async {
+      final errors = await _errorsDuring(() async {
+        final trash = InMemoryTrashStore();
+        await trash.add(
+          TrashedShot(
+            assetId: 'gone',
+            category: Category.etc,
+            takenAt: _now,
+            trashedAt: _now,
+            onServer: false,
+          ),
+        );
+        final reader = FakeGalleryReader();
+        for (var i = 1; i <= 30; i++) {
+          reader.sizes['fake-${i.toString().padLeft(3, '0')}'] = 900000000;
+        }
+        await _pump(
+          tester,
+          size,
+          scale,
+          device: fakeServices(reader, trash: trash),
+        );
+        await tester.tap(find.byIcon(LucideIcons.broom));
+        await tester.runAsync(pumpEventQueue);
+        await tester.pumpAndSettle();
+        expect(find.text('지워도 될 만한 스크린샷을 모아 드릴게요'), findsOneWidget);
+        await _tap(tester, find.text('한 번에 보기 →'));
+        expect(
+          find.byType(BackButtonCircle),
+          findsOneWidget,
+          reason: '묶음 화면으로 이동하지 못함',
+        );
+      });
+      _expectClean('정리 탭 $label', errors);
+    });
+
     testWidgets('관심사 탭 빈 상태 · $label', (tester) async {
       final errors = await _errorsDuring(() async {
         await _pump(
@@ -507,22 +543,6 @@ void defineLayoutMatrix({
         expect(find.byType(Switch), findsOneWidget, reason: '설정 화면이 아님');
       });
       _expectClean('설정 $label', errors);
-    });
-
-    testWidgets('정리 탭(휴지통 줄) · $label', (tester) async {
-      final errors = await _errorsDuring(() async {
-        await _pump(
-          tester,
-          size,
-          scale,
-          device: fakeServices(FakeGalleryReader()),
-        );
-        await _tap(tester, find.text('정리'));
-        await tester.runAsync(pumpEventQueue);
-        await tester.pump();
-        expect(find.text('0장'), findsOneWidget);
-      });
-      _expectClean('정리 $label', errors);
     });
 
     testWidgets('휴지통(전체 선택 + 하단 [복구]·[삭제 N장]) · $label', (tester) async {

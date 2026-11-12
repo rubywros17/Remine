@@ -64,6 +64,9 @@ class FakeScreenshotRepository implements ScreenshotRepository {
   }
 
   @override
+  Future<List<ScreenshotItem>> all() async => _sorted;
+
+  @override
   Future<CategorySummary> summary() async {
     final sorted = _sorted;
     return CategorySummary(

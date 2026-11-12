@@ -136,8 +136,12 @@ void main() {
 
       await tester.tap(find.text('정리'));
       await tester.pumpAndSettle();
-      expect(find.text('지워도 될 만한 캡처를 모아 드릴게요'), findsOneWidget);
-      expect(find.text('정리 제안은 곧 생겨요'), findsOneWidget);
+      expect(find.text('지워도 될 만한 스크린샷을 모아 드릴게요'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('tidy-all')),
+        findsOneWidget,
+        reason: '가짜 데이터 모드에서도 묶음 타일이 보인다',
+      );
       expect(find.text('휴지통'), findsNothing, reason: '가짜 데이터 모드는 휴지통이 없다');
 
       await tester.tap(find.text('서랍'));

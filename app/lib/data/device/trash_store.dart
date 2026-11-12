@@ -20,6 +20,31 @@ class TrashedShot {
   final bool onServer;
 }
 
+/// 휴지통에 넣은 기록 한 건: 어떤 캡처를 언제, 그때의 파일 크기(크기 기록 전 항목·못 읽었으면 null).
+class TrashLogEntry {
+  const TrashLogEntry(this.assetId, this.trashedAt, [this.size]);
+
+  final String assetId;
+  final DateTime trashedAt;
+  final int? size;
+
+  @override
+  bool operator ==(Object other) =>
+      other is TrashLogEntry &&
+      other.assetId == assetId &&
+      other.trashedAt == trashedAt &&
+      other.size == size;
+
+  @override
+  int get hashCode => Object.hash(assetId, trashedAt, size);
+
+  @override
+  String toString() => 'TrashLogEntry($assetId, $trashedAt, $size)';
+}
+
+/// asset id → 파일 크기(바이트). 못 읽으면 null. 휴지통에 넣을 때 "이번 주 확보한 용량"을 남기려고 쓴다.
+typedef FileSizeOf = Future<int?> Function(String assetId);
+
 /// 서버에 아직 알리지 못한 일. 네트워크가 안 되면 여기 남고 다음 동기화 때 다시 보낸다.
 class TrashOutbox {
   const TrashOutbox({
@@ -59,6 +84,12 @@ abstract interface class TrashStore {
   Future<void> restoreSent(Iterable<String> assetIds);
   Future<void> forgetSent(Iterable<String> assetIds);
 
+  /// [since] 이후 휴지통에 넣은 기록(날짜·크기). 휴지통을 비워도(갤러리에서 삭제) 남고, 되살리면 빠진다.
+  Future<List<TrashLogEntry>> trashedSince(DateTime since);
+
+  /// 크기가 비어 있는 기록에 크기를 채운다(이미 있는 크기는 덮어쓰지 않는다). 크기 기록 전 항목용.
+  Future<void> fillSizes(Map<String, int> sizes);
+
   /// 기기를 재등록하면 서버 쪽 표시가 사라진다. 휴지통에 있는 서버 캡처를 다시 대기로 돌린다.
   Future<void> resendAll();
 }
@@ -68,9 +99,12 @@ const _restoring = 'RESTORING'; // 되살렸고 서버에 알리는 중
 const _forgetting = 'FORGETTING'; // 갤러리에서 지웠고 서버에서 지우는 중
 
 class SqfliteTrashStore implements TrashStore {
-  SqfliteTrashStore(this._local);
+  SqfliteTrashStore(this._local, {this.sizeOf});
 
   final LocalDb _local;
+
+  /// 휴지통에 넣을 때 파일 크기를 같이 남긴다(없으면 크기 없이).
+  final FileSizeOf? sizeOf;
 
   @override
   Future<void> add(TrashedShot shot) async {
@@ -89,14 +123,58 @@ class SqfliteTrashStore implements TrashStore {
         shot.onServer ? 1 : 0,
       ],
     );
+    await db.rawInsert(
+      'INSERT OR REPLACE INTO trash_log (asset_id, trashed_at, size) VALUES (?, ?, ?)',
+      [
+        shot.assetId,
+        shot.trashedAt.millisecondsSinceEpoch,
+        await _sizeOf(sizeOf, shot.assetId),
+      ],
+    );
   }
 
   @override
-  Future<void> restore(String assetId) => _leave([assetId], _restoring);
+  Future<void> restore(String assetId) async {
+    await _leave([assetId], _restoring);
+    final db = await _local.db;
+    await db.delete('trash_log', where: 'asset_id = ?', whereArgs: [assetId]);
+  }
 
   @override
   Future<void> markDeleted(Iterable<String> assetIds) =>
       _leave(assetIds, _forgetting);
+
+  @override
+  Future<List<TrashLogEntry>> trashedSince(DateTime since) async {
+    final db = await _local.db;
+    final rows = await db.query(
+      'trash_log',
+      columns: ['asset_id', 'trashed_at', 'size'],
+      where: 'trashed_at >= ?',
+      whereArgs: [since.millisecondsSinceEpoch],
+    );
+    return [
+      for (final r in rows)
+        TrashLogEntry(
+          r['asset_id'] as String,
+          DateTime.fromMillisecondsSinceEpoch(r['trashed_at'] as int),
+          r['size'] as int?,
+        ),
+    ];
+  }
+
+  @override
+  Future<void> fillSizes(Map<String, int> sizes) async {
+    final db = await _local.db;
+    await db.transaction((tx) async {
+      for (final e in sizes.entries) {
+        await tx.rawUpdate(
+          'UPDATE trash_log SET size = ? WHERE asset_id = ? AND size IS NULL',
+          [e.value, e.key],
+        );
+      }
+    });
+  }
 
   /// 휴지통에서 내보낸다. 기기 전용은 바로 지우고, 서버 캡처는 알릴 때까지 [state]로 남긴다.
   Future<void> _leave(Iterable<String> assetIds, String state) async {
@@ -210,16 +288,55 @@ class SqfliteTrashStore implements TrashStore {
   }
 }
 
+/// 크기를 못 읽어도 휴지통에 넣는 건 막지 않는다.
+Future<int?> _sizeOf(FileSizeOf? sizeOf, String assetId) async {
+  if (sizeOf == null) return null;
+  try {
+    return await sizeOf(assetId);
+  } catch (_) {
+    return null;
+  }
+}
+
 /// 메모리 구현(가짜 데이터·테스트). 앱을 다시 켜면 사라진다.
 class InMemoryTrashStore implements TrashStore {
+  InMemoryTrashStore({this.sizeOf});
+
+  final FileSizeOf? sizeOf;
   final Map<String, _Row> _rows = {};
+  final Map<String, TrashLogEntry> _log = {};
 
   @override
-  Future<void> add(TrashedShot shot) async =>
-      _rows[shot.assetId] = _Row(shot, _trashed, shot.onServer);
+  Future<void> add(TrashedShot shot) async {
+    _rows[shot.assetId] = _Row(shot, _trashed, shot.onServer);
+    _log[shot.assetId] = TrashLogEntry(
+      shot.assetId,
+      shot.trashedAt,
+      await _sizeOf(sizeOf, shot.assetId),
+    );
+  }
 
   @override
-  Future<void> restore(String assetId) async => _leave([assetId], _restoring);
+  Future<void> restore(String assetId) async {
+    _leave([assetId], _restoring);
+    _log.remove(assetId);
+  }
+
+  @override
+  Future<List<TrashLogEntry>> trashedSince(DateTime since) async => [
+    for (final e in _log.values)
+      if (!e.trashedAt.isBefore(since)) e,
+  ];
+
+  @override
+  Future<void> fillSizes(Map<String, int> sizes) async {
+    for (final e in sizes.entries) {
+      final row = _log[e.key];
+      if (row != null && row.size == null) {
+        _log[e.key] = TrashLogEntry(row.assetId, row.trashedAt, e.value);
+      }
+    }
+  }
 
   @override
   Future<void> markDeleted(Iterable<String> assetIds) async =>

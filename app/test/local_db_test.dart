@@ -8,6 +8,7 @@ import 'package:remine/data/device/ocr_store.dart';
 import 'package:remine/data/device/privacy/local_verdict_store.dart';
 import 'package:remine/data/device/privacy/privacy_filter.dart';
 import 'package:remine/data/device/settings_store.dart';
+import 'package:remine/data/device/trash_store.dart';
 import 'package:remine/data/remote/remote_state_store.dart';
 import 'package:remine/models/category.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -209,6 +210,150 @@ void main() {
     final remote = SqfliteRemoteStateStore(local);
     await remote.putCache('k', 'v');
     expect(await remote.cached('k'), 'v');
+    await local.close();
+  });
+
+  /// 휴지통 기록 표 전(v4)의 DB 파일: 휴지통에 한 장(TRASHED), 되살리는 중인 한 장(RESTORING).
+  /// [v5]면 크기 칸 없는 휴지통 기록 표(v5)까지 있다.
+  Future<void> createV4({bool v5 = false}) async {
+    final db = await factory.openDatabase(
+      path,
+      options: OpenDatabaseOptions(
+        version: v5 ? 5 : 4,
+        onCreate: (db, _) async {
+          for (final sql in [
+            'CREATE TABLE ocr_result (asset_id TEXT PRIMARY KEY, file_name TEXT NOT NULL, '
+                'date_modified INTEGER NOT NULL, text TEXT NOT NULL, char_count INTEGER NOT NULL, '
+                'ocr_at INTEGER NOT NULL, engine TEXT NOT NULL)',
+            'CREATE TABLE local_verdict (local_id INTEGER PRIMARY KEY AUTOINCREMENT, '
+                'asset_id TEXT NOT NULL UNIQUE, taken_at INTEGER NOT NULL, modified_at INTEGER NOT NULL, '
+                'route TEXT NOT NULL, category TEXT, hidden INTEGER NOT NULL, reasons TEXT NOT NULL, '
+                'decided_at INTEGER NOT NULL)',
+            'CREATE TABLE setting (key TEXT PRIMARY KEY, value TEXT NOT NULL)',
+            'CREATE TABLE server_map (asset_id TEXT PRIMARY KEY, server_id INTEGER, '
+                'modified_at INTEGER NOT NULL, status TEXT NOT NULL)',
+            'CREATE TABLE server_cache (key TEXT PRIMARY KEY, json TEXT NOT NULL, saved_at INTEGER NOT NULL)',
+            'CREATE TABLE trash (asset_id TEXT PRIMARY KEY, category TEXT NOT NULL, '
+                'taken_at INTEGER NOT NULL, trashed_at INTEGER NOT NULL, on_server INTEGER NOT NULL, '
+                'state TEXT NOT NULL, pending INTEGER NOT NULL)',
+          ]) {
+            await db.execute(sql);
+          }
+          Future<void> trash(String id, String state) => db.insert('trash', {
+            'asset_id': id,
+            'category': 'ETC',
+            'taken_at': 1,
+            'trashed_at': DateTime(2026, 10, 20).millisecondsSinceEpoch,
+            'on_server': 1,
+            'state': state,
+            'pending': 0,
+          });
+          await trash('kept', 'TRASHED');
+          await trash('back', 'RESTORING');
+          if (v5) {
+            await db.execute(
+              'CREATE TABLE trash_log (asset_id TEXT PRIMARY KEY, trashed_at INTEGER NOT NULL)',
+            );
+            await db.insert('trash_log', {
+              'asset_id': 'kept',
+              'trashed_at': DateTime(2026, 10, 20).millisecondsSinceEpoch,
+            });
+          }
+        },
+      ),
+    );
+    await db.close();
+  }
+
+  test(
+    'v4 → v6: 휴지통 기록 표가 생기고, 휴지통에 있던 캡처 날짜를 옮긴다(되살리는 중인 건 빼고, 크기는 모름)',
+    () async {
+      await createV4();
+      final local = open();
+      final trash = SqfliteTrashStore(local);
+
+      expect(await (await local.db).getVersion(), LocalDb.version);
+      expect(await trash.trashedSince(DateTime(2026, 10, 19)), [
+        TrashLogEntry('kept', DateTime(2026, 10, 20)),
+      ]);
+      expect((await trash.all()).map((t) => t.assetId), [
+        'kept',
+      ], reason: '기존 휴지통 그대로');
+      await local.close();
+    },
+  );
+
+  test('v5 → v6: 기존 기록은 크기 없이 그대로, 새로 넣으면 크기가 같이 남는다', () async {
+    await createV4(v5: true);
+    final local = open();
+    final trash = SqfliteTrashStore(local, sizeOf: (id) async => 2048);
+
+    expect(await (await local.db).getVersion(), LocalDb.version);
+    await trash.add(
+      TrashedShot(
+        assetId: 'new',
+        category: Category.etc,
+        takenAt: DateTime(2026, 1, 1),
+        trashedAt: DateTime(2026, 10, 21),
+        onServer: false,
+      ),
+    );
+    expect((await trash.trashedSince(DateTime(2026, 10, 19))).toSet(), {
+      TrashLogEntry('kept', DateTime(2026, 10, 20)),
+      TrashLogEntry('new', DateTime(2026, 10, 21), 2048),
+    });
+    await local.close();
+  });
+
+  test('크기 채우기: 비어 있는 기록만 채우고 이미 있는 크기는 덮어쓰지 않는다', () async {
+    await createV4(v5: true); // 'kept'는 크기 없이 옮겨진다
+    final local = open();
+    final trash = SqfliteTrashStore(local, sizeOf: (id) async => 500);
+    await trash.add(
+      TrashedShot(
+        assetId: 'sized',
+        category: Category.etc,
+        takenAt: DateTime(2026, 1, 1),
+        trashedAt: DateTime(2026, 10, 21),
+        onServer: false,
+      ),
+    );
+    await trash.fillSizes({'kept': 7000, 'sized': 9999, 'nobody': 1});
+
+    expect((await trash.trashedSince(DateTime(2026, 10, 19))).toSet(), {
+      TrashLogEntry('kept', DateTime(2026, 10, 20), 7000),
+      TrashLogEntry('sized', DateTime(2026, 10, 21), 500),
+    });
+    await local.close();
+  });
+
+  test('새 설치(v6): 넣을 때 크기가 남고(못 읽으면 null), 갤러리에서 지워도 남고, 되살리면 빠진다', () async {
+    final local = open();
+    final trash = SqfliteTrashStore(
+      local,
+      sizeOf: (id) async => id == 'a' ? 1000 : throw StateError('못 읽음'),
+    );
+    TrashedShot shot(String id, int day) => TrashedShot(
+      assetId: id,
+      category: Category.etc,
+      takenAt: DateTime(2026, 1, 1),
+      trashedAt: DateTime(2026, 10, day),
+      onServer: false,
+    );
+    await trash.add(shot('a', 19));
+    await trash.add(shot('b', 20));
+    await trash.add(shot('old', 1));
+    await trash.markDeleted(['a']); // 휴지통 비우기(기기 전용이라 trash 행은 사라진다)
+    await trash.restore('b');
+
+    expect(await trash.trashedSince(DateTime(2026, 10, 19)), [
+      TrashLogEntry('a', DateTime(2026, 10, 19), 1000),
+    ]);
+    expect(
+      await trash.all(),
+      hasLength(1),
+      reason: 'old만 휴지통에(크기를 못 읽어도 넣어진다)',
+    );
     await local.close();
   });
 

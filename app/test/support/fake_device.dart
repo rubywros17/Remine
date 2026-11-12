@@ -117,9 +117,33 @@ class FakeGalleryReader implements GalleryReader {
     return null;
   }
 
+  /// [bytes]로 원본을 물어본 id(미리 읽기 시작 확인용).
+  final List<String> bytesAsked = [];
+
+  /// 진짜 이미지로 디코딩되는 원본을 돌려줄 id(그 외에는 OCR용 가짜 바이트).
+  final Set<String> decodableOriginals = {};
+
   @override
-  Future<Uint8List?> bytes(String photoId) async =>
-      photoId == 'missing' ? null : Uint8List.fromList(photoId.codeUnits);
+  Future<Uint8List?> bytes(String photoId) async {
+    bytesAsked.add(photoId);
+    if (decodableOriginals.contains(photoId)) return _png1x1;
+    return photoId == 'missing' ? null : Uint8List.fromList(photoId.codeUnits);
+  }
+
+  /// 사진 id별 파일 크기(테스트가 채운다). 없으면 못 읽음.
+  final Map<String, int> sizes = {};
+
+  /// [fileSizes]로 물어본 id(캐시 확인용).
+  final List<String> sizeAsked = [];
+
+  @override
+  Future<Map<String, int>> fileSizes(List<String> photoIds) async {
+    sizeAsked.addAll(photoIds);
+    return {
+      for (final id in photoIds)
+        if (sizes[id] != null) id: sizes[id]!,
+    };
+  }
 }
 
 List<GalleryPhoto> fakePhotos(int n) => [

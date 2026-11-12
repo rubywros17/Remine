@@ -20,6 +20,9 @@ abstract interface class ScreenshotRepository {
     int size = 30,
   });
 
+  /// 휴지통에 없는 캡처 전부(최신순). 정리 탭의 묶음 계산용으로 **기기 안에서만** 쓴다.
+  Future<List<ScreenshotItem>> all();
+
   /// GET /api/categories/summary — 7개 카테고리 전부.
   Future<CategorySummary> summary();
 

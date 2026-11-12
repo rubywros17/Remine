@@ -218,6 +218,106 @@ abstract final class AppTagBars {
   static const double labelSize = 10;
 }
 
+/// 정리 탭 벤토 그리드(디자인 캔버스 20안 O)와 묶음 기준.
+abstract final class AppTidy {
+  // ── 그리드 ──
+  static const int leftFlex = 11; // 왼쪽 : 오른쪽 = 1.1 : 1
+  static const int rightFlex = 10;
+  static const double gap = 10;
+  static const double radius = 26;
+  static const double padding = 16;
+
+  /// 화면이 남을 때 제목 위에 더하는 몫: 남는 높이 × [topGrowShare], 최대 [topGrowMax]. 내용이 길면 0.
+  static const double topGrowShare = 0.15;
+  static const double topGrowMax = 48;
+
+  // ── 타일 색 ──
+  static const big = AppColors.darkGray; // #4A4B4E 차콜
+  static const twins = AppColors.celadon;
+  static const stale = AppColors.lemon;
+  static const etc = AppColors.white;
+  static const etcBorder = Color(0xFFE3E3DE);
+  static const double etcBorderWidth = 1;
+  static const trash = Color(0xFFF1F1EE);
+
+  /// 숫자가 0인 묶음 타일의 투명도(누를 수 없다).
+  static const double emptyOpacity = 0.5;
+
+  // ── 글자 ──
+  static const double bigNumber = 64; // 큰 타일 숫자(Space Grotesk, 레몬)
+  static const double tileNumber = 34; // 작은 타일 숫자
+  static const double tileLabel = 15;
+
+  // ── 큰 타일 썸네일 3장 ──
+  static const double thumbWidth = 54;
+  static const double thumbHeight = 76;
+  static const double thumbOverlap = 22; // 다음 장이 이만큼 겹친다
+  static const List<double> thumbTilts = [-0.10, 0.03, 0.12]; // 라디안
+
+  // ── 이번 주 비운 캡처 막대 ──
+  // (디자인 캔버스 D3 점선 도장)
+  static const double weekTopGap = 28; // 벤토 아래
+  static const double weekTitleSize = 15; // "이번 주 비운 스크린샷" w800
+  static const double weekSizeFont = 24; // 용량(Space Grotesk, 레몬 형광펜 밑줄)
+  static const double weekSizeHighlight = 9; // 형광펜 띠 높이(글자 아래쪽)
+  static const double weekSubSize = 11.5; // "확보했어요"
+  static const weekSub = Color(0xFF77787B);
+
+  /// 비율 막대: 남은 부분 차콜 / 비운 부분 점선 테두리 + 셀라돈 빗금(실제 비율이 작아도 최소 [barMinCleared]).
+  static const double barHeight = 14;
+  static const double barGap = 3;
+  static const double barMinCleared = 0.09;
+  static const barRemaining = AppColors.darkGray; // #4A4B4E
+  static const dash = AppColors.celadonDeep; // #3E8D98 점선
+  static const double barDashWidth = 1.5;
+  static const hatch = AppColors.celadon; // 빗금
+  static const double hatchGap = 5;
+  static const double dashLength = 3;
+  static const double dashGap = 2.5;
+
+  /// 요일 도장: 지운 날은 점선 동그라미 + 장수, 오늘은 진한 점선 + 빗금, 안 지운 날은 연회색 원, 아직 안 온 요일은 흐리게.
+  static const double stampSize = 34;
+  static const double stampDashWidth = 1.8;
+  static const stampDash = AppColors.celadon; // 지운 날(오늘이 아닌)
+  static const stampEmpty = trash; // #F1F1EE
+  static const double futureOpacity = 0.4;
+  static const double dayLabelSize = 11;
+
+  // ── 묶음 기준(기기 안에서만 계산) ──
+  /// 이 날수보다 오래된 캡처 = "석 달째 안 봄".
+  static const staleDays = 90;
+
+  /// 쌍둥이: 같은 출처 앱 + 찍은 시각이 이 안 + OCR 글자 유사도(글자 바이그램 Jaccard)가 이 이상.
+  static const twinWindow = Duration(seconds: 60);
+  static const double twinSimilarity = 0.9;
+
+  // ── 꾹 눌러 크게 보기(묶음 그리드) ──
+  /// 꾹 누름 인식 시간(기본 500ms는 늦게 느껴진다). 인식되는 순간 햅틱.
+  static const peekPress = Duration(milliseconds: 300);
+
+  /// 열 때: 썸네일 자리에서 화면 가운데로. 닫을 때: 썸네일 자리로 되돌아간다(끝에서 빨라진다).
+  static const peekOpen = Duration(milliseconds: 300);
+  static const peekClose = Duration(milliseconds: 200);
+  static const Curve peekOpenCurve = Cubic(0.05, 0.7, 0.1, 1);
+  static const Curve peekCloseCurve = Cubic(0.3, 0, 0.8, 0.15);
+
+  /// 다 열린 뒤 썸네일 → 원본 해상도 크로스페이드.
+  static const peekCrossfade = Duration(milliseconds: 150);
+
+  static const double peekSidePadding = 20;
+  static const double peekRadius = 22;
+  static const double peekBlur = 14; // 고정. 투명도만 0→1로 움직인다
+  static const peekScrim = Color(0x66000000); // 검정 40%
+  static const double peekCaptionGap = 12;
+  static const double peekCaptionHeight = 20;
+
+  /// 확대 중에 보여 줄 썸네일 한 변(px). 원본은 화면 너비 × devicePixelRatio로 줄여 디코딩한다.
+  static const peekThumbSize = 480;
+
+  /// 비율을 모를 때(가짜 데이터 모드) 쓰는 세로 화면 비율.
+  static const double peekFallbackAspect = 9 / 19.5;
+}
+
 abstract final class AppRadii {
   static const double card = 28;
   static const double sheet = 30;

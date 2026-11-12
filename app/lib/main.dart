@@ -70,7 +70,10 @@ Future<DeviceServices> _deviceServices() async {
   final db = LocalDb();
   final settings = SqfliteSettingsStore(db);
   final foreground = await _foregroundLog(settings);
-  final trashStore = SqfliteTrashStore(db);
+  final trashStore = SqfliteTrashStore(
+    db,
+    sizeOf: (id) async => (await reader.fileSizes([id]))[id],
+  );
   final ocrStore = SqfliteOcrStore(db);
   final verdicts = SqfliteLocalVerdictStore(db);
   final capture = DeviceCaptureService(
