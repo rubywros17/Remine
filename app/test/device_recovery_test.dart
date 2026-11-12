@@ -13,6 +13,7 @@ import 'package:remine/widgets/sync_banner.dart';
 
 import 'support/fake_push.dart';
 import 'support/fake_remote.dart';
+import 'support/real_io.dart';
 
 /// 서버 재시작(H2 초기화) 재현: 서버가 아는 기기만 받고, 모르는 기기 id는 전부 404 DEVICE_NOT_FOUND.
 class RestartableServer {
@@ -239,10 +240,10 @@ void main() {
         ),
       ),
     );
-    for (var i = 0; i < 5; i++) {
-      await tester.runAsync(pumpEventQueue);
-      await tester.pump();
-    }
+    await pumpUntil(
+      tester,
+      () => find.textContaining('새 캡처를 정리하는 중이에요').evaluate().isNotEmpty,
+    );
 
     expect(server.registrations, 2);
     expect(
@@ -254,10 +255,10 @@ void main() {
     expect(find.textContaining('새 캡처를 정리하는 중이에요'), findsOneWidget);
 
     release.complete();
-    for (var i = 0; i < 5; i++) {
-      await tester.runAsync(pumpEventQueue);
-      await tester.pump();
-    }
+    await pumpUntil(
+      tester,
+      () => find.textContaining('새 캡처를 정리하는 중이에요').evaluate().isEmpty,
+    );
 
     expect(find.textContaining('새 캡처를 정리하는 중이에요'), findsNothing);
     expect(rig.status.issue, SyncIssue.none);
