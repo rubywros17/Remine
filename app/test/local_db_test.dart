@@ -274,7 +274,7 @@ void main() {
 
       expect(await (await local.db).getVersion(), LocalDb.version);
       expect(await trash.trashedSince(DateTime(2026, 10, 19)), [
-        TrashLogEntry(DateTime(2026, 10, 20)),
+        TrashLogEntry('kept', DateTime(2026, 10, 20)),
       ]);
       expect((await trash.all()).map((t) => t.assetId), [
         'kept',
@@ -299,8 +299,30 @@ void main() {
       ),
     );
     expect((await trash.trashedSince(DateTime(2026, 10, 19))).toSet(), {
-      TrashLogEntry(DateTime(2026, 10, 20)),
-      TrashLogEntry(DateTime(2026, 10, 21), 2048),
+      TrashLogEntry('kept', DateTime(2026, 10, 20)),
+      TrashLogEntry('new', DateTime(2026, 10, 21), 2048),
+    });
+    await local.close();
+  });
+
+  test('크기 채우기: 비어 있는 기록만 채우고 이미 있는 크기는 덮어쓰지 않는다', () async {
+    await createV4(v5: true); // 'kept'는 크기 없이 옮겨진다
+    final local = open();
+    final trash = SqfliteTrashStore(local, sizeOf: (id) async => 500);
+    await trash.add(
+      TrashedShot(
+        assetId: 'sized',
+        category: Category.etc,
+        takenAt: DateTime(2026, 1, 1),
+        trashedAt: DateTime(2026, 10, 21),
+        onServer: false,
+      ),
+    );
+    await trash.fillSizes({'kept': 7000, 'sized': 9999, 'nobody': 1});
+
+    expect((await trash.trashedSince(DateTime(2026, 10, 19))).toSet(), {
+      TrashLogEntry('kept', DateTime(2026, 10, 20), 7000),
+      TrashLogEntry('sized', DateTime(2026, 10, 21), 500),
     });
     await local.close();
   });
@@ -325,7 +347,7 @@ void main() {
     await trash.restore('b');
 
     expect(await trash.trashedSince(DateTime(2026, 10, 19)), [
-      TrashLogEntry(DateTime(2026, 10, 19), 1000),
+      TrashLogEntry('a', DateTime(2026, 10, 19), 1000),
     ]);
     expect(
       await trash.all(),

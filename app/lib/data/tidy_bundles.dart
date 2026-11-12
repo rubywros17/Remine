@@ -203,13 +203,21 @@ class TidyWeek {
     required this.bytes,
     required this.remaining,
     required this.todayIndex,
+    this.sizedCount = 0,
+    this.estimatedBytes,
   });
 
   /// 요일별(월~일) 휴지통에 넣은 장수. 되살린 건 빠져 있다.
   final List<int> counts;
 
-  /// 이번 주 확보한 용량: 크기를 아는 기록만 더한 값. 하나도 모르면 null(용량 대신 장수를 크게).
+  /// 크기를 아는 기록만 더한 값. 하나도 모르면 null.
   final int? bytes;
+
+  /// 크기를 아는 장수.
+  final int sizedCount;
+
+  /// 모르는 장까지 평균으로 추정해 더한 값([weekOf]). 추정할 평균이 없으면 null(용량 대신 장수를 크게).
+  final int? estimatedBytes;
 
   /// 지금 남은 장수(정리 탭이 쓰는 목록 기준: 휴지통·숨김 제외).
   final int remaining;
@@ -218,41 +226,65 @@ class TidyWeek {
   final int todayIndex;
 
   int get cleared => counts.fold(0, (a, b) => a + b);
+
+  /// 이번 주 비운 장의 크기를 전부 안다(추정 없음).
+  bool get sizeComplete => cleared > 0 && sizedCount == cleared;
 }
 
 /// 이번 주(월요일 시작) 휴지통 기록으로 [TidyWeek]를 만든다.
-TidyWeek weekOf(Iterable<TrashLogEntry> log, DateTime now, int remaining) {
+///
+/// 크기를 모르는 장(크기 기록 전·영구 삭제)은 추정한다: 아는 장이 있으면 그 평균, 하나도 없으면
+/// [listAverage](정리 탭 목록 스크린샷의 평균 크기). 둘 다 없으면 [TidyWeek.estimatedBytes]는 null.
+TidyWeek weekOf(
+  Iterable<TrashLogEntry> log,
+  DateTime now,
+  int remaining, {
+  double? listAverage,
+}) {
   final start = weekStart(now);
   final counts = List.filled(7, 0);
   int? bytes;
+  var sized = 0;
   for (final e in log) {
     final at = e.trashedAt;
     final day = DateTime(at.year, at.month, at.day).difference(start).inDays;
     if (day < 0 || day >= 7) continue;
     counts[day]++;
     final size = e.size;
-    if (size != null) bytes = (bytes ?? 0) + size;
+    if (size != null) {
+      bytes = (bytes ?? 0) + size;
+      sized++;
+    }
   }
+  final cleared = counts.fold(0, (a, b) => a + b);
+  final unknown = cleared - sized;
+  final average = sized > 0 ? bytes! / sized : listAverage;
+  final int? estimated = unknown == 0
+      ? bytes
+      : average == null
+      ? null
+      : ((bytes ?? 0) + average * unknown).round();
   return TidyWeek(
     counts: counts,
     bytes: bytes,
+    sizedCount: sized,
+    estimatedBytes: estimated,
     remaining: remaining,
     todayIndex: now.weekday - 1,
   );
 }
 
-/// "350KB" / "18MB" / "1.2GB": 단위는 자동, 소수 한 자리까지(.0은 뺀다).
-String bytesLabel(int bytes) {
-  const units = ['KB', 'MB', 'GB'];
-  var v = bytes / 1024;
-  var i = 0;
-  while (v >= 1024 && i < units.length - 1) {
-    v /= 1024;
-    i++;
+/// "18MB" / "1.2GB" / "0.1MB": 1000MB 미만은 MB, 이상은 GB. 소수 한 자리(.0은 뺀다), 아무리 작아도 0.1MB.
+String freedLabel(int bytes) {
+  const mb = 1024 * 1024;
+  String oneDecimal(double v) {
+    final r = (v * 10).round() / 10;
+    return r == r.roundToDouble() ? r.toInt().toString() : '$r';
   }
-  final r = (v * 10).round() / 10;
-  final text = r == r.roundToDouble() ? r.toInt().toString() : '$r';
-  return '$text${units[i]}';
+
+  final m = bytes / mb;
+  if (m >= 1000) return '${oneDecimal(m / 1024)}GB';
+  return '${oneDecimal(m < 0.1 ? 0.1 : m)}MB';
 }
 
 /// "약 1.2GB" / "약 350MB". 0이면 null(용량 줄을 숨긴다).

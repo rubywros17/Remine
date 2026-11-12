@@ -7,6 +7,7 @@ import '../core/helpers.dart';
 import '../core/tokens.dart';
 import '../data/device/device_services.dart';
 import '../data/device/ocr_store.dart';
+import '../data/device/trash_store.dart';
 import '../data/remine_store.dart';
 import '../data/tidy_bundles.dart';
 import '../models/screenshot_item.dart';
@@ -35,7 +36,12 @@ class TidyScreen extends StatefulWidget {
 class _TidyScreenState extends State<TidyScreen> {
   TidyBundles? _bundles;
   int? _trashCount;
-  TidyWeek? _week;
+
+  /// 이번 주 휴지통 기록(기기 모드만). 화면은 build에서 [weekOf]로 만든다(용량을 나중에 읽어도 바로 반영).
+  List<TrashLogEntry>? _log;
+
+  /// 크기가 비어 있어 한 번 읽어 본 기록의 asset id. 못 읽었어도(영구 삭제) 다시 읽지 않는다.
+  final Set<String> _sizeTried = {};
 
   /// 지금 남은 장수(휴지통·숨김 제외). 묶음을 계산할 때 같이 센다.
   int _remaining = 0;
@@ -102,12 +108,28 @@ class _TidyScreenState extends State<TidyScreen> {
       _computedFor = key;
       _trashCount = trashCount;
       _remaining = remaining;
-      _week = log == null ? null : weekOf(log, now, remaining);
+      _log = log;
     });
 
-    // 용량: 묶음에 든 캡처 중 아직 안 읽은 것만.
     final reader = device?.reader;
-    if (reader == null) return;
+    if (reader == null || trash == null) return;
+
+    // 크기 기록 전(크기 없는) 이번 주 기록: 파일이 아직 남아 있으면 읽어 채운다. 한 번 물어본 장은 다시 안 읽는다.
+    final unsized = [
+      for (final e in log ?? const <TrashLogEntry>[])
+        if (e.size == null && _sizeTried.add(e.assetId)) e.assetId,
+    ];
+    if (unsized.isNotEmpty) {
+      final found = await reader.fileSizes(unsized);
+      if (found.isNotEmpty) {
+        await trash.store.fillSizes(found);
+        final filled = await trash.store.trashedSince(weekStart(now));
+        if (!mounted || token != _loadToken) return;
+        setState(() => _log = filled);
+      }
+    }
+
+    // 용량: 묶음에 든 캡처 중 아직 안 읽은 것만.
     final missing = [
       for (final s in bundles.all)
         if (!_sizes.containsKey(s.localAssetId)) s.localAssetId,
@@ -200,7 +222,22 @@ class _TidyScreenState extends State<TidyScreen> {
   @override
   Widget build(BuildContext context) {
     final bundles = _bundles;
-    final week = _week;
+    final log = _log;
+    // 크기를 하나도 모르는 주는 지금 목록 스크린샷의 평균 크기(이미 읽어 둔 캐시)로 추정한다.
+    final known = [
+      for (final b in _sizes.values)
+        if (b > 0) b,
+    ];
+    final week = log == null
+        ? null
+        : weekOf(
+            log,
+            RemineScope.of(context).now(),
+            _remaining,
+            listAverage: known.isEmpty
+                ? null
+                : known.reduce((a, b) => a + b) / known.length,
+          );
     // 화면이 남으면 남는 높이의 [AppTidy.topGrowShare](최대 [AppTidy.topGrowMax])를 제목 위에 더해
     // 제목~이번 주 막대 전체를 아래로 내린다. 내용이 더 길면 위 여백 없이 평소처럼 스크롤한다(홈과 같은 GrowColumn).
     const top = AppSpacing.s16;

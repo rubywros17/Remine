@@ -419,14 +419,13 @@ class TidyWeekStamps extends StatelessWidget {
   static const _days = ['월', '화', '수', '목', '금', '토', '일'];
 
   String get _semantics {
-    final bytes = week.bytes;
     final days = [
       for (final (i, c) in week.counts.indexed)
         if (c > 0) '${_days[i]}요일 $c장',
     ];
     return [
       '이번 주 ${week.cleared}장 비움',
-      if (week.cleared > 0 && bytes != null) '${bytesLabel(bytes)} 확보',
+      if (_freedText(week) case final freed?) '$freed 확보',
       if (days.isNotEmpty) days.join(' '),
     ].join(', ');
   }
@@ -500,7 +499,17 @@ class TidyWeekStamps extends StatelessWidget {
   }
 }
 
-/// 오른쪽 위 확보한 용량: "18MB"(형광펜) + "확보했어요". 용량을 모르면 "7장", 0장이면 "아직 0MB"(회색, 형광펜 없음).
+/// 확보한 용량 문구: 전부 알면 "18MB", 추정이면 "약 18MB", 0장이거나 추정할 수 없으면 null.
+String? _freedText(TidyWeek week) {
+  final bytes = week.estimatedBytes;
+  if (week.cleared == 0 || bytes == null) return null;
+  return week.sizeComplete ? freedLabel(bytes) : '약 ${freedLabel(bytes)}';
+}
+
+/// 오른쪽 위 확보한 용량(형광펜) + "확보했어요".
+/// - 크기를 전부 알면 "18MB", 모르는 장이 있으면 평균으로 추정해 "약 18MB"
+/// - 평균조차 낼 수 없으면 "7장" + "비웠어요"
+/// - 0장이면 "아직 0MB"(회색, 형광펜 없음)
 class _Freed extends StatelessWidget {
   const _Freed({required this.week});
 
@@ -508,9 +517,9 @@ class _Freed extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bytes = week.bytes;
+    final bytes = week.estimatedBytes;
     final big = AppText.numHero(size: AppTidy.weekSizeFont);
-    // 숫자 글꼴에는 한글이 없어 "장"·"아직"은 본문 글꼴로.
+    // 숫자 글꼴에는 한글이 없어 "장"·"아직"·"약"은 본문 글꼴로.
     final kr = AppText.label.copyWith(fontSize: AppTidy.weekSizeFont * 0.6);
     final Widget value;
     if (week.cleared == 0) {
@@ -540,17 +549,23 @@ class _Freed extends StatelessWidget {
                     TextSpan(text: '장', style: kr),
                   ],
                 )
-              : TextSpan(text: bytesLabel(bytes), style: big),
+              : TextSpan(
+                  children: [
+                    if (!week.sizeComplete) TextSpan(text: '약 ', style: kr),
+                    TextSpan(text: freedLabel(bytes), style: big),
+                  ],
+                ),
         ),
       );
     }
+    final counted = week.cleared > 0 && bytes == null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         value,
         const SizedBox(height: 2),
         Text(
-          '확보했어요',
+          counted ? '비웠어요' : '확보했어요',
           style: AppText.caption.copyWith(
             fontSize: AppTidy.weekSubSize,
             color: AppTidy.weekSub,

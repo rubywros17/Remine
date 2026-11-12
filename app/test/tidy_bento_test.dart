@@ -144,35 +144,53 @@ void main() {
       expect(b.isEmpty, isTrue);
     });
 
-    test('이번 주(월요일 시작): 요일별 장수, 크기를 아는 것만 용량 합, 오늘은 수요일 칸', () {
+    test('이번 주(월요일 시작): 요일별 장수, 아는 크기 합, 모르는 장은 아는 장 평균으로 추정', () {
       expect(weekStart(_now), DateTime(2026, 10, 19));
       final w = weekOf(
         [
-          TrashLogEntry(DateTime(2026, 10, 18, 23), 999), // 지난 일요일
-          TrashLogEntry(DateTime(2026, 10, 19, 1), 1000),
-          TrashLogEntry(DateTime(2026, 10, 21, 9)), // 크기 기록 전
-          TrashLogEntry(DateTime(2026, 10, 21, 11), 500),
+          TrashLogEntry('x', DateTime(2026, 10, 18, 23), 999), // 지난 일요일
+          TrashLogEntry('a', DateTime(2026, 10, 19, 1), 1000),
+          TrashLogEntry('b', DateTime(2026, 10, 21, 9)), // 크기 기록 전
+          TrashLogEntry('c', DateTime(2026, 10, 21, 11), 500),
         ],
         _now,
         40,
+        listAverage: 99999, // 아는 장이 있으면 목록 평균은 안 쓴다
       );
       expect(w.counts, [1, 0, 2, 0, 0, 0, 0]);
       expect(w.cleared, 3);
       expect(w.bytes, 1500);
+      expect(w.sizedCount, 2);
+      expect(w.sizeComplete, isFalse);
+      expect(w.estimatedBytes, 2250, reason: '1500 + 평균 750 × 1장');
       expect(w.remaining, 40);
       expect(w.todayIndex, 2);
-      expect(
-        weekOf([TrashLogEntry(DateTime(2026, 10, 20))], _now, 1).bytes,
-        isNull,
-        reason: '이번 주 용량을 전혀 모르면 null',
-      );
     });
 
-    test('확보 용량 단위: KB/MB/GB 자동, 소수 한 자리(.0은 뺀다)', () {
-      expect(bytesLabel(350 * 1024), '350KB');
-      expect(bytesLabel(18 * 1024 * 1024), '18MB');
-      expect(bytesLabel((2.46 * 1024 * 1024).round()), '2.5MB');
-      expect(bytesLabel((1.24 * 1024 * 1024 * 1024).round()), '1.2GB');
+    test('크기를 전혀 모르면 목록 평균으로, 평균도 없으면 추정하지 않는다, 다 알면 그대로', () {
+      final unknown = [
+        TrashLogEntry('a', DateTime(2026, 10, 20)),
+        TrashLogEntry('b', DateTime(2026, 10, 21)),
+      ];
+      final byList = weekOf(unknown, _now, 1, listAverage: 300);
+      expect(byList.bytes, isNull);
+      expect(byList.estimatedBytes, 600);
+      expect(weekOf(unknown, _now, 1).estimatedBytes, isNull);
+
+      final all = weekOf(
+        [TrashLogEntry('a', DateTime(2026, 10, 20), 10)],
+        _now,
+        1,
+      );
+      expect(all.sizeComplete, isTrue);
+      expect(all.estimatedBytes, 10);
+    });
+
+    test('확보 용량 문구: 1000MB 미만 MB, 이상 GB, 소수 한 자리, 최소 0.1MB', () {
+      expect(freedLabel(18 * 1024 * 1024), '18MB');
+      expect(freedLabel((2.46 * 1024 * 1024).round()), '2.5MB');
+      expect(freedLabel((1228.8 * 1024 * 1024).round()), '1.2GB');
+      expect(freedLabel(2000), '0.1MB');
     });
 
     test('용량 문구: 0이면 없음, 작으면 MB, 크면 소수 한 자리 GB', () {
@@ -545,6 +563,8 @@ void main() {
         const TidyWeek(
           counts: [0, 3, 0, 4, 0, 0, 0],
           bytes: 18 * 1024 * 1024,
+          sizedCount: 7, // 전부 앎
+          estimatedBytes: 18 * 1024 * 1024,
           remaining: 120,
           todayIndex: 3, // 목요일
         ),
@@ -591,7 +611,28 @@ void main() {
       expect(today.style!.fontWeight, FontWeight.w800);
     });
 
-    testWidgets('이번 주 용량을 전혀 모르면 용량 자리에 장수를 크게', (tester) async {
+    testWidgets('모르는 장이 있으면 평균으로 추정해 "약 18MB" / 확보했어요', (tester) async {
+      await pumpWeek(
+        tester,
+        const TidyWeek(
+          counts: [0, 3, 0, 4, 0, 0, 0],
+          bytes: 10 * 1024 * 1024,
+          sizedCount: 4,
+          estimatedBytes: 18 * 1024 * 1024,
+          remaining: 120,
+          todayIndex: 3,
+        ),
+      );
+      expect(find.text('약 18MB', findRichText: true), findsOneWidget);
+      expect(find.text('확보했어요'), findsOneWidget);
+      expect(find.byKey(const ValueKey('week-highlight')), findsOneWidget);
+      expect(
+        find.bySemanticsLabel('이번 주 7장 비움, 약 18MB 확보, 화요일 3장 목요일 4장'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('평균조차 낼 수 없으면 "7장" / 비웠어요', (tester) async {
       await pumpWeek(
         tester,
         const TidyWeek(
@@ -602,6 +643,8 @@ void main() {
         ),
       );
       expect(find.text('7장', findRichText: true), findsOneWidget);
+      expect(find.text('비웠어요'), findsOneWidget);
+      expect(find.text('확보했어요'), findsNothing);
       expect(find.byKey(const ValueKey('week-highlight')), findsOneWidget);
       expect(
         find.bySemanticsLabel('이번 주 7장 비움, 월요일 2장 화요일 5장'),
@@ -625,6 +668,62 @@ void main() {
       expect(find.byKey(const ValueKey('bar-remaining')), findsOneWidget);
       expect(find.text('비운 0장'), findsOneWidget);
       expect(find.bySemanticsLabel('이번 주 0장 비움'), findsOneWidget);
+    });
+  });
+
+  group('크기 기록 전 항목 채우기', () {
+    testWidgets('이번 주 크기 없는 기록은 남아 있는 파일만 한 번 읽어 채우고, 나머지는 그 평균으로 추정', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      final trash = InMemoryTrashStore(); // 크기 없이 기록된다(기록 전 항목처럼)
+      for (final id in ['kept', 'gone']) {
+        await trash.add(
+          TrashedShot(
+            assetId: id,
+            category: Category.etc,
+            takenAt: _now,
+            trashedAt: _now,
+            onServer: false,
+          ),
+        );
+      }
+      // 'gone'은 영구 삭제돼 못 읽는다.
+      final reader = FakeGalleryReader()..sizes['kept'] = 9 * 1024 * 1024;
+      await tester.pumpWidget(
+        RemineApp(
+          repository: FakeScreenshotRepository(
+            now: () => _now,
+            seed: [_shot(1, 1)],
+          ),
+          now: () => _now,
+          device: fakeServices(reader, trash: trash),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _tap(tester, find.text('정리'));
+      await tester.runAsync(pumpEventQueue);
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('약 18MB', findRichText: true),
+        findsOneWidget,
+        reason: '읽은 9MB + 못 읽은 1장은 평균 9MB로',
+      );
+      expect(
+        (await trash.trashedSince(_now.subtract(const Duration(days: 1))))
+            .map((e) => (e.assetId, e.size))
+            .toSet(),
+        {('kept', 9 * 1024 * 1024), ('gone', null)},
+      );
+      final asked = reader.sizeAsked.length;
+      expect(reader.sizeAsked, containsAll(['kept', 'gone']));
+
+      await _tap(tester, find.text('서랍'));
+      await _tap(tester, find.text('정리'));
+      expect(reader.sizeAsked, hasLength(asked), reason: '한 번 물어본 장은 다시 안 읽는다');
     });
   });
 
