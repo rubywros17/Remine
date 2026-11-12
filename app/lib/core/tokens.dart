@@ -255,11 +255,33 @@ abstract final class AppTidy {
   static const List<double> thumbTilts = [-0.10, 0.03, 0.12]; // 라디안
 
   // ── 이번 주 비운 캡처 막대 ──
-  static const weekToday = AppColors.celadonDeep; // #3E8D98
-  static const weekOther = Color(0xFFDCEEF1);
-  static const double weekBarHeight = 34;
-  static const double weekBarMin = 4; // 0장인 날
-  static const double weekBarWidth = 14;
+  // (디자인 캔버스 D3 점선 도장)
+  static const double weekTopGap = 28; // 벤토 아래
+  static const double weekTitleSize = 15; // "이번 주 비운 스크린샷" w800
+  static const double weekSizeFont = 24; // 용량(Space Grotesk, 레몬 형광펜 밑줄)
+  static const double weekSizeHighlight = 9; // 형광펜 띠 높이(글자 아래쪽)
+  static const double weekSubSize = 11.5; // "확보했어요"
+  static const weekSub = Color(0xFF77787B);
+
+  /// 비율 막대: 남은 부분 차콜 / 비운 부분 점선 테두리 + 셀라돈 빗금(실제 비율이 작아도 최소 [barMinCleared]).
+  static const double barHeight = 14;
+  static const double barGap = 3;
+  static const double barMinCleared = 0.09;
+  static const barRemaining = AppColors.darkGray; // #4A4B4E
+  static const dash = AppColors.celadonDeep; // #3E8D98 점선
+  static const double barDashWidth = 1.5;
+  static const hatch = AppColors.celadon; // 빗금
+  static const double hatchGap = 5;
+  static const double dashLength = 3;
+  static const double dashGap = 2.5;
+
+  /// 요일 도장: 지운 날은 점선 동그라미 + 장수, 오늘은 진한 점선 + 빗금, 안 지운 날은 연회색 원, 아직 안 온 요일은 흐리게.
+  static const double stampSize = 34;
+  static const double stampDashWidth = 1.8;
+  static const stampDash = AppColors.celadon; // 지운 날(오늘이 아닌)
+  static const stampEmpty = trash; // #F1F1EE
+  static const double futureOpacity = 0.4;
+  static const double dayLabelSize = 11;
 
   // ── 묶음 기준(기기 안에서만 계산) ──
   /// 이 날수보다 오래된 캡처 = "석 달째 안 봄".

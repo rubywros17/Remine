@@ -214,11 +214,12 @@ void main() {
   });
 
   /// 휴지통 기록 표 전(v4)의 DB 파일: 휴지통에 한 장(TRASHED), 되살리는 중인 한 장(RESTORING).
-  Future<void> createV4() async {
+  /// [v5]면 크기 칸 없는 휴지통 기록 표(v5)까지 있다.
+  Future<void> createV4({bool v5 = false}) async {
     final db = await factory.openDatabase(
       path,
       options: OpenDatabaseOptions(
-        version: 4,
+        version: v5 ? 5 : 4,
         onCreate: (db, _) async {
           for (final sql in [
             'CREATE TABLE ocr_result (asset_id TEXT PRIMARY KEY, file_name TEXT NOT NULL, '
@@ -249,30 +250,67 @@ void main() {
           });
           await trash('kept', 'TRASHED');
           await trash('back', 'RESTORING');
+          if (v5) {
+            await db.execute(
+              'CREATE TABLE trash_log (asset_id TEXT PRIMARY KEY, trashed_at INTEGER NOT NULL)',
+            );
+            await db.insert('trash_log', {
+              'asset_id': 'kept',
+              'trashed_at': DateTime(2026, 10, 20).millisecondsSinceEpoch,
+            });
+          }
         },
       ),
     );
     await db.close();
   }
 
-  test('v4 → v5: 휴지통 기록 표가 생기고, 휴지통에 있던 캡처 날짜를 옮긴다(되살리는 중인 건 빼고)', () async {
-    await createV4();
+  test(
+    'v4 → v6: 휴지통 기록 표가 생기고, 휴지통에 있던 캡처 날짜를 옮긴다(되살리는 중인 건 빼고, 크기는 모름)',
+    () async {
+      await createV4();
+      final local = open();
+      final trash = SqfliteTrashStore(local);
+
+      expect(await (await local.db).getVersion(), LocalDb.version);
+      expect(await trash.trashedSince(DateTime(2026, 10, 19)), [
+        TrashLogEntry(DateTime(2026, 10, 20)),
+      ]);
+      expect((await trash.all()).map((t) => t.assetId), [
+        'kept',
+      ], reason: '기존 휴지통 그대로');
+      await local.close();
+    },
+  );
+
+  test('v5 → v6: 기존 기록은 크기 없이 그대로, 새로 넣으면 크기가 같이 남는다', () async {
+    await createV4(v5: true);
     final local = open();
-    final trash = SqfliteTrashStore(local);
+    final trash = SqfliteTrashStore(local, sizeOf: (id) async => 2048);
 
     expect(await (await local.db).getVersion(), LocalDb.version);
-    expect(await trash.trashedSince(DateTime(2026, 10, 19)), [
-      DateTime(2026, 10, 20),
-    ]);
-    expect((await trash.all()).map((t) => t.assetId), [
-      'kept',
-    ], reason: '기존 휴지통 그대로');
+    await trash.add(
+      TrashedShot(
+        assetId: 'new',
+        category: Category.etc,
+        takenAt: DateTime(2026, 1, 1),
+        trashedAt: DateTime(2026, 10, 21),
+        onServer: false,
+      ),
+    );
+    expect((await trash.trashedSince(DateTime(2026, 10, 19))).toSet(), {
+      TrashLogEntry(DateTime(2026, 10, 20)),
+      TrashLogEntry(DateTime(2026, 10, 21), 2048),
+    });
     await local.close();
   });
 
-  test('새 설치(v5): 휴지통에 넣으면 기록이 남고, 갤러리에서 지워도 남고, 되살리면 빠진다', () async {
+  test('새 설치(v6): 넣을 때 크기가 남고(못 읽으면 null), 갤러리에서 지워도 남고, 되살리면 빠진다', () async {
     final local = open();
-    final trash = SqfliteTrashStore(local);
+    final trash = SqfliteTrashStore(
+      local,
+      sizeOf: (id) async => id == 'a' ? 1000 : throw StateError('못 읽음'),
+    );
     TrashedShot shot(String id, int day) => TrashedShot(
       assetId: id,
       category: Category.etc,
@@ -287,9 +325,13 @@ void main() {
     await trash.restore('b');
 
     expect(await trash.trashedSince(DateTime(2026, 10, 19)), [
-      DateTime(2026, 10, 19),
+      TrashLogEntry(DateTime(2026, 10, 19), 1000),
     ]);
-    expect(await trash.all(), hasLength(1), reason: 'old만 휴지통에');
+    expect(
+      await trash.all(),
+      hasLength(1),
+      reason: 'old만 휴지통에(크기를 못 읽어도 넣어진다)',
+    );
     await local.close();
   });
 

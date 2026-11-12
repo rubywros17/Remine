@@ -10,7 +10,8 @@ import 'privacy/local_verdict_store.dart';
 /// 버전: 1 = `ocr_result`만, 2 = `local_verdict`·`setting` 추가 + 기존 OCR 행을 필터에 다시 통과,
 /// 3 = `server_map`(asset id ↔ 서버 id·동기화 상태)·`server_cache`(마지막으로 받은 목록·요약) 추가,
 /// 4 = `trash`(앱 휴지통과 서버 반영 대기열) 추가,
-/// 5 = `trash_log`(휴지통에 넣은 날짜. 휴지통을 비워도 남아 정리 탭 "이번 주 비운 캡처"를 센다) 추가.
+/// 5 = `trash_log`(휴지통에 넣은 날짜. 휴지통을 비워도 남아 정리 탭 "이번 주 비운 스크린샷"을 센다) 추가,
+/// 6 = `trash_log.size`(넣을 때의 파일 크기, "이번 주 확보한 용량"). 그 전 기록은 null.
 class LocalDb {
   /// [path]·[factory]는 테스트용(실제 SQLite 파일로 업그레이드를 검증). 기본은 앱 DB 폴더의 [fileName].
   LocalDb({
@@ -20,7 +21,7 @@ class LocalDb {
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now;
 
-  static const version = 5;
+  static const version = 6;
 
   final String fileName;
   final String? path;
@@ -62,6 +63,7 @@ class LocalDb {
       await _createV3Tables(db);
       await _createV4Tables(db);
       await _createV5Tables(db);
+      await _createV6Columns(db);
     },
     onUpgrade: (db, from, to) async {
       if (from < 2) {
@@ -78,6 +80,7 @@ class LocalDb {
           "SELECT asset_id, trashed_at FROM trash WHERE state != 'RESTORING'",
         );
       }
+      if (from < 6) await _createV6Columns(db);
     },
   );
 
@@ -136,6 +139,10 @@ class LocalDb {
       'trashed_at INTEGER NOT NULL)',
     );
   }
+
+  /// 휴지통에 넣을 때의 파일 크기(바이트). 크기 기록 전 행은 null로 남는다.
+  static Future<void> _createV6Columns(Database db) =>
+      db.execute('ALTER TABLE trash_log ADD COLUMN size INTEGER');
 
   Future<void> _refilterExistingRows(Database db) async {
     for (final row in await db.query('ocr_result')) {

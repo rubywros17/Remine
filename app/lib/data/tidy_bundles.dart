@@ -1,4 +1,5 @@
 import '../core/tokens.dart';
+import 'device/trash_store.dart';
 import '../models/category.dart';
 import '../models/screenshot_item.dart';
 
@@ -195,15 +196,63 @@ double textSimilarity(String a, String b) => jaccard(_bigrams(a), _bigrams(b));
 DateTime weekStart(DateTime now) =>
     DateTime(now.year, now.month, now.day - (now.weekday - 1));
 
-/// 이번 주(월~일) 요일별로 휴지통에 넣은 장수. `[0]`이 월요일.
-List<int> weekCounts(Iterable<DateTime> trashedAt, DateTime now) {
+/// 정리 탭 "이번 주 비운 스크린샷"(디자인 캔버스 D3 점선 도장).
+class TidyWeek {
+  const TidyWeek({
+    required this.counts,
+    required this.bytes,
+    required this.remaining,
+    required this.todayIndex,
+  });
+
+  /// 요일별(월~일) 휴지통에 넣은 장수. 되살린 건 빠져 있다.
+  final List<int> counts;
+
+  /// 이번 주 확보한 용량: 크기를 아는 기록만 더한 값. 하나도 모르면 null(용량 대신 장수를 크게).
+  final int? bytes;
+
+  /// 지금 남은 장수(정리 탭이 쓰는 목록 기준: 휴지통·숨김 제외).
+  final int remaining;
+
+  /// 오늘 요일 칸(0 = 월).
+  final int todayIndex;
+
+  int get cleared => counts.fold(0, (a, b) => a + b);
+}
+
+/// 이번 주(월요일 시작) 휴지통 기록으로 [TidyWeek]를 만든다.
+TidyWeek weekOf(Iterable<TrashLogEntry> log, DateTime now, int remaining) {
   final start = weekStart(now);
   final counts = List.filled(7, 0);
-  for (final at in trashedAt) {
+  int? bytes;
+  for (final e in log) {
+    final at = e.trashedAt;
     final day = DateTime(at.year, at.month, at.day).difference(start).inDays;
-    if (day >= 0 && day < 7) counts[day]++;
+    if (day < 0 || day >= 7) continue;
+    counts[day]++;
+    final size = e.size;
+    if (size != null) bytes = (bytes ?? 0) + size;
   }
-  return counts;
+  return TidyWeek(
+    counts: counts,
+    bytes: bytes,
+    remaining: remaining,
+    todayIndex: now.weekday - 1,
+  );
+}
+
+/// "350KB" / "18MB" / "1.2GB": 단위는 자동, 소수 한 자리까지(.0은 뺀다).
+String bytesLabel(int bytes) {
+  const units = ['KB', 'MB', 'GB'];
+  var v = bytes / 1024;
+  var i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  final r = (v * 10).round() / 10;
+  final text = r == r.roundToDouble() ? r.toInt().toString() : '$r';
+  return '$text${units[i]}';
 }
 
 /// "약 1.2GB" / "약 350MB". 0이면 null(용량 줄을 숨긴다).

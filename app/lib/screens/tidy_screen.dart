@@ -35,7 +35,10 @@ class TidyScreen extends StatefulWidget {
 class _TidyScreenState extends State<TidyScreen> {
   TidyBundles? _bundles;
   int? _trashCount;
-  List<int>? _week;
+  TidyWeek? _week;
+
+  /// 지금 남은 장수(휴지통·숨김 제외). 묶음을 계산할 때 같이 센다.
+  int _remaining = 0;
 
   /// asset id → 파일 크기. 못 읽은 장은 0으로 기억해 다시 묻지 않는다.
   final Map<String, int> _sizes = {};
@@ -73,14 +76,16 @@ class _TidyScreenState extends State<TidyScreen> {
         ? const <String>{}
         : {for (final t in await trash.store.hidden()) t.assetId};
     final trashCount = trash == null ? null : (await trash.store.all()).length;
-    final week = trash == null
+    final log = trash == null
         ? null
-        : weekCounts(await trash.store.trashedSince(weekStart(now)), now);
+        : await trash.store.trashedSince(weekStart(now));
     final key = (store.revision, (hidden.toList()..sort()).join(','));
 
     var bundles = _bundles;
+    var remaining = _remaining;
     if (bundles == null || key != _computedFor) {
       final items = await store.repository.all();
+      remaining = items.where((s) => !hidden.contains(s.localAssetId)).length;
       bundles = trash == null
           ? demoBundles(items, now)
           : computeBundles(
@@ -96,7 +101,8 @@ class _TidyScreenState extends State<TidyScreen> {
       _bundles = bundles;
       _computedFor = key;
       _trashCount = trashCount;
-      _week = week;
+      _remaining = remaining;
+      _week = log == null ? null : weekOf(log, now, remaining);
     });
 
     // 용량: 묶음에 든 캡처 중 아직 안 읽은 것만.
@@ -195,7 +201,6 @@ class _TidyScreenState extends State<TidyScreen> {
   Widget build(BuildContext context) {
     final bundles = _bundles;
     final week = _week;
-    final now = RemineScope.of(context).now();
     // 화면이 남으면 남는 높이의 [AppTidy.topGrowShare](최대 [AppTidy.topGrowMax])를 제목 위에 더해
     // 제목~이번 주 막대 전체를 아래로 내린다. 내용이 더 길면 위 여백 없이 평소처럼 스크롤한다(홈과 같은 GrowColumn).
     const top = AppSpacing.s16;
@@ -235,8 +240,8 @@ class _TidyScreenState extends State<TidyScreen> {
                     onTrash: _openTrash,
                   ),
                   if (week != null) ...[
-                    const SizedBox(height: AppSpacing.s24),
-                    TidyWeek(counts: week, todayIndex: now.weekday - 1),
+                    const SizedBox(height: AppTidy.weekTopGap),
+                    TidyWeekStamps(week: week),
                   ],
                 ],
               ],

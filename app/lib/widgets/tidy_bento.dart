@@ -400,62 +400,377 @@ class _TrashTile extends StatelessWidget {
   }
 }
 
-/// "이번 주 비운 캡처 N장" + 요일별 막대 7개(월~일, 오늘만 진한 셀라돈).
-class TidyWeek extends StatelessWidget {
-  const TidyWeek({super.key, required this.counts, required this.todayIndex});
+/// "이번 주 비운 스크린샷"(디자인 캔버스 D3 점선 도장).
+///
+/// ```
+/// 이번 주 비운 스크린샷              18MB   ← 레몬 형광펜 밑줄
+///                                 확보했어요
+/// [■■■■■■■■■■■■■■■ 차콜 ][▨ 점선 ]   ← 남은 : 비운 (비운 쪽은 최소 9%)
+/// 남은 120장                        비운 7장
+///  ◌   ◍   ●   ◍   ○   ○   ○         ← 요일 도장
+///  월  화  수  목  금  토  일
+/// ```
+/// 요일 도장: 지운 날은 점선 동그라미 + 장수, 오늘은 진한 점선 + 빗금, 안 지운 날은 연회색 원, 아직 안 온 요일은 흐리게.
+class TidyWeekStamps extends StatelessWidget {
+  const TidyWeekStamps({super.key, required this.week});
 
-  final List<int> counts;
-  final int todayIndex;
+  final TidyWeek week;
+
+  static const _days = ['월', '화', '수', '목', '금', '토', '일'];
+
+  String get _semantics {
+    final bytes = week.bytes;
+    final days = [
+      for (final (i, c) in week.counts.indexed)
+        if (c > 0) '${_days[i]}요일 $c장',
+    ];
+    return [
+      '이번 주 ${week.cleared}장 비움',
+      if (week.cleared > 0 && bytes != null) '${bytesLabel(bytes)} 확보',
+      if (days.isNotEmpty) days.join(' '),
+    ].join(', ');
+  }
 
   @override
   Widget build(BuildContext context) {
-    final total = counts.fold(0, (a, b) => a + b);
-    final most = counts.fold(1, (a, b) => b > a ? b : a);
     return Semantics(
-      label: '이번 주 비운 스크린샷 $total장',
+      label: _semantics,
       excludeSemantics: true,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('이번 주 비운 스크린샷', style: AppText.label),
-                const SizedBox(height: AppSpacing.s4),
-                // 숫자 글꼴에는 한글이 없어 "장"은 본문 글꼴로.
-                Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: '$total',
-                        style: AppText.numHero(size: 24),
-                      ),
-                      TextSpan(text: '장', style: AppText.label),
-                    ],
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  '이번 주 비운 스크린샷',
+                  style: AppText.label.copyWith(
+                    fontSize: AppTidy.weekTitleSize,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(width: AppSpacing.s12),
-          for (final (i, c) in counts.indexed) ...[
-            if (i > 0) const SizedBox(width: 6),
-            Container(
-              key: ValueKey('week-$i'),
-              width: AppTidy.weekBarWidth,
-              height: c == 0
-                  ? AppTidy.weekBarMin
-                  : AppTidy.weekBarMin +
-                        (AppTidy.weekBarHeight - AppTidy.weekBarMin) * c / most,
-              decoration: BoxDecoration(
-                color: i == todayIndex ? AppTidy.weekToday : AppTidy.weekOther,
-                borderRadius: BorderRadius.circular(4),
               ),
-            ),
-          ],
+              const SizedBox(width: AppSpacing.s12),
+              _Freed(week: week),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.s12),
+          _RatioBar(cleared: week.cleared, remaining: week.remaining),
+          const SizedBox(height: AppSpacing.s8),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '남은 ${week.remaining}장',
+                  style: AppText.caption.copyWith(color: AppColors.ink),
+                ),
+              ),
+              Text(
+                '비운 ${week.cleared}장',
+                style: AppText.caption.copyWith(
+                  color: AppTidy.dash,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: AppSpacing.s20),
+          // 일곱 칸으로 나누고, 칸이 도장보다 좁은 아주 작은 화면에서만 도장이 줄어든다.
+          Row(
+            children: [
+              for (final (i, c) in week.counts.indexed)
+                Expanded(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: _DayStamp(
+                      key: ValueKey('stamp-$i'),
+                      day: _days[i],
+                      count: c,
+                      today: i == week.todayIndex,
+                      future: i > week.todayIndex,
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ],
       ),
     );
   }
+}
+
+/// 오른쪽 위 확보한 용량: "18MB"(형광펜) + "확보했어요". 용량을 모르면 "7장", 0장이면 "아직 0MB"(회색, 형광펜 없음).
+class _Freed extends StatelessWidget {
+  const _Freed({required this.week});
+
+  final TidyWeek week;
+
+  @override
+  Widget build(BuildContext context) {
+    final bytes = week.bytes;
+    final big = AppText.numHero(size: AppTidy.weekSizeFont);
+    // 숫자 글꼴에는 한글이 없어 "장"·"아직"은 본문 글꼴로.
+    final kr = AppText.label.copyWith(fontSize: AppTidy.weekSizeFont * 0.6);
+    final Widget value;
+    if (week.cleared == 0) {
+      value = Text.rich(
+        key: const ValueKey('week-freed'),
+        TextSpan(
+          children: [
+            TextSpan(
+              text: '아직 ',
+              style: kr.copyWith(color: AppTidy.weekSub),
+            ),
+            TextSpan(
+              text: '0MB',
+              style: big.copyWith(color: AppTidy.weekSub),
+            ),
+          ],
+        ),
+      );
+    } else {
+      value = _Highlighted(
+        child: Text.rich(
+          key: const ValueKey('week-freed'),
+          bytes == null
+              ? TextSpan(
+                  children: [
+                    TextSpan(text: '${week.cleared}', style: big),
+                    TextSpan(text: '장', style: kr),
+                  ],
+                )
+              : TextSpan(text: bytesLabel(bytes), style: big),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        value,
+        const SizedBox(height: 2),
+        Text(
+          '확보했어요',
+          style: AppText.caption.copyWith(
+            fontSize: AppTidy.weekSubSize,
+            color: AppTidy.weekSub,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// 글자 아래쪽에 레몬 형광펜 띠.
+class _Highlighted extends StatelessWidget {
+  const _Highlighted({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => Stack(
+    clipBehavior: Clip.none,
+    children: [
+      const Positioned(
+        key: ValueKey('week-highlight'),
+        left: -2,
+        right: -2,
+        bottom: 0,
+        height: AppTidy.weekSizeHighlight,
+        child: ColoredBox(color: AppColors.lemon),
+      ),
+      child,
+    ],
+  );
+}
+
+/// 남은(차콜) : 비운(점선 + 빗금) 비율 막대. 비운 쪽은 실제 비율이 작아도 최소 [AppTidy.barMinCleared].
+class _RatioBar extends StatelessWidget {
+  const _RatioBar({required this.cleared, required this.remaining});
+
+  final int cleared;
+  final int remaining;
+
+  @override
+  Widget build(BuildContext context) {
+    final double share;
+    if (cleared == 0) {
+      share = 0;
+    } else if (remaining == 0) {
+      share = 1;
+    } else {
+      share = (cleared / (cleared + remaining)).clamp(
+        AppTidy.barMinCleared,
+        1 - AppTidy.barMinCleared,
+      );
+    }
+    return SizedBox(
+      height: AppTidy.barHeight,
+      child: LayoutBuilder(
+        builder: (context, box) {
+          final gap = share > 0 && share < 1 ? AppTidy.barGap : 0.0;
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch, // 막대 높이를 꽉 채운다
+            children: [
+              if (share < 1)
+                Expanded(
+                  child: DecoratedBox(
+                    key: const ValueKey('bar-remaining'),
+                    decoration: BoxDecoration(
+                      color: AppTidy.barRemaining,
+                      borderRadius: BorderRadius.circular(
+                        AppTidy.barHeight / 2,
+                      ),
+                    ),
+                  ),
+                ),
+              if (gap > 0) SizedBox(width: gap),
+              if (share > 0)
+                SizedBox(
+                  key: const ValueKey('bar-cleared'),
+                  width: (box.maxWidth - gap) * share,
+                  child: const CustomPaint(
+                    painter: _DashedPainter(
+                      circle: false,
+                      dash: AppTidy.dash,
+                      strokeWidth: AppTidy.barDashWidth,
+                      hatch: true,
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// 요일 도장 하나(지름 [AppTidy.stampSize]) + 아래 요일 글자.
+class _DayStamp extends StatelessWidget {
+  const _DayStamp({
+    super.key,
+    required this.day,
+    required this.count,
+    required this.today,
+    required this.future,
+  });
+
+  final String day;
+  final int count;
+  final bool today;
+  final bool future;
+
+  @override
+  Widget build(BuildContext context) {
+    final Widget circle;
+    if (today || count > 0) {
+      circle = CustomPaint(
+        painter: _DashedPainter(
+          circle: true,
+          dash: today ? AppTidy.dash : AppTidy.stampDash,
+          strokeWidth: AppTidy.stampDashWidth,
+          hatch: today,
+        ),
+        child: Center(
+          child: count > 0
+              ? Text(
+                  '$count',
+                  style: AppText.numHero(
+                    size: 13,
+                    color: today ? AppTidy.dash : AppColors.ink,
+                  ),
+                )
+              : null,
+        ),
+      );
+    } else {
+      circle = const DecoratedBox(
+        decoration: BoxDecoration(
+          color: AppTidy.stampEmpty,
+          shape: BoxShape.circle,
+        ),
+      );
+    }
+    return Opacity(
+      opacity: future ? AppTidy.futureOpacity : 1,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox.square(dimension: AppTidy.stampSize, child: circle),
+          const SizedBox(height: AppSpacing.s4),
+          Text(
+            day,
+            style: AppText.caption.copyWith(
+              fontSize: AppTidy.dayLabelSize,
+              color: today ? AppTidy.dash : AppTidy.weekSub,
+              fontWeight: today ? FontWeight.w800 : FontWeight.w400,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 점선 테두리(동그라미 또는 둥근 막대) + 선택적으로 안쪽 셀라돈 빗금.
+class _DashedPainter extends CustomPainter {
+  const _DashedPainter({
+    required this.circle,
+    required this.dash,
+    required this.strokeWidth,
+    required this.hatch,
+  });
+
+  final bool circle;
+  final Color dash;
+  final double strokeWidth;
+  final bool hatch;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final inset = (Offset.zero & size).deflate(strokeWidth / 2);
+    final shape = Path();
+    if (circle) {
+      shape.addOval(inset);
+    } else {
+      shape.addRRect(
+        RRect.fromRectAndRadius(inset, Radius.circular(inset.height / 2)),
+      );
+    }
+    if (hatch) {
+      canvas
+        ..save()
+        ..clipPath(shape);
+      final paint = Paint()
+        ..color = AppTidy.hatch
+        ..strokeWidth = 1.2;
+      // 45° 빗금: 왼쪽 아래 → 오른쪽 위.
+      for (var x = -size.height; x < size.width; x += AppTidy.hatchGap) {
+        canvas.drawLine(
+          Offset(x, size.height),
+          Offset(x + size.height, 0),
+          paint,
+        );
+      }
+      canvas.restore();
+    }
+    final stroke = Paint()
+      ..color = dash
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth;
+    const step = AppTidy.dashLength + AppTidy.dashGap;
+    for (final m in shape.computeMetrics()) {
+      for (var d = 0.0; d < m.length; d += step) {
+        canvas.drawPath(m.extractPath(d, d + AppTidy.dashLength), stroke);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(_DashedPainter old) =>
+      old.circle != circle ||
+      old.dash != dash ||
+      old.strokeWidth != strokeWidth ||
+      old.hatch != hatch;
 }

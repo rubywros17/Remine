@@ -22,6 +22,7 @@ import 'package:remine/screens/tidy_bundle_screen.dart';
 import 'package:remine/widgets/home_widgets.dart';
 import 'package:remine/widgets/peek_preview.dart';
 import 'package:remine/widgets/selectable_thumb.dart';
+import 'package:remine/widgets/tidy_bento.dart';
 
 import 'support/fake_device.dart';
 
@@ -143,17 +144,35 @@ void main() {
       expect(b.isEmpty, isTrue);
     });
 
-    test('이번 주(월~일) 요일별 장수: 지난주는 빼고 오늘은 수요일 칸', () {
+    test('이번 주(월요일 시작): 요일별 장수, 크기를 아는 것만 용량 합, 오늘은 수요일 칸', () {
       expect(weekStart(_now), DateTime(2026, 10, 19));
-      expect(
-        weekCounts([
-          DateTime(2026, 10, 18, 23), // 지난 일요일
-          DateTime(2026, 10, 19, 1),
-          DateTime(2026, 10, 21, 9),
-          DateTime(2026, 10, 21, 11),
-        ], _now),
-        [1, 0, 2, 0, 0, 0, 0],
+      final w = weekOf(
+        [
+          TrashLogEntry(DateTime(2026, 10, 18, 23), 999), // 지난 일요일
+          TrashLogEntry(DateTime(2026, 10, 19, 1), 1000),
+          TrashLogEntry(DateTime(2026, 10, 21, 9)), // 크기 기록 전
+          TrashLogEntry(DateTime(2026, 10, 21, 11), 500),
+        ],
+        _now,
+        40,
       );
+      expect(w.counts, [1, 0, 2, 0, 0, 0, 0]);
+      expect(w.cleared, 3);
+      expect(w.bytes, 1500);
+      expect(w.remaining, 40);
+      expect(w.todayIndex, 2);
+      expect(
+        weekOf([TrashLogEntry(DateTime(2026, 10, 20))], _now, 1).bytes,
+        isNull,
+        reason: '이번 주 용량을 전혀 모르면 null',
+      );
+    });
+
+    test('확보 용량 단위: KB/MB/GB 자동, 소수 한 자리(.0은 뺀다)', () {
+      expect(bytesLabel(350 * 1024), '350KB');
+      expect(bytesLabel(18 * 1024 * 1024), '18MB');
+      expect(bytesLabel((2.46 * 1024 * 1024).round()), '2.5MB');
+      expect(bytesLabel((1.24 * 1024 * 1024 * 1024).round()), '1.2GB');
     });
 
     test('용량 문구: 0이면 없음, 작으면 MB, 크면 소수 한 자리 GB', () {
@@ -490,6 +509,125 @@ void main() {
     });
   });
 
+  group('이번 주 비운 스크린샷(D3 점선 도장)', () {
+    Future<void> pumpWeek(WidgetTester tester, TidyWeek week) async {
+      tester.view.physicalSize = const Size(360, 800);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Padding(
+              padding: const EdgeInsets.all(20),
+              child: TidyWeekStamps(week: week),
+            ),
+          ),
+        ),
+      );
+    }
+
+    double opacityOfStamp(WidgetTester tester, int i) => tester
+        .widget<Opacity>(
+          find
+              .descendant(
+                of: find.byKey(ValueKey('stamp-$i')),
+                matching: find.byType(Opacity),
+              )
+              .first,
+        )
+        .opacity;
+
+    testWidgets('용량은 형광펜, 비운 쪽 막대는 실제 비율이 작아도 9%, 아직 안 온 요일은 흐리게', (
+      tester,
+    ) async {
+      await pumpWeek(
+        tester,
+        const TidyWeek(
+          counts: [0, 3, 0, 4, 0, 0, 0],
+          bytes: 18 * 1024 * 1024,
+          remaining: 120,
+          todayIndex: 3, // 목요일
+        ),
+      );
+      expect(find.text('18MB'), findsOneWidget);
+      expect(find.byKey(const ValueKey('week-highlight')), findsOneWidget);
+      expect(find.text('확보했어요'), findsOneWidget);
+      expect(find.text('남은 120장'), findsOneWidget);
+      expect(find.text('비운 7장'), findsOneWidget);
+      expect(
+        find.bySemanticsLabel('이번 주 7장 비움, 18MB 확보, 화요일 3장 목요일 4장'),
+        findsOneWidget,
+      );
+
+      final remaining = tester.getSize(
+        find.byKey(const ValueKey('bar-remaining')),
+      );
+      final cleared = tester.getSize(find.byKey(const ValueKey('bar-cleared')));
+      final share = cleared.width / (remaining.width + cleared.width);
+      expect(
+        share,
+        closeTo(AppTidy.barMinCleared, 0.01),
+        reason: '7/127은 9%로 올린다',
+      );
+      expect(cleared.height, AppTidy.barHeight);
+
+      for (final i in [0, 1, 2, 3]) {
+        expect(opacityOfStamp(tester, i), 1, reason: '지난 요일·오늘 $i');
+      }
+      for (final i in [4, 5, 6]) {
+        expect(
+          opacityOfStamp(tester, i),
+          AppTidy.futureOpacity,
+          reason: '아직 안 온 $i',
+        );
+      }
+      final today = tester.widget<Text>(
+        find.descendant(
+          of: find.byKey(const ValueKey('stamp-3')),
+          matching: find.text('목'),
+        ),
+      );
+      expect(today.style!.color, AppTidy.dash);
+      expect(today.style!.fontWeight, FontWeight.w800);
+    });
+
+    testWidgets('이번 주 용량을 전혀 모르면 용량 자리에 장수를 크게', (tester) async {
+      await pumpWeek(
+        tester,
+        const TidyWeek(
+          counts: [2, 5, 0, 0, 0, 0, 0],
+          bytes: null,
+          remaining: 30,
+          todayIndex: 1,
+        ),
+      );
+      expect(find.text('7장', findRichText: true), findsOneWidget);
+      expect(find.byKey(const ValueKey('week-highlight')), findsOneWidget);
+      expect(
+        find.bySemanticsLabel('이번 주 7장 비움, 월요일 2장 화요일 5장'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('0장이면 막대는 차콜만, "비운 0장", 용량은 "아직 0MB"(형광펜 없음)', (tester) async {
+      await pumpWeek(
+        tester,
+        const TidyWeek(
+          counts: [0, 0, 0, 0, 0, 0, 0],
+          bytes: null,
+          remaining: 30,
+          todayIndex: 0,
+        ),
+      );
+      expect(find.text('아직 0MB', findRichText: true), findsOneWidget);
+      expect(find.byKey(const ValueKey('week-highlight')), findsNothing);
+      expect(find.byKey(const ValueKey('bar-cleared')), findsNothing);
+      expect(find.byKey(const ValueKey('bar-remaining')), findsOneWidget);
+      expect(find.text('비운 0장'), findsOneWidget);
+      expect(find.bySemanticsLabel('이번 주 0장 비움'), findsOneWidget);
+    });
+  });
+
   group('정리 탭 세로 여백', () {
     /// (제목 위에 더한 높이, 이번 주 막대 아래 ~ 탭바 사이 높이)
     Future<(double, double)> measure(
@@ -526,7 +664,7 @@ void main() {
           .height;
       final below =
           tester.getRect(find.byType(AppTabBar)).top -
-          tester.getRect(find.bySemanticsLabel(RegExp('이번 주 비운 스크린샷'))).bottom;
+          tester.getRect(find.bySemanticsLabel(RegExp('^이번 주 .*장 비움'))).bottom;
       return (gap, below);
     }
 
@@ -540,9 +678,12 @@ void main() {
       final (bigGap, bigBelow) = await measure(tester, const Size(412, 915));
 
       // 위에 더한 만큼 아래 빈칸이 줄었다: 더하기 전 남는 높이 = gap + below(+ 아래 여백 24).
-      double expected(double gap, double below) => math.min(
-        AppTidy.topGrowMax,
-        (gap + below - AppSpacing.s24) * AppTidy.topGrowShare,
+      double expected(double gap, double below) => math.max(
+        0,
+        math.min(
+          AppTidy.topGrowMax,
+          (gap + below - AppSpacing.s24) * AppTidy.topGrowShare,
+        ),
       );
       expect(smallGap, closeTo(expected(smallGap, smallBelow), 0.5));
       expect(bigGap, closeTo(expected(bigGap, bigBelow), 0.5));

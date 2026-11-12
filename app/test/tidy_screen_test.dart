@@ -63,7 +63,7 @@ void main() {
     expect(find.text('휴지통'), findsOneWidget);
     expect(_inTrashTile('2장'), findsOneWidget);
     expect(
-      find.bySemanticsLabel('이번 주 비운 스크린샷 2장'),
+      find.bySemanticsLabel('이번 주 2장 비움, 월요일 2장'),
       findsOneWidget,
       reason: '휴지통에 넣은 날짜로 센다',
     );
@@ -83,7 +83,7 @@ void main() {
     expect(find.byType(TrashScreen), findsNothing);
     expect(_inTrashTile('1장'), findsOneWidget);
     expect(
-      find.bySemanticsLabel('이번 주 비운 스크린샷 1장'),
+      find.bySemanticsLabel('이번 주 1장 비움, 월요일 1장'),
       findsOneWidget,
       reason: '되살린 장은 비운 기록에서도 빠진다',
     );
