@@ -1,7 +1,10 @@
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart' show kLongPressTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:remine/app.dart';
 import 'package:remine/core/tokens.dart';
 import 'package:remine/data/device/ocr_store.dart';
@@ -16,6 +19,7 @@ import 'package:remine/models/category_update.dart';
 import 'package:remine/models/interest.dart';
 import 'package:remine/models/screenshot_item.dart';
 import 'package:remine/screens/tidy_bundle_screen.dart';
+import 'package:remine/widgets/home_widgets.dart';
 import 'package:remine/widgets/peek_preview.dart';
 import 'package:remine/widgets/selectable_thumb.dart';
 
@@ -437,6 +441,72 @@ void main() {
       await gesture.up();
       await tester.pump();
       expect(find.byType(PeekPreview), findsNothing);
+    });
+  });
+
+  group('정리 탭 세로 여백', () {
+    /// (제목 위에 더한 높이, 이번 주 막대 아래 ~ 탭바 사이 높이)
+    Future<(double, double)> measure(
+      WidgetTester tester,
+      Size size, {
+      double scale = 1,
+    }) async {
+      tester.view.physicalSize = size;
+      tester.view.devicePixelRatio = 1.0;
+      tester.platformDispatcher.textScaleFactorTestValue = scale;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      final trash = InMemoryTrashStore();
+      await trash.add(
+        TrashedShot(
+          assetId: 'x',
+          category: Category.etc,
+          takenAt: _now,
+          trashedAt: _now,
+          onServer: false,
+        ),
+      );
+      await tester.pumpWidget(
+        RemineApp(
+          repository: FakeScreenshotRepository(now: () => _now),
+          now: () => _now,
+          device: fakeServices(FakeGalleryReader(), trash: trash),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _tap(tester, find.byIcon(LucideIcons.broom)); // 이미 정리 탭이어도 된다
+      final gap = tester
+          .getSize(find.byKey(const ValueKey('tidy-top-gap')))
+          .height;
+      final below =
+          tester.getRect(find.byType(AppTabBar)).top -
+          tester.getRect(find.bySemanticsLabel(RegExp('이번 주 비운 캡처'))).bottom;
+      return (gap, below);
+    }
+
+    testWidgets('남는 높이의 15%(최대 48)를 제목 위에: 큰 화면일수록 더 내려가고 아래 빈칸은 준다', (
+      tester,
+    ) async {
+      final (smallGap, smallBelow) = await measure(
+        tester,
+        const Size(360, 800),
+      );
+      final (bigGap, bigBelow) = await measure(tester, const Size(412, 915));
+
+      // 위에 더한 만큼 아래 빈칸이 줄었다: 더하기 전 남는 높이 = gap + below(+ 아래 여백 24).
+      double expected(double gap, double below) => math.min(
+        AppTidy.topGrowMax,
+        (gap + below - AppSpacing.s24) * AppTidy.topGrowShare,
+      );
+      expect(smallGap, closeTo(expected(smallGap, smallBelow), 0.5));
+      expect(bigGap, closeTo(expected(bigGap, bigBelow), 0.5));
+      expect(smallGap, lessThan(24), reason: '360×800은 거의 그대로');
+      expect(bigGap, greaterThan(smallGap * 1.5), reason: '412×915는 더 내려간다');
+    });
+
+    testWidgets('내용이 화면보다 길면(작은 화면·글자 1.3배) 위 여백을 더하지 않고 스크롤', (tester) async {
+      final (gap, _) = await measure(tester, const Size(360, 640), scale: 1.3);
+      expect(gap, 0);
     });
   });
 

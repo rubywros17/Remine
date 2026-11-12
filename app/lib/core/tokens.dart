@@ -227,6 +227,10 @@ abstract final class AppTidy {
   static const double radius = 26;
   static const double padding = 16;
 
+  /// 화면이 남을 때 제목 위에 더하는 몫: 남는 높이 × [topGrowShare], 최대 [topGrowMax]. 내용이 길면 0.
+  static const double topGrowShare = 0.15;
+  static const double topGrowMax = 48;
+
   // ── 타일 색 ──
   static const big = AppColors.darkGray; // #4A4B4E 차콜
   static const twins = AppColors.celadon;

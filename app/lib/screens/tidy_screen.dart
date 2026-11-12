@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart' show compute;
 import 'package:flutter/material.dart';
 
@@ -8,6 +10,7 @@ import '../data/device/ocr_store.dart';
 import '../data/remine_store.dart';
 import '../data/tidy_bundles.dart';
 import '../models/screenshot_item.dart';
+import '../widgets/grow_column.dart';
 import '../widgets/tidy_bento.dart';
 import 'tidy_bundle_screen.dart';
 import 'trash_screen.dart';
@@ -193,34 +196,53 @@ class _TidyScreenState extends State<TidyScreen> {
     final bundles = _bundles;
     final week = _week;
     final now = RemineScope.of(context).now();
+    // 화면이 남으면 남는 높이의 [AppTidy.topGrowShare](최대 [AppTidy.topGrowMax])를 제목 위에 더해
+    // 제목~이번 주 막대 전체를 아래로 내린다. 내용이 더 길면 위 여백 없이 평소처럼 스크롤한다(홈과 같은 GrowColumn).
+    const top = AppSpacing.s16;
+    const bottom = AppSpacing.s24;
     return SafeArea(
       bottom: false,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.screenPadding,
-          AppSpacing.s16,
-          AppSpacing.screenPadding,
-          AppSpacing.s24,
-        ),
-        children: [
-          Text('정리', style: AppText.title),
-          const SizedBox(height: AppSpacing.s8),
-          Text('지워도 될 만한 캡처를 모아 드릴게요', style: AppText.caption),
-          const SizedBox(height: AppSpacing.s24),
-          if (bundles != null) ...[
-            TidyBento(
-              bundles: bundles,
-              size: _sizeText,
-              trashCount: _trashCount,
-              onOpen: _open,
-              onTrash: _openTrash,
+      child: LayoutBuilder(
+        builder: (context, viewport) => SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.screenPadding,
+            top,
+            AppSpacing.screenPadding,
+            bottom,
+          ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: math.max(0, viewport.maxHeight - top - bottom),
             ),
-            if (week != null) ...[
-              const SizedBox(height: AppSpacing.s24),
-              TidyWeek(counts: week, todayIndex: now.weekday - 1),
-            ],
-          ],
-        ],
+            child: GrowColumn(
+              children: [
+                const GrowGap(
+                  0,
+                  key: ValueKey('tidy-top-gap'),
+                  share: AppTidy.topGrowShare,
+                  maxExtra: AppTidy.topGrowMax,
+                ),
+                Text('정리', style: AppText.title),
+                const SizedBox(height: AppSpacing.s8),
+                Text('지워도 될 만한 캡처를 모아 드릴게요', style: AppText.caption),
+                const SizedBox(height: AppSpacing.s24),
+                if (bundles != null) ...[
+                  TidyBento(
+                    bundles: bundles,
+                    size: _sizeText,
+                    trashCount: _trashCount,
+                    onOpen: _open,
+                    onTrash: _openTrash,
+                  ),
+                  if (week != null) ...[
+                    const SizedBox(height: AppSpacing.s24),
+                    TidyWeek(counts: week, todayIndex: now.weekday - 1),
+                  ],
+                ],
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
