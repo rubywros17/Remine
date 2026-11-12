@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
 import '../core/tokens.dart';
@@ -45,13 +46,28 @@ class _TidyBundleScreenState extends State<TidyBundleScreen> {
   bool _busy = false;
   PeekHandle? _peek;
 
+  /// 손가락이 닿은 캡처의 미리 보기 이미지(디코딩 중이거나 끝난 것). 꾹 누름이 인식되면 이걸로 바로 띄운다.
+  (int, PeekImages)? _warm;
+
+  /// 손가락이 닿는 순간 미리 디코딩을 시작한다(탭으로 끝나도 캐시에 남을 뿐이다).
+  void _warmUp(ScreenshotItem item) {
+    if (_warm?.$1 == item.id) return;
+    _warm = (item.id, PeekImages.warm(context, item));
+  }
+
   /// 꾹 누른 썸네일 자리(화면 좌표)에서 미리 보기를 띄운다.
   void _peekAt(ScreenshotItem item) {
     final box =
         _thumbKeys[item.id]?.currentContext?.findRenderObject() as RenderBox?;
     if (box == null || !box.hasSize) return;
     _closePeek();
-    _peek = showPeek(context, item, box.localToGlobal(Offset.zero) & box.size);
+    _warmUp(item);
+    _peek = showPeek(
+      context,
+      item,
+      box.localToGlobal(Offset.zero) & box.size,
+      _warm!.$2,
+    );
   }
 
   void _closePeek() {
@@ -272,7 +288,9 @@ class _TidyBundleScreenState extends State<TidyBundleScreen> {
   }
 
   /// 탭은 선택/해제, 꾹 누르면 크게 보기(손 떼면 닫힘). 꾹 누르는 동안엔 선택이 바뀌지 않는다.
-  /// [Flutter 메모] 길게 누르기는 약 0.5초가 지나야 이긴다. 그 전에 손가락이 움직이면 스크롤이 이겨서 서로 겹치지 않는다.
+  /// [Flutter 메모] 길게 누르기는 [AppTidy.peekPress](0.3초)가 지나야 이긴다. 그 전에 손가락이 움직이면 스크롤이
+  /// 이겨서 서로 겹치지 않는다. GestureDetector는 이 시간을 못 바꿔서 RawGestureDetector로 인식기를 직접 단다.
+  /// Listener는 경쟁에 끼지 않고 손가락이 닿는 순간만 알려 준다(미리 디코딩 시작).
   Widget _tile(ScreenshotItem item) {
     final on = _selected.contains(item.id);
     return Semantics(
@@ -281,21 +299,37 @@ class _TidyBundleScreenState extends State<TidyBundleScreen> {
       label: '${item.category.label} 캡처',
       hint: '길게 눌러 미리 보기',
       excludeSemantics: true,
-      child: GestureDetector(
-        key: ValueKey('tidy-shot-${item.id}'),
-        onTap: _busy ? null : () => _toggle(item.id),
-        onLongPressStart: (_) => _peekAt(item),
-        onLongPressEnd: (_) => _closePeek(),
-        onLongPressCancel: _closePeek,
-        child: SelectableThumb(
-          key: _thumbKeys.putIfAbsent(item.id, GlobalKey.new),
-          selected: on,
-          child: CaptureThumb(
-            key: ValueKey(item.localAssetId),
-            assetId: item.localAssetId,
-            seed: item.id,
-            radius: 12,
-            size: 240,
+      child: Listener(
+        onPointerDown: (_) => _warmUp(item),
+        child: RawGestureDetector(
+          key: ValueKey('tidy-shot-${item.id}'),
+          gestures: {
+            TapGestureRecognizer:
+                GestureRecognizerFactoryWithHandlers<TapGestureRecognizer>(
+                  TapGestureRecognizer.new,
+                  (r) => r.onTap = _busy ? null : () => _toggle(item.id),
+                ),
+            LongPressGestureRecognizer:
+                GestureRecognizerFactoryWithHandlers<
+                  LongPressGestureRecognizer
+                >(
+                  () => LongPressGestureRecognizer(duration: AppTidy.peekPress),
+                  (r) => r
+                    ..onLongPressStart = ((_) => _peekAt(item))
+                    ..onLongPressEnd = ((_) => _closePeek())
+                    ..onLongPressCancel = _closePeek,
+                ),
+          },
+          child: SelectableThumb(
+            key: _thumbKeys.putIfAbsent(item.id, GlobalKey.new),
+            selected: on,
+            child: CaptureThumb(
+              key: ValueKey(item.localAssetId),
+              assetId: item.localAssetId,
+              seed: item.id,
+              radius: 12,
+              size: 240,
+            ),
           ),
         ),
       ),

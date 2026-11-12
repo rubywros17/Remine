@@ -268,23 +268,32 @@ abstract final class AppTidy {
   /// 쌍둥이: 같은 출처 앱 + 찍은 시각이 이 안 + OCR 글자 유사도(글자 바이그램 Jaccard)가 이 이상.
   static const twinWindow = Duration(seconds: 60);
   static const double twinSimilarity = 0.9;
-}
 
-/// 꾹 눌러 크게 보기(정리 묶음 그리드). 썸네일 자리에서 화면 가운데로 커지고, 손을 떼면 줄어들며 닫힌다.
-abstract final class AppPeek {
-  static const double sidePadding = 20;
-  static const double radius = 22;
-  static const double thumbRadius = 12; // 그리드 썸네일 모서리(커지기 시작하는 모양)
-  static const open = Duration(milliseconds: 220);
-  static const close = Duration(milliseconds: 160);
-  static const Curve curve = Cubic(0.05, 0.7, 0.1, 1);
-  static const double blur = 14;
-  static const scrim = Color(0x66000000); // 검정 40%
-  static const double captionGap = 12;
-  static const double captionHeight = 20;
+  // ── 꾹 눌러 크게 보기(묶음 그리드) ──
+  /// 꾹 누름 인식 시간(기본 500ms는 늦게 느껴진다). 인식되는 순간 햅틱.
+  static const peekPress = Duration(milliseconds: 300);
+
+  /// 열 때: 썸네일 자리에서 화면 가운데로. 닫을 때: 썸네일 자리로 되돌아간다(끝에서 빨라진다).
+  static const peekOpen = Duration(milliseconds: 300);
+  static const peekClose = Duration(milliseconds: 200);
+  static const Curve peekOpenCurve = Cubic(0.05, 0.7, 0.1, 1);
+  static const Curve peekCloseCurve = Cubic(0.3, 0, 0.8, 0.15);
+
+  /// 다 열린 뒤 썸네일 → 원본 해상도 크로스페이드.
+  static const peekCrossfade = Duration(milliseconds: 150);
+
+  static const double peekSidePadding = 20;
+  static const double peekRadius = 22;
+  static const double peekBlur = 14; // 고정. 투명도만 0→1로 움직인다
+  static const peekScrim = Color(0x66000000); // 검정 40%
+  static const double peekCaptionGap = 12;
+  static const double peekCaptionHeight = 20;
+
+  /// 확대 중에 보여 줄 썸네일 한 변(px). 원본은 화면 너비 × devicePixelRatio로 줄여 디코딩한다.
+  static const peekThumbSize = 480;
 
   /// 비율을 모를 때(가짜 데이터 모드) 쓰는 세로 화면 비율.
-  static const double fallbackAspect = 9 / 19.5;
+  static const double peekFallbackAspect = 9 / 19.5;
 }
 
 abstract final class AppRadii {

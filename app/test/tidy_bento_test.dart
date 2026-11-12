@@ -1,12 +1,12 @@
 import 'dart:math' as math;
 
-import 'package:flutter/gestures.dart' show kLongPressTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:remine/app.dart';
 import 'package:remine/core/tokens.dart';
+import 'package:remine/data/device/device_services.dart';
 import 'package:remine/data/device/ocr_store.dart';
 import 'package:remine/data/device/trash_store.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
@@ -319,6 +319,7 @@ void main() {
     Future<List<MethodCall>> pumpBundle(
       WidgetTester tester, {
       bool reduce = false,
+      FakeGalleryReader? reader,
     }) async {
       tester.view.physicalSize = const Size(360, 800);
       tester.view.devicePixelRatio = 1.0;
@@ -357,10 +358,18 @@ void main() {
                 size: const Size(360, 800),
                 disableAnimations: reduce,
               ),
-              child: TidyBundleScreen(
-                title: '갈 곳 없는 캡처',
-                sections: [TidySection('갈 곳 없는 캡처', items)],
-              ),
+              child: () {
+                final screen = TidyBundleScreen(
+                  title: '갈 곳 없는 캡처',
+                  sections: [TidySection('갈 곳 없는 캡처', items)],
+                );
+                return reader == null
+                    ? screen
+                    : DeviceScope(
+                        services: fakeServices(reader),
+                        child: screen,
+                      );
+              }(),
             ),
           ),
         ),
@@ -385,9 +394,9 @@ void main() {
       final gesture = await tester.startGesture(
         tester.getCenter(find.byKey(const ValueKey('tidy-shot-2'))),
       );
-      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+      await tester.pump(AppTidy.peekPress + const Duration(milliseconds: 20));
       await tester.pump(); // 비율 읽기
-      await tester.pump(AppPeek.open);
+      await tester.pump(AppTidy.peekOpen);
       expect(find.byType(PeekPreview), findsOneWidget);
       expect(
         find.text('2026.11.06 (FRI)  |  13:58  ·  KAKAO TALK'),
@@ -403,8 +412,11 @@ void main() {
           matching: find.byType(ClipRRect),
         ),
       );
-      expect(photo.left, greaterThanOrEqualTo(AppPeek.sidePadding - 0.5));
-      expect(photo.width / photo.height, closeTo(AppPeek.fallbackAspect, 0.01));
+      expect(photo.left, greaterThanOrEqualTo(AppTidy.peekSidePadding - 0.5));
+      expect(
+        photo.width / photo.height,
+        closeTo(AppTidy.peekFallbackAspect, 0.01),
+      );
 
       await gesture.up();
       await tester.pumpAndSettle();
@@ -416,13 +428,47 @@ void main() {
       expect(selected(tester, 2), isFalse, reason: '탭은 지금처럼 선택/해제');
     });
 
+    testWidgets('손가락이 닿는 순간 원본을 읽기 시작하고, 0.3초가 지나야 뜨고, 다 열린 뒤 원본으로 바뀐다', (
+      tester,
+    ) async {
+      final reader = FakeGalleryReader()..decodableOriginals.add('a3');
+      await pumpBundle(tester, reader: reader);
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.byKey(const ValueKey('tidy-shot-3'))),
+      );
+      await tester.pump();
+      expect(reader.bytesAsked, ['a3'], reason: '꾹 누름이 인식되기 전에 시작');
+
+      await tester.pump(AppTidy.peekPress - const Duration(milliseconds: 60));
+      expect(find.byType(PeekPreview), findsNothing, reason: '0.3초 전');
+      await tester.pump(const Duration(milliseconds: 80));
+      // 디코딩은 실제 시간이 든다 → 화면 시계와 실제 시간을 번갈아 흘린다.
+      for (
+        var i = 0;
+        i < 30 &&
+            find.byKey(const ValueKey('peek-original')).evaluate().isEmpty;
+        i++
+      ) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 20)),
+        );
+        await tester.pump(const Duration(milliseconds: 50));
+      }
+      expect(find.byType(PeekPreview), findsOneWidget);
+      expect(find.byKey(const ValueKey('peek-original')), findsOneWidget);
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(find.byType(PeekPreview), findsNothing);
+    });
+
     testWidgets('누르자마자 움직이면 스크롤이 이기고 미리 보기는 안 뜬다', (tester) async {
       await pumpBundle(tester);
       final gesture = await tester.startGesture(
         tester.getCenter(find.byKey(const ValueKey('tidy-shot-5'))),
       );
       await gesture.moveBy(const Offset(0, -80));
-      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+      await tester.pump(AppTidy.peekPress + const Duration(milliseconds: 20));
       await gesture.up();
       await tester.pumpAndSettle();
       expect(find.byType(PeekPreview), findsNothing);
@@ -434,7 +480,7 @@ void main() {
       final gesture = await tester.startGesture(
         tester.getCenter(find.byKey(const ValueKey('tidy-shot-1'))),
       );
-      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
+      await tester.pump(AppTidy.peekPress + const Duration(milliseconds: 20));
       await tester.pump();
       expect(find.byType(PeekPreview), findsOneWidget);
       expect(tester.hasRunningAnimations, isFalse);
