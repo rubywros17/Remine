@@ -157,14 +157,14 @@ class _TidyScreenState extends State<TidyScreen> {
     final b = _bundles;
     if (b == null) return;
     final twins = TidySection(
-      '쌍둥이 캡처',
+      '비슷한 스크린샷',
       [for (final g in b.twins) ...g],
       keep: {for (final g in b.twins) g.first.id},
     );
-    final stale = TidySection('석 달째 안 봄', b.stale);
-    final etc = TidySection('갈 곳 없는 캡처', b.etc);
+    final stale = TidySection('3달째 안 봄', b.stale);
+    final etc = TidySection('갈 곳 없는 스크린샷', b.etc);
     final (title, sections) = switch (kind) {
-      null => ('비울 수 있는 캡처', [twins, stale, etc]),
+      null => ('비울 수 있는 스크린샷', [twins, stale, etc]),
       TidyKind.twins => (twins.title, [twins]),
       TidyKind.stale => (stale.title, [stale]),
       TidyKind.etc => (etc.title, [etc]),
@@ -224,7 +224,7 @@ class _TidyScreenState extends State<TidyScreen> {
                 ),
                 Text('정리', style: AppText.title),
                 const SizedBox(height: AppSpacing.s8),
-                Text('지워도 될 만한 캡처를 모아 드릴게요', style: AppText.caption),
+                Text('지워도 될 만한 스크린샷을 모아 드릴게요', style: AppText.caption),
                 const SizedBox(height: AppSpacing.s24),
                 if (bundles != null) ...[
                   TidyBento(

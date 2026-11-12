@@ -136,7 +136,7 @@ void main() {
 
       await tester.tap(find.text('정리'));
       await tester.pumpAndSettle();
-      expect(find.text('지워도 될 만한 캡처를 모아 드릴게요'), findsOneWidget);
+      expect(find.text('지워도 될 만한 스크린샷을 모아 드릴게요'), findsOneWidget);
       expect(
         find.byKey(const ValueKey('tidy-all')),
         findsOneWidget,

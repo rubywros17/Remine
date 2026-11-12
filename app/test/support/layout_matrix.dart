@@ -261,7 +261,7 @@ void defineLayoutMatrix({
         await tester.tap(find.byIcon(LucideIcons.broom));
         await tester.runAsync(pumpEventQueue);
         await tester.pumpAndSettle();
-        expect(find.text('지워도 될 만한 캡처를 모아 드릴게요'), findsOneWidget);
+        expect(find.text('지워도 될 만한 스크린샷을 모아 드릴게요'), findsOneWidget);
         await _tap(tester, find.text('한 번에 보기 →'));
         expect(
           find.byType(BackButtonCircle),

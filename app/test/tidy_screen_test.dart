@@ -59,11 +59,11 @@ void main() {
     await _pumpApp(tester, store);
     await _tap(tester, find.text('정리'));
 
-    expect(find.text('지워도 될 만한 캡처를 모아 드릴게요'), findsOneWidget);
+    expect(find.text('지워도 될 만한 스크린샷을 모아 드릴게요'), findsOneWidget);
     expect(find.text('휴지통'), findsOneWidget);
     expect(_inTrashTile('2장'), findsOneWidget);
     expect(
-      find.bySemanticsLabel('이번 주 비운 캡처 2장'),
+      find.bySemanticsLabel('이번 주 비운 스크린샷 2장'),
       findsOneWidget,
       reason: '휴지통에 넣은 날짜로 센다',
     );
@@ -83,7 +83,7 @@ void main() {
     expect(find.byType(TrashScreen), findsNothing);
     expect(_inTrashTile('1장'), findsOneWidget);
     expect(
-      find.bySemanticsLabel('이번 주 비운 캡처 1장'),
+      find.bySemanticsLabel('이번 주 비운 스크린샷 1장'),
       findsOneWidget,
       reason: '되살린 장은 비운 기록에서도 빠진다',
     );

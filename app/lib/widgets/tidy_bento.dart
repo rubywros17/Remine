@@ -15,8 +15,8 @@ enum TidyKind { twins, stale, etc }
 /// ```
 /// ┌──────────┬────────┐
 /// │ 비울 수   │ 쌍둥이  │
-/// │ 있는 캡처 ├────────┤
-/// │ (2칸)    │ 석 달째 │
+/// │ 있는 스크린샷 ├────────┤
+/// │ (2칸)    │ 3달째 │
 /// ├──────────┼────────┤
 /// │ 갈 곳 없는│ 휴지통  │
 /// └──────────┴────────┘
@@ -74,7 +74,7 @@ class TidyBento extends StatelessWidget {
                       child: _CountTile(
                         key: const ValueKey('tidy-twins'),
                         color: AppTidy.twins,
-                        title: '쌍둥이 캡처',
+                        title: '비슷한 스크린샷',
                         count: bundles.twinsReady ? twins.length : null,
                         note: bundles.twinsReady ? '거의 똑같아요' : '곧 찾아 드릴게요',
                         peek: twins.take(2).toList(),
@@ -86,9 +86,9 @@ class TidyBento extends StatelessWidget {
                       child: _CountTile(
                         key: const ValueKey('tidy-stale'),
                         color: AppTidy.stale,
-                        title: '석 달째 안 봄',
+                        title: '3달째 안 봄',
                         count: bundles.stale.length,
-                        note: '3개월 넘은 캡처',
+                        note: '3개월 넘은 스크린샷',
                         onTap: () => onOpen(TidyKind.stale),
                       ),
                     ),
@@ -109,7 +109,7 @@ class TidyBento extends StatelessWidget {
                   key: const ValueKey('tidy-etc'),
                   color: AppTidy.etc,
                   outlined: true,
-                  title: '갈 곳 없는 캡처',
+                  title: '갈 곳 없는 스크린샷',
                   count: bundles.etc.length,
                   note: '기타 서랍',
                   onTap: () => onOpen(TidyKind.etc),
@@ -213,14 +213,14 @@ class _BigTile extends StatelessWidget {
       key: const ValueKey('tidy-all'),
       color: AppTidy.big,
       label: empty
-          ? '비울 수 있는 캡처. 지금은 정리할 게 없어요'
-          : '비울 수 있는 캡처 ${shots.length}장${size == null ? '' : ', $size 가벼워져요'}',
+          ? '비울 수 있는 스크린샷. 지금은 정리할 게 없어요'
+          : '비울 수 있는 스크린샷 ${shots.length}장${size == null ? '' : ', $size 가벼워져요'}',
       onTap: empty ? null : onOpen,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '비울 수 있는 캡처',
+            '비울 수 있는 스크린샷',
             style: _tileTitle.copyWith(color: AppColors.white),
           ),
           const SizedBox(height: AppSpacing.s8),
@@ -412,7 +412,7 @@ class TidyWeek extends StatelessWidget {
     final total = counts.fold(0, (a, b) => a + b);
     final most = counts.fold(1, (a, b) => b > a ? b : a);
     return Semantics(
-      label: '이번 주 비운 캡처 $total장',
+      label: '이번 주 비운 스크린샷 $total장',
       excludeSemantics: true,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
@@ -421,7 +421,7 @@ class TidyWeek extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('이번 주 비운 캡처', style: AppText.label),
+                Text('이번 주 비운 스크린샷', style: AppText.label),
                 const SizedBox(height: AppSpacing.s4),
                 // 숫자 글꼴에는 한글이 없어 "장"은 본문 글꼴로.
                 Text.rich(

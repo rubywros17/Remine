@@ -293,13 +293,13 @@ void main() {
 
       expect(find.text('거의 똑같아요'), findsOneWidget);
       expect(
-        find.bySemanticsLabel('쌍둥이 캡처 2장. 거의 똑같아요'),
+        find.bySemanticsLabel('비슷한 스크린샷 2장. 거의 똑같아요'),
         findsOneWidget,
         reason: '3장 중 가장 최근 1장은 남긴다',
       );
 
       await _tap(tester, find.byKey(const ValueKey('tidy-twins')));
-      expect(find.text('쌍둥이 캡처 3장'), findsOneWidget);
+      expect(find.text('비슷한 스크린샷 3장'), findsOneWidget);
       expect(find.text('휴지통으로 2장'), findsOneWidget);
       bool selected(int id) => tester
           .widget<SelectableThumb>(
@@ -526,7 +526,7 @@ void main() {
           .height;
       final below =
           tester.getRect(find.byType(AppTabBar)).top -
-          tester.getRect(find.bySemanticsLabel(RegExp('이번 주 비운 캡처'))).bottom;
+          tester.getRect(find.bySemanticsLabel(RegExp('이번 주 비운 스크린샷'))).bottom;
       return (gap, below);
     }
 
@@ -579,18 +579,18 @@ void main() {
       expect(_opacityOf(tester, 'tidy-stale'), 1);
 
       await _tap(tester, find.byKey(const ValueKey('tidy-stale')));
-      expect(find.text('석 달째 안 봄 2장'), findsOneWidget);
+      expect(find.text('3달째 안 봄 2장'), findsOneWidget);
       expect(find.text('휴지통으로 2장'), findsOneWidget);
 
       await _tap(tester, find.byKey(const ValueKey('tidy-shot-2')));
       expect(find.text('휴지통으로 1장'), findsOneWidget);
 
       await _tap(tester, find.text('휴지통으로 1장'));
-      expect(find.text('석 달째 안 봄 1장'), findsOneWidget);
+      expect(find.text('3달째 안 봄 1장'), findsOneWidget);
       expect(find.text('1장을 휴지통으로 옮겼어요'), findsOneWidget);
 
       await _tap(tester, find.text('되돌리기'));
-      expect(find.text('석 달째 안 봄 2장'), findsOneWidget);
+      expect(find.text('3달째 안 봄 2장'), findsOneWidget);
     });
 
     testWidgets('한 번에 보기: 묶음별 소제목으로 나누고, 두 묶음에 든 캡처는 앞 묶음에만', (tester) async {
@@ -604,9 +604,9 @@ void main() {
       );
       await _tap(tester, find.text('한 번에 보기 →'));
 
-      expect(find.text('비울 수 있는 캡처 3장'), findsOneWidget);
-      expect(find.text('석 달째 안 봄 2장'), findsOneWidget);
-      expect(find.text('갈 곳 없는 캡처 1장'), findsOneWidget);
+      expect(find.text('비울 수 있는 스크린샷 3장'), findsOneWidget);
+      expect(find.text('3달째 안 봄 2장'), findsOneWidget);
+      expect(find.text('갈 곳 없는 스크린샷 1장'), findsOneWidget);
       expect(find.byKey(const ValueKey('tidy-shot-3')), findsOneWidget);
     });
 
