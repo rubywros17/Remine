@@ -160,8 +160,8 @@ abstract final class AppBrain {
 /// 관심사 카드(홈·관심사 탭). 한 화면(360×800)에 3장이 들어가는 높이.
 abstract final class AppInterestCard {
   /// 잊고 있었던 관심사 카드 최소 높이. 요즘 모으는 중 카드는 약 80%.
-  static const double minHeight = 168;
-  static const double recentMinHeight = 136;
+  static const double minHeight = 140; // 시안 높이
+  static const double recentMinHeight = 112; // minHeight의 80%
 
   /// 콜라주 맨 앞 사진 오른쪽 위에 걸친 원형 스티커 "19 / SHOTS": 지름, 기울기(10°).
   static const double shotsSize = 58;
