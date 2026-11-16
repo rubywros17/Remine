@@ -138,3 +138,39 @@ List<ScreenshotItem> buildFakeScreenshots(DateTime now) {
       )
       .toList();
 }
+
+/// 크롬 데모용(main.dart): 기본 30장 + 잊고 있었던 관심사 4개(31일 넘게 지난 서로 다른 달) + 요즘 관심사 보강.
+/// 테스트는 기본 30장([buildFakeScreenshots])에 개수를 맞춰 두어서 여기만 늘린다.
+List<ScreenshotItem> buildDemoScreenshots(DateTime now) {
+  DateTime ago(int days, int hour) =>
+      DateTime(now.year, now.month, now.day - days, hour);
+
+  // (카테고리, 출처 앱, 태그, 며칠 전 목록, 요약). 날짜 묶음은 35일 이상 떨어져 달이 서로 다르다.
+  final groups = <(Category, String, String, List<int>, String)>[
+    (Category.info, 'Pinterest', '코바늘도안', [40, 41, 42, 43, 44], '코바늘 도안'),
+    (Category.shopping, 'NAVER', '집들이선물', [80, 81, 83, 85], '집들이 선물 후보'),
+    (Category.place, 'Instagram', '홈카페', [125, 126, 128], '홈카페 레시피'),
+    (Category.place, 'NAVER', '제주숙소', [170, 172, 174], '제주 숙소 후보'),
+    // 요즘 관심사 보강: 기본 데이터의 이어폰·캠핑(각 1장)이 3장이 된다.
+    (Category.shopping, 'COUPANG', '이어폰', [6, 15], '무선 이어폰 후기'),
+    (Category.shopping, '당근', '캠핑', [8, 20], '캠핑 장비 정리'),
+  ];
+  final base = buildFakeScreenshots(now);
+  var id = base.length;
+  return [
+    ...base,
+    for (final (category, app, tag, days, summary) in groups)
+      for (final (k, d) in days.indexed)
+        ScreenshotItem(
+          id: ++id,
+          localAssetId: 'fake-${id.toString().padLeft(3, '0')}',
+          takenAt: ago(d, 10 + k),
+          sourceApp: app,
+          category: category,
+          summary: '$summary ${k + 1}',
+          tags: [tag],
+          autoCategory: category,
+          categorySource: CategorySource.auto,
+        ),
+  ];
+}

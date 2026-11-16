@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:remine/data/fake_data.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
 import 'package:remine/models/category.dart';
 
@@ -185,5 +186,20 @@ void main() {
       expect(interests.first.category, Category.shopping);
       expect(interests.first.recent.length, 3); // 카드 콜라주용 최근 3장
     });
+  });
+
+  test('크롬 데모 시드: 잊고 있었던 관심사 4개(서로 다른 달) 먼저, 요즘 관심사 3개', () async {
+    final interests = await FakeScreenshotRepository(
+      now: () => _now,
+      seed: buildDemoScreenshots(_now),
+    ).interests();
+    final forgotten = interests.where((i) => i.forgotten).toList();
+    final recent = interests.where((i) => !i.forgotten).toList();
+
+    expect(forgotten.map((i) => i.tag), ['코바늘도안', '집들이선물', '제주숙소', '홈카페']);
+    expect(forgotten.every((i) => i.dormantDays > 31), isTrue);
+    expect(forgotten.map((i) => i.latestMonth).toSet(), hasLength(4));
+    expect(recent.map((i) => i.tag), containsAll(['니트가디건', '이어폰', '캠핑']));
+    expect(interests.take(4), forgotten, reason: '잊은 것이 먼저');
   });
 }
