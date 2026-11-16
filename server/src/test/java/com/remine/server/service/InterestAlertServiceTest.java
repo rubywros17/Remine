@@ -28,7 +28,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-/** 주간 집계를 실제 DB(PostgreSQL)로: 1순위만 PENDING, 같은 주 재실행은 그대로(멱등), 쿨다운 동안 같은 태그는 다음 순위로. */
+/** 주간 집계를 실제 DB(PostgreSQL)로: 1순위(잊고 있었던 관심사 먼저)만 PENDING, 같은 주 재실행은 그대로(멱등), 쿨다운 동안 같은 태그는 다음 순위로. */
 @SpringBootTest
 class InterestAlertServiceTest {
 
@@ -98,9 +98,25 @@ class InterestAlertServiceTest {
         assertThat(alerts()).singleElement().satisfies(a -> {
             assertThat(a.getTag().getId()).isEqualTo(tagId("가디건"));
             assertThat(a.getCaptureCount()).isEqualTo(4);
+            assertThat(a.getPeakMonth()).isNull(); // 요즘 관심사
             assertThat(a.getStatus()).isEqualTo(InterestAlert.Status.PENDING);
             assertThat(a.getWeekStart()).isEqualTo(MONDAY);
             assertThat(a.getSentAt()).isNull();
+        });
+    }
+
+    @Test
+    void 잊고_있었던_관심사가_장수가_적어도_먼저고_가장_많던_달을_남긴다() {
+        captures("코바늘도안", 3, THURSDAY.minusDays(52)); // 8/31, 30일을 넘김
+        captures("가디건", 5, THURSDAY);
+
+        service.createWeeklyAlerts();
+
+        assertThat(alerts()).singleElement().satisfies(a -> {
+            assertThat(a.getTag().getId()).isEqualTo(tagId("코바늘도안"));
+            assertThat(a.getCaptureCount()).isEqualTo(3);
+            assertThat(a.getPeakMonth()).isEqualTo(8);
+            assertThat(a.getPeakMonthCount()).isEqualTo(3);
         });
     }
 

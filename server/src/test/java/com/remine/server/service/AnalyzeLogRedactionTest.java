@@ -122,7 +122,7 @@ class AnalyzeLogRedactionTest {
                 new RemineProperties.Analyze(20, Duration.ofMinutes(4)),
                 new RemineProperties.Image(1048576, 1024, 25_000_000L, 12582912, 5242880),
                 new RemineProperties.Tags(List.of()),
-                new RemineProperties.Interest(14, 3, 28));
+                new RemineProperties.Interest(30, 3, 28, List.of()));
         HybridLlmClassifier classifier = hybridWithFakeProvider();
         ScreenshotService service = new ScreenshotService(deviceRepository, screenshotRepository, classifier, persister,
                 properties, new TagCleaner(properties), new UsageMeter());

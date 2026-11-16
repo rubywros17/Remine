@@ -5,7 +5,6 @@ import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
-import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
 
@@ -29,17 +28,17 @@ public interface ScreenshotTagRepository extends JpaRepository<ScreenshotTag, Lo
             """)
     List<CategoryTagCountRow> countTagsByCategory(@Param("deviceId") Long deviceId);
 
-    // 관심사 감지: 기간 안의 분석된 캡처 × 태그, 최신순. 앱 휴지통에 있는 캡처는 뺀다.
-    // 행 수는 기간 안 캡처 수 × 캡처당 태그 수로 제한된다.
+    // 관심사 감지: 기기의 분석된 캡처 전체 × 태그, 최신순. 앱 휴지통에 있는 캡처는 뺀다.
+    // ponytail: 기간 제한이 없어 행 수 = 기기 캡처 수 × 캡처당 태그 수. 커지면 group by 집계 + 상위 N개 상세 조회로.
     @Query("""
             select new com.remine.server.domain.screenshot.InterestRow(
                 t.id, t.name, s.id, s.localAssetId, s.category, s.takenAt)
             from ScreenshotTag st join st.screenshot s join st.tag t
-            where s.device.id = :deviceId and s.takenAt >= :since and s.category is not null
+            where s.device.id = :deviceId and s.category is not null
               and s.trashedAt is null
             order by s.takenAt desc, s.id desc
             """)
-    List<InterestRow> findInterestRows(@Param("deviceId") Long deviceId, @Param("since") LocalDateTime since);
+    List<InterestRow> findInterestRows(@Param("deviceId") Long deviceId);
 
     @Modifying(clearAutomatically = true)
     @Query("""

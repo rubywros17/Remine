@@ -8,6 +8,9 @@ import com.remine.server.domain.screenshot.Screenshot;
 import com.remine.server.domain.screenshot.ScreenshotRepository;
 import com.remine.server.dto.AnalyzeRequest.Item;
 import com.remine.server.service.ScreenshotPersister.Outcome;
+import jakarta.persistence.EntityManagerFactory;
+import org.hibernate.SessionFactory;
+import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,8 +33,8 @@ import java.util.List;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 
-/** 실제 DB(PostgreSQL)와 HTTP로: 14일 경계, 사용자 수정 반영, 다른 기기 분리, 응답에 OCR 원문 없음. */
-@SpringBootTest
+/** 실제 DB(PostgreSQL)와 HTTP로: 전체 기간·30일 상태 경계, 넓은 태그 제외, 사용자 수정 반영, 다른 기기 분리, OCR 원문 없음, 쿼리 수. */
+@SpringBootTest(properties = "spring.jpa.properties.hibernate.generate_statistics=true")
 class InterestIntegrationTest {
 
     static final LocalDateTime NOW = LocalDateTime.of(2026, 10, 22, 12, 0);
@@ -51,6 +54,7 @@ class InterestIntegrationTest {
     @Autowired DeviceRepository deviceRepository;
     @Autowired ScreenshotRepository screenshotRepository;
     @Autowired ScreenshotPersister persister;
+    @Autowired EntityManagerFactory entityManagerFactory;
 
     private final JsonMapper mapper = JsonMapper.builder().build();
     private MockMvc mockMvc;
@@ -77,11 +81,10 @@ class InterestIntegrationTest {
     }
 
     @Test
-    void 십사일_안의_캡처만_세고_사용자_수정_카테고리를_대표로_쓴다() throws Exception {
+    void 전체_기간을_세고_사용자_수정_카테고리를_대표로_쓴다() throws Exception {
         capture(deviceId, "in-1", NOW.minusDays(1), "경계 가디건");
         capture(deviceId, "in-2", NOW.minusDays(13), "경계가디건"); // 표기만 다른 같은 태그
-        capture(deviceId, "edge", NOW.minusDays(14), "경계 가디건"); // 정확히 14일 전 = 포함
-        capture(deviceId, "out", NOW.minusDays(15), "경계 가디건"); // 기간 밖
+        capture(deviceId, "old", NOW.minusDays(200), "경계 가디건"); // 오래전 캡처도 센다
         capture(deviceId, "two-1", NOW.minusDays(1), "두번뿐");
         capture(deviceId, "two-2", NOW.minusDays(2), "두번뿐");
         for (String assetId : List.of("in-1", "in-2")) {
@@ -95,10 +98,35 @@ class InterestIntegrationTest {
         assertThat(items).hasSize(1);
         JsonNode item = items.get(0);
         assertThat(item.get("tag").asString()).isEqualTo("경계 가디건");
+        assertThat(item.get("status").asString()).isEqualTo("RECENT");
         assertThat(item.get("captureCount").asInt()).isEqualTo(3);
         assertThat(item.get("category").asString()).isEqualTo("INFO");
         assertThat(item.get("dormantDays").asInt()).isEqualTo(1);
         assertThat(item.get("recent").get(0).get("localAssetId").asString()).isEqualTo("in-1");
+        assertThat(item.get("recent").get(0).get("takenAt").asString()).startsWith("2026-10-21");
+    }
+
+    @Test
+    void 잊고_있었던_관심사가_먼저고_넓은_태그는_빠진다_쿼리는_두_번() throws Exception {
+        for (int i = 0; i < 5; i++) {
+            capture(deviceId, "recent-" + i, NOW.minusDays(1 + i), "요즘네일");
+            capture(deviceId, "broad-" + i, NOW.minusDays(1 + i), "패션"); // 설정의 넓은 태그
+        }
+        capture(deviceId, "old-1", NOW.minusDays(31), "코바늘도안"); // 9/21: 30일 경계를 막 넘음
+        capture(deviceId, "old-2", NOW.minusDays(40), "코바늘도안");
+        capture(deviceId, "old-3", NOW.minusDays(80), "코바늘도안");
+        Statistics statistics = entityManagerFactory.unwrap(SessionFactory.class).getStatistics();
+        statistics.clear();
+
+        JsonNode items = interests(deviceId);
+
+        assertThat(statistics.getPrepareStatementCount()).isEqualTo(2); // 기기 확인 + 행 조회
+        assertThat(items).extracting(i -> i.get("tag").asString()).containsExactly("코바늘도안", "요즘네일");
+        JsonNode forgotten = items.get(0);
+        assertThat(forgotten.get("status").asString()).isEqualTo("FORGOTTEN");
+        assertThat(forgotten.get("dormantDays").asInt()).isEqualTo(31);
+        assertThat(forgotten.get("peakMonth").asInt()).isEqualTo(9);
+        assertThat(forgotten.get("peakMonthCount").asInt()).isEqualTo(2);
     }
 
     @Test

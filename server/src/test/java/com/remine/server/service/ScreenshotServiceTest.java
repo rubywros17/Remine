@@ -73,7 +73,7 @@ class ScreenshotServiceTest {
                 new RemineProperties.Analyze(maxBatchSize, deadline),
                 new RemineProperties.Image(1048576, 1024, 25_000_000L, 12582912, 5242880),
                 new RemineProperties.Tags(List.of("장바구니", "쇼핑")),
-                new RemineProperties.Interest(14, 3, 28));
+                new RemineProperties.Interest(30, 3, 28, List.of()));
     }
 
     private static ScreenshotService service(RemineProperties properties, DeviceRepository devices,

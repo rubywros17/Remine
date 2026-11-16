@@ -56,6 +56,11 @@ public class InterestAlert {
     @Column(nullable = false)
     private int captureCount;
 
+    // 잊고 있었던 관심사면 캡처가 가장 많았던 달(1~12)과 그 달 장수. 요즘 관심사면 null. 알림 문구의 근거.
+    private Integer peakMonth;
+
+    private Integer peakMonthCount;
+
     // 집계한 주의 월요일(Asia/Seoul). 멱등 키이자 쿨다운 기준.
     @Column(name = "week_start", nullable = false)
     private LocalDate weekStart;
@@ -70,11 +75,14 @@ public class InterestAlert {
 
     private LocalDateTime sentAt;
 
-    public InterestAlert(Device device, Tag tag, Category category, int captureCount, LocalDate weekStart) {
+    public InterestAlert(Device device, Tag tag, Category category, int captureCount, Integer peakMonth,
+                         Integer peakMonthCount, LocalDate weekStart) {
         this.device = device;
         this.tag = tag;
         this.category = category;
         this.captureCount = captureCount;
+        this.peakMonth = peakMonth;
+        this.peakMonthCount = peakMonthCount;
         this.weekStart = weekStart;
         this.status = Status.PENDING;
     }

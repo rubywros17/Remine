@@ -200,6 +200,25 @@ class InterestPushServiceTest {
     }
 
     @Test
+    void 잊고_있었던_관심사는_가장_많던_달과_그_달_장수로_보낸다() {
+        captures(deviceId, "신발", 5, THURSDAY.minusDays(40)); // 9/12
+        alertService.createWeeklyAlerts();
+
+        service.sendPending();
+
+        assertThat(sender.callsTo(token)).singleElement().satisfies(call -> assertThat(call.message().body())
+                .isEqualTo("9월에 '" + prefix + "신발'을 5번이나 캡처했어요. 다시 볼까요?"));
+    }
+
+    @Test
+    void 다섯_번_미만이면_이나를_붙이지_않는다() {
+        assertThat(InterestPushService.message("코바늘도안", Category.ETC, 9, 4).body())
+                .isEqualTo("9월에 '코바늘도안'을 4번 캡처했어요. 다시 볼까요?");
+        assertThat(InterestPushService.message("코바늘도안", Category.ETC, 9, 12).body())
+                .isEqualTo("9월에 '코바늘도안'을 12번이나 캡처했어요. 다시 볼까요?");
+    }
+
+    @Test
     void 토큰이_없는_기기에는_보내지_않는다() {
         Long noToken = deviceRepository.save(new Device(null)).getId();
         captures(noToken, "신발", 3, THURSDAY);

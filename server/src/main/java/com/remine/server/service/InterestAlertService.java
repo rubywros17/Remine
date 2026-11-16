@@ -23,6 +23,7 @@ import java.util.Set;
 
 /**
  * 주 1회, 기기마다 관심사 1순위를 알림 후보(PENDING)로 저장한다. 발송은 {@link InterestPushService}.
+ * 순위는 관심사 목록과 같다(잊고 있었던 관심사가 먼저).
  *
  * <ul>
  *   <li>멱등: 기기당 한 주에 하나(device + week_start unique). 같은 주에 다시 돌면 이미 있는 기기는 건너뛴다.</li>
@@ -74,7 +75,9 @@ public class InterestAlertService {
                 .map(top -> {
                     try {
                         alertRepository.save(new InterestAlert(deviceRepository.getReferenceById(deviceId),
-                                tagRepository.getReferenceById(top.tagId()), top.category(), top.captureCount(), weekStart));
+                                tagRepository.getReferenceById(top.tagId()), top.category(), top.captureCount(),
+                                top.forgotten() ? top.peakMonth().getMonthValue() : null,
+                                top.forgotten() ? top.peakMonthCount() : null, weekStart));
                         return true;
                     } catch (DataIntegrityViolationException e) {
                         return false; // 동시에 돈 다른 실행이 먼저 저장했다(같은 주 1건 보장)

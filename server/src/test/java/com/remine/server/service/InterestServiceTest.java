@@ -2,6 +2,7 @@ package com.remine.server.service;
 
 import com.remine.server.classifier.RemineProperties;
 import com.remine.server.domain.device.DeviceRepository;
+import com.remine.server.domain.interest.InterestStatus;
 import com.remine.server.domain.screenshot.Category;
 import com.remine.server.domain.screenshot.InterestRow;
 import com.remine.server.domain.screenshot.ScreenshotTagRepository;
@@ -15,16 +16,18 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Clock;
 import java.time.LocalDateTime;
+import java.time.YearMonth;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.tuple;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -40,14 +43,14 @@ class InterestServiceTest {
     private InterestService service;
     private long nextScreenshotId = 1;
 
-    static RemineProperties properties(int windowDays, int minCount, int cooldownDays) {
+    static RemineProperties properties(int recentDays, int minCount, int cooldownDays, String... broadTags) {
         return new RemineProperties(null, null, null, null, new RemineProperties.Tags(List.of()),
-                new RemineProperties.Interest(windowDays, minCount, cooldownDays));
+                new RemineProperties.Interest(recentDays, minCount, cooldownDays, List.of(broadTags)));
     }
 
     @BeforeEach
     void setUp() {
-        service = new InterestService(deviceRepository, screenshotTagRepository, properties(14, 3, 28),
+        service = new InterestService(deviceRepository, screenshotTagRepository, properties(30, 3, 28, "#패션"),
                 Clock.fixed(NOW.atZone(SEOUL).toInstant(), SEOUL));
     }
 
@@ -56,29 +59,77 @@ class InterestServiceTest {
         return new InterestRow(tagId, tag, id, "asset-" + id, category, NOW.minusDays(daysAgo).minusMinutes(id));
     }
 
+    private InterestRow[] rows(long tagId, String tag, int... daysAgo) {
+        InterestRow[] rows = new InterestRow[daysAgo.length];
+        for (int i = 0; i < daysAgo.length; i++) {
+            rows[i] = row(tagId, tag, Category.ETC, daysAgo[i]);
+        }
+        return rows;
+    }
+
     // 저장소처럼 최신순으로 돌려준다.
     private void givenRows(InterestRow... rows) {
         List<InterestRow> sorted = new ArrayList<>(List.of(rows));
         sorted.sort(Comparator.comparing(InterestRow::takenAt).reversed());
-        when(screenshotTagRepository.findInterestRows(1L, NOW.minusDays(14))).thenReturn(sorted);
+        when(screenshotTagRepository.findInterestRows(1L)).thenReturn(sorted);
+    }
+
+    private static InterestRow[] concat(InterestRow[]... groups) {
+        return java.util.Arrays.stream(groups).flatMap(java.util.Arrays::stream).toArray(InterestRow[]::new);
     }
 
     @Test
-    void 기간은_지금부터_windowDays_전까지다() {
-        when(screenshotTagRepository.findInterestRows(any(), any())).thenReturn(List.of());
+    void 기간_제한_없이_오래된_캡처도_센다_쿼리는_한_번() {
+        givenRows(rows(1, "집들이선물", 34, 40, 200));
 
-        service.detect(1L, NOW);
+        assertThat(service.detect(1L, NOW)).singleElement().satisfies(d -> {
+            assertThat(d.captureCount()).isEqualTo(3);
+            assertThat(d.status()).isEqualTo(InterestStatus.FORGOTTEN);
+            assertThat(d.dormantDays()).isEqualTo(34);
+        });
+        verify(screenshotTagRepository, times(1)).findInterestRows(1L);
+    }
 
-        verify(screenshotTagRepository).findInterestRows(1L, LocalDateTime.of(2026, 10, 8, 12, 0));
+    @Test
+    void 마지막_캡처가_30일_이내면_RECENT_넘으면_FORGOTTEN() {
+        givenRows(concat(rows(1, "경계안", 30, 31, 32), rows(2, "경계밖", 31, 32, 33)));
+
+        assertThat(service.detect(1L, NOW)).extracting(InterestService.Detected::tag, InterestService.Detected::status)
+                .containsExactly(tuple("경계밖", InterestStatus.FORGOTTEN), tuple("경계안", InterestStatus.RECENT));
     }
 
     @Test
     void 같은_태그가_minCount번_이상이어야_관심사다() {
-        givenRows(row(1, "가디건", Category.SHOPPING, 1), row(1, "가디건", Category.SHOPPING, 2),
-                row(1, "가디건", Category.SHOPPING, 3),
-                row(2, "드라마", Category.ENTERTAINMENT, 1), row(2, "드라마", Category.ENTERTAINMENT, 2));
+        givenRows(concat(rows(1, "가디건", 1, 2, 3), rows(2, "드라마", 1, 2)));
 
         assertThat(service.detect(1L, NOW)).extracting(InterestService.Detected::tag).containsExactly("가디건");
+    }
+
+    @Test
+    void 넓은_태그는_관심사에서_뺀다_표기만_달라도() {
+        givenRows(concat(rows(1, "패 션", 1, 2, 3, 4), rows(2, "가디건", 1, 2, 3)));
+
+        assertThat(service.detect(1L, NOW)).extracting(InterestService.Detected::tag).containsExactly("가디건");
+    }
+
+    @Test
+    void 가장_많이_캡처한_달과_그_장수_마지막_달_장수() {
+        // NOW = 10/22. 9월 3장(9/1·9/10·9/20), 8월 1장, 10월 1장(10/2) → peak 9월 3장, 마지막 달(10월) 1장.
+        givenRows(rows(1, "코바늘도안", 20, 42, 32, 51, 60));
+
+        InterestService.Detected d = service.detect(1L, NOW).get(0);
+
+        assertThat(d.peakMonth()).isEqualTo(YearMonth.of(2026, 9));
+        assertThat(d.peakMonthCount()).isEqualTo(3);
+        assertThat(d.latestMonthCount()).isEqualTo(1);
+    }
+
+    @Test
+    void 가장_많은_달이_동점이면_최근_달() {
+        // 8월 2장(8/10·8/20), 9월 2장(9/10·9/20)
+        givenRows(rows(1, "코바늘도안", 32, 42, 63, 73));
+
+        assertThat(service.detect(1L, NOW).get(0).peakMonth()).isEqualTo(YearMonth.of(2026, 9));
     }
 
     @Test
@@ -99,35 +150,44 @@ class InterestServiceTest {
     }
 
     @Test
-    void 횟수_많은_순_다음_최근_캡처_순_다음_이름순() {
-        givenRows(
-                row(1, "가", Category.ETC, 5), row(1, "가", Category.ETC, 5), row(1, "가", Category.ETC, 5),
-                row(2, "나", Category.ETC, 1), row(2, "나", Category.ETC, 6), row(2, "나", Category.ETC, 6),
-                row(3, "다", Category.ETC, 9), row(3, "다", Category.ETC, 9), row(3, "다", Category.ETC, 9),
-                row(3, "다", Category.ETC, 9));
+    void FORGOTTEN_장수순_오래된순_다음_RECENT_장수순_최근순() {
+        givenRows(concat(
+                rows(1, "잊은셋_40일", 40, 41, 42),
+                rows(2, "잊은셋_90일", 90, 91, 92),
+                rows(3, "잊은넷", 35, 36, 37, 38),
+                rows(4, "요즘셋_5일", 5, 6, 7),
+                rows(5, "요즘셋_1일", 1, 6, 7),
+                rows(6, "요즘다섯", 9, 9, 9, 9, 9)));
 
-        assertThat(service.detect(1L, NOW)).extracting(InterestService.Detected::tag).containsExactly("다", "나", "가");
+        assertThat(service.detect(1L, NOW)).extracting(InterestService.Detected::tag).containsExactly(
+                "잊은넷", "잊은셋_90일", "잊은셋_40일", "요즘다섯", "요즘셋_1일", "요즘셋_5일");
     }
 
     @Test
-    void 응답은_최근_3장_최신순과_잠든_일수를_담는다() {
+    void 응답은_상태_전체_장수_달_정보와_최근_3장_최신순을_담는다() {
         InterestRow newest = row(1, "가디건", Category.SHOPPING, 9);
         InterestRow second = row(1, "가디건", Category.SHOPPING, 10);
         InterestRow third = row(1, "가디건", Category.SHOPPING, 11);
-        givenRows(row(1, "가디건", Category.SHOPPING, 12), third, newest, second);
+        givenRows(row(1, "가디건", Category.SHOPPING, 40), third, newest, second);
         when(deviceRepository.existsById(1L)).thenReturn(true);
 
         InterestResponse response = service.list(1L);
         InterestResponse.Item item = response.items().get(0);
 
-        assertThat(response.windowDays()).isEqualTo(14);
+        assertThat(response.recentDays()).isEqualTo(30);
         assertThat(response.minCount()).isEqualTo(3);
         assertThat(item.tag()).isEqualTo("가디건");
+        assertThat(item.status()).isEqualTo(InterestStatus.RECENT);
         assertThat(item.captureCount()).isEqualTo(4);
         assertThat(item.dormantDays()).isEqualTo(9);
+        assertThat(item.peakMonth()).isEqualTo(10);
+        assertThat(item.peakMonthCount()).isEqualTo(3);
+        assertThat(item.latestMonth()).isEqualTo(10);
+        assertThat(item.latestMonthCount()).isEqualTo(3);
         assertThat(item.recent()).extracting(InterestResponse.Capture::id)
                 .containsExactly(newest.screenshotId(), second.screenshotId(), third.screenshotId());
         assertThat(item.recent().get(0).localAssetId()).isEqualTo(newest.localAssetId());
+        assertThat(item.recent().get(0).takenAt()).isEqualTo(newest.takenAt());
     }
 
     @Test
@@ -156,6 +216,6 @@ class InterestServiceTest {
         when(deviceRepository.existsById(9L)).thenReturn(false);
 
         assertThatThrownBy(() -> service.list(9L)).isInstanceOf(DeviceNotFoundException.class);
-        verify(screenshotTagRepository, never()).findInterestRows(any(), any());
+        verify(screenshotTagRepository, never()).findInterestRows(any());
     }
 }
