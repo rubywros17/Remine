@@ -10,10 +10,15 @@ import java.util.List;
  * GET /api/interests. 관심사가 없으면 빈 items. 순서: FORGOTTEN(장수↓ → 오래 안 본 순) → RECENT(장수↓).
  * OCR 원문·요약은 담지 않는다. recent의 localAssetId는 앱이 기기 사진으로 썸네일을 그리는 데 쓴다.
  *
+ * @param windowDays 옛 앱 호환용(옛 앱은 이 값이 없으면 관심사 목록을 비운다). 값은 recentDays와 같고 새 앱은 읽지 않는다
  * @param recentDays 상태 경계(일). 앱이 휴지통 캡처를 빼고 상태를 다시 판단할 때 쓴다
  * @param minCount   관심사 기준 횟수(전체 기간). 앱이 휴지통 캡처를 빼고 다시 판단할 때 쓴다(서버 설정이 단일 출처)
  */
-public record InterestResponse(int recentDays, int minCount, List<Item> items) {
+public record InterestResponse(@Deprecated int windowDays, int recentDays, int minCount, List<Item> items) {
+
+    public InterestResponse(int recentDays, int minCount, List<Item> items) {
+        this(recentDays, recentDays, minCount, items);
+    }
 
     /**
      * @param captureCount     전체 기간 장수

@@ -22,6 +22,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
+import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -127,6 +128,44 @@ class InterestIntegrationTest {
         assertThat(forgotten.get("dormantDays").asInt()).isEqualTo(31);
         assertThat(forgotten.get("peakMonth").asInt()).isEqualTo(9);
         assertThat(forgotten.get("peakMonthCount").asInt()).isEqualTo(2);
+    }
+
+    /** 옛 앱이 읽던 모양(windowDays 필수, 모르는 필드는 무시). */
+    record OldResponse(int windowDays, int minCount, List<OldItem> items) {
+    }
+
+    record OldItem(String tag, String category, int captureCount, int dormantDays, List<OldCapture> recent,
+                   List<String> linkedTags) {
+    }
+
+    record OldCapture(long id, String localAssetId) {
+    }
+
+    @Test
+    void 옛_앱_응답_형태로도_읽힌다_windowDays_포함() throws Exception {
+        for (int i = 0; i < 3; i++) {
+            capture(deviceId, "old-app-" + i, NOW.minusDays(40 + i), "옛앱호환");
+        }
+        MockHttpServletResponse response = mockMvc.perform(get("/api/interests").header("X-Device-Id", deviceId))
+                .andReturn().getResponse();
+        response.setCharacterEncoding("UTF-8");
+
+        OldResponse old = JsonMapper.builder()
+                .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+                .enable(DeserializationFeature.FAIL_ON_NULL_CREATOR_PROPERTIES)
+                .enable(DeserializationFeature.FAIL_ON_MISSING_CREATOR_PROPERTIES)
+                .build()
+                .readValue(response.getContentAsString(), OldResponse.class);
+
+        assertThat(old.windowDays()).isEqualTo(30);
+        assertThat(old.minCount()).isEqualTo(3);
+        assertThat(old.items()).singleElement().satisfies(item -> {
+            assertThat(item.tag()).isEqualTo("옛앱호환");
+            assertThat(item.captureCount()).isEqualTo(3);
+            assertThat(item.dormantDays()).isEqualTo(40);
+            assertThat(item.recent()).extracting(OldCapture::localAssetId).containsExactly("old-app-0", "old-app-1", "old-app-2");
+            assertThat(item.linkedTags()).isEmpty();
+        });
     }
 
     @Test
