@@ -281,6 +281,7 @@ class _InterestsScreenState extends State<InterestsScreen> {
                   if (!filtering && recent.length > _recentPreview)
                     _recentOpen
                         ? _HighlightButton(
+                            color: AppColors.celadon,
                             text: '접기 ↑',
                             label: '요즘 모으는 중 접기',
                             onTap: () => _collapse(
@@ -289,6 +290,7 @@ class _InterestsScreenState extends State<InterestsScreen> {
                             ),
                           )
                         : _HighlightButton(
+                            color: AppColors.celadon,
                             text:
                                 '요즘 모으는 중 ${recent.length - _recentPreview}개 더 보기 ↓',
                             onTap: () => setState(() => _recentOpen = true),
@@ -433,9 +435,17 @@ class _SectionHeader extends StatelessWidget {
   );
 }
 
-/// "… N개 더 보기 ↓"·"접기 ↑": 검정 굵은 글씨 + 아래쪽 절반 레몬 형광펜(태그 화면 제목과 같은 표현).
+/// "… N개 더 보기 ↓"·"접기 ↑": 검정 굵은 글씨 + 아래쪽 절반 형광펜(태그 화면 제목과 같은 표현, 색은 섹션 색).
 class _HighlightButton extends StatelessWidget {
-  const _HighlightButton({required this.text, required this.onTap, this.label});
+  const _HighlightButton({
+    required this.text,
+    required this.onTap,
+    this.label,
+    this.color = AppColors.lemon,
+  });
+
+  /// 형광펜 색: 잊고 있었던 관심사는 레몬, 요즘 모으는 중은 셀라돈(섹션 점 색과 같게).
+  final Color color;
 
   final String text;
   final VoidCallback onTap;
@@ -455,7 +465,7 @@ class _HighlightButton extends StatelessWidget {
           child: Center(
             heightFactor: 1,
             child: DecoratedBox(
-              decoration: highlighterDecoration(),
+              decoration: highlighterDecoration(color: color),
               child: Text(
                 text,
                 style: AppText.body.copyWith(

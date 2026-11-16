@@ -260,6 +260,23 @@ void main() {
       await _openList(tester, _seed(forgotten: 0, recent: 5));
       expect(find.byType(InterestCard), findsNWidgets(3));
       expect(find.text('요즘 모으는 중 2개 더 보기 ↓'), findsOneWidget);
+      BoxDecoration? marker(String text) =>
+          tester
+                  .widget<DecoratedBox>(
+                    find
+                        .ancestor(
+                          of: find.text(text),
+                          matching: find.byType(DecoratedBox),
+                        )
+                        .first,
+                  )
+                  .decoration
+              as BoxDecoration;
+      expect(
+        marker('요즘 모으는 중 2개 더 보기 ↓'),
+        highlighterDecoration(color: AppColors.celadon),
+        reason: '요즘 섹션은 셀라돈 형광펜',
+      );
 
       await tester.tap(find.text('요즘 모으는 중 2개 더 보기 ↓'));
       await tester.pumpAndSettle();
@@ -269,6 +286,7 @@ void main() {
         200,
         scrollable: find.byType(Scrollable).first,
       );
+      expect(marker('접기 ↑'), highlighterDecoration(color: AppColors.celadon));
       await tester.tap(find.text('접기 ↑'));
       await tester.pumpAndSettle();
 
