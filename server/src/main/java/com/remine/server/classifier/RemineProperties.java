@@ -32,14 +32,16 @@ public record RemineProperties(
             @DefaultValue List<String> stopwords) {
     }
 
-    /** 관심사 감지·주간 집계 기준. 앱에는 minCount를 GET /api/config로 알린다. */
+    /** 관심사 감지·주간 집계 기준. 기간 제한 없이 전체 캡처를 본다. */
     public record Interest(
-            /* 최근 며칠 안의 캡처(taken_at)를 볼지. */
-            @Min(1) @DefaultValue("14") int windowDays,
+            /* 마지막 캡처가 이 일수 이내면 RECENT(요즘 모으는 중), 넘으면 FORGOTTEN(잊고 있었던 관심사). */
+            @Min(1) @DefaultValue("30") int recentDays,
             /* 같은 태그가 이 횟수 이상이면 관심사. */
             @Min(1) @DefaultValue("3") int minCount,
             /* 같은 태그로 알림 후보를 다시 만들지 않는 기간(일). */
-            @Min(0) @DefaultValue("28") int alertCooldownDays) {
+            @Min(0) @DefaultValue("28") int alertCooldownDays,
+            /* 관심사로 치지 않는 넓은 태그(태그 저장은 그대로). 비교는 Tag.keyOf 키로. */
+            @DefaultValue List<String> broadTags) {
     }
 
     public record Llm(

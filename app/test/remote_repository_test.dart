@@ -32,13 +32,29 @@ Map<String, dynamic> _summary(int shopping) => {
   ],
 };
 
-Map<String, dynamic> _interest(String tag, int count, List<int> ids) => {
+/// recent는 2026-10-20부터 하루씩 앞선 캡처(id 순서대로 최신 → 오래된).
+Map<String, dynamic> _interest(
+  String tag,
+  int count,
+  List<int> ids, {
+  int dormantDays = 2,
+}) => {
   'tag': tag,
   'category': 'SHOPPING',
+  'status': dormantDays > 30 ? 'FORGOTTEN' : 'RECENT',
   'captureCount': count,
-  'dormantDays': 2,
+  'dormantDays': dormantDays,
+  'peakMonth': 10,
+  'peakMonthCount': count,
+  'latestMonth': 10,
+  'latestMonthCount': count,
   'recent': [
-    for (final id in ids) {'id': id, 'localAssetId': 'a$id'},
+    for (final (k, id) in ids.indexed)
+      {
+        'id': id,
+        'localAssetId': 'a$id',
+        'takenAt': DateTime(2026, 10, 20 - k * 5, 12).toIso8601String(),
+      },
   ],
 };
 
@@ -53,11 +69,11 @@ void main() {
   setUp(() async {
     online = true;
     interestsBody = {
-      'windowDays': 14,
+      'recentDays': 30,
       'minCount': 3,
       'items': [
         _interest('니트 가디건', 4, [5, 6, 7]),
-        _interest('드라마', 3, [8, 9, 10]),
+        _interest('드라마', 3, [8, 9, 10], dormantDays: 20),
       ],
     };
     late final RecordingClient c;
@@ -169,14 +185,14 @@ void main() {
   });
 
   group('관심사', () {
-    test('GET /api/interests를 받아 태그·횟수·기간·최근 캡처를 채운다', () async {
+    test('GET /api/interests를 받아 태그·횟수·상태·최근 캡처를 채운다', () async {
       final interests = await repo.interests();
 
       expect(client.sent.last.path, '/api/interests');
       expect(interests.map((i) => i.tag), ['니트 가디건', '드라마']);
       final first = interests.first;
       expect(first.captureCount, 4);
-      expect(first.spanDays, 14);
+      expect(first.forgotten, isFalse);
       expect(first.dormantDays, 2);
       expect(first.category, Category.shopping);
       expect(first.recent.map((c) => c.localAssetId), ['a5', 'a6', 'a7']);
@@ -197,6 +213,27 @@ void main() {
       knit = (await repo.interests()).first;
       expect(knit.tag, '니트 가디건');
       expect(knit.captureCount, 3);
+    });
+
+    test('휴지통으로 마지막 캡처가 빠지면 남은 최신 캡처로 30일 경계를 다시 재고 순서도 다시', () async {
+      interestsBody['items'] = [
+        _interest('드라마', 3, [8, 9, 10]),
+        _interest('니트 가디건', 4, [5, 6, 7], dormantDays: 28),
+      ];
+      expect((await repo.interests()).map((i) => (i.tag, i.forgotten)), [
+        ('니트 가디건', false),
+        ('드라마', false),
+      ], reason: '서버 순서와 같은 기준으로 다시 세운다');
+
+      await repo.list();
+      await repo.trash(5); // 5(10/20)가 빠지면 마지막은 6(10/15): 28 + 5 = 33일
+      final interests = await repo.interests();
+      expect(interests.map((i) => (i.tag, i.forgotten)), [
+        ('니트 가디건', true),
+        ('드라마', false),
+      ]);
+      expect(interests.first.dormantDays, 33);
+      expect(interests.first.captureCount, 3);
     });
 
     test('기준은 서버 응답의 minCount를 따르고, 없으면 3', () async {

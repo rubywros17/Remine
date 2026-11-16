@@ -183,7 +183,8 @@ void defineLayoutMatrix({
         expect(find.text('목록 보기').hitTestable(), findsOneWidget);
         await tester.tap(find.text('목록 보기'));
         await tester.pumpAndSettle();
-        expect(find.text('#니트가디건', skipOffstage: true), findsWidgets);
+        // 아주 작은 화면에서는 섹션 머리·점선 안내 아래라 화면 밖일 수 있다(목록에는 있다).
+        expect(find.text('#니트가디건', skipOffstage: false), findsWidgets);
       });
       _expectClean('관심사 탭 $label', errors);
     });
@@ -301,14 +302,14 @@ void defineLayoutMatrix({
       _expectClean('카테고리 $label', errors);
     });
 
-    testWidgets('관심사 태그 화면(형광펜 제목·큰 숫자·날짜별 막대) · $label', (tester) async {
+    testWidgets('관심사 태그 화면(형광펜 제목·큰 숫자·월별 막대) · $label', (tester) async {
       final errors = await _errorsDuring(() async {
         await _pump(tester, size, scale);
         await _tap(tester, find.text('#니트가디건')); // 홈 관심사 카드 → 태그 화면
         expect(
-          find.bySemanticsLabel(RegExp(r'^최근 \d+일 중 \d+일 캡처$')),
+          find.bySemanticsLabel(RegExp(r'^최근 \d+개월 중 \d+개월 캡처$')),
           findsOneWidget,
-          reason: '태그 화면(날짜별 막대)이 아님',
+          reason: '태그 화면(월별 막대)이 아님',
         );
       });
       _expectClean('관심사 태그 화면 $label', errors);

@@ -22,6 +22,8 @@ import 'data/device/ocr_store.dart';
 import 'data/device/ocr_temp_files.dart';
 import 'data/device/own_capture.dart';
 import 'data/device/photo_manager_gallery_reader.dart';
+import 'data/fake_data.dart';
+import 'data/fake_screenshot_repository.dart';
 import 'data/remote/api_client.dart';
 import 'data/remote/image_prep.dart';
 import 'data/remote/push.dart';
@@ -59,6 +61,12 @@ Future<void> main() async {
       // 개발용 시작 화면: flutter run --dart-define=START_SCREEN=analysis
       startScreen: const String.fromEnvironment('START_SCREEN'),
       device: _dataMode == 'device' ? await _deviceServices() : null,
+      // 크롬(가짜 데이터)은 잊고 있었던 관심사까지 보이는 데모 시드로.
+      repository: _dataMode == 'device'
+          ? null
+          : FakeScreenshotRepository(
+              seed: buildDemoScreenshots(DateTime.now()),
+            ),
     ),
   );
 }

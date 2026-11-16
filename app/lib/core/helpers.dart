@@ -238,9 +238,6 @@ Widget _faded(double opacity, double scale, Widget child) => Opacity(
   return (1 - t, 1 - (1 - AppMotion.fadeThroughListScale) * t);
 }
 
-/// 집계 기간 이름: 7의 배수면 "2주", 아니면 "10일".
-String windowLabel(int days) => days % 7 == 0 ? '${days ~/ 7}주' : '$days일';
-
 /// 마지막 글자의 받침 번호. 0이면 받침 없음(한글이 아니어도 0), 8이면 ㄹ.
 /// [한글 메모] 완성형 한글은 0xAC00부터 (초성×21 + 중성)×28 + 종성 순서라 28로 나눈 나머지가 받침이다.
 int _finalConsonant(String word) {

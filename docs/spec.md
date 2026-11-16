@@ -99,13 +99,16 @@
 
 **F-04. 잊은 관심사 알림**
 - 서버가 태그 빈도를 집계해 관심사를 감지한다.
-  - 규칙: 기기별로 최근 14일(`taken_at`) 안에 같은 태그 3회 이상. 기준값은 설정(`remine.interest.window-days`·`min-count`).
+  - 규칙: 기기별로 **전체 기간**에 같은 태그 3회 이상(`remine.interest.min-count`). 묵혀 둔 캡처에서 잊은 관심사를 다시 꺼내는 게 목적이라 기간으로 자르지 않는다.
+  - 상태: 마지막 캡처가 30일(`recent-days`) 이내면 `RECENT`(요즘 모으는 중), 넘으면 `FORGOTTEN`(잊고 있었던 관심사). 순서는 FORGOTTEN(장수↓ → 오래 안 본 순) → RECENT(장수↓).
+  - 넓은 태그(패션·뷰티 등, `remine.interest.broad-tags`)는 관심사 판정에서만 뺀다(태그 저장은 그대로).
   - 태그는 저장 전에 정리한다: 화면 문구(장바구니·무료배송 등)와 카테고리명(쇼핑·정보 등)은 불용어로 빼고(목록은 `application.yaml`의 `remine.tags.stopwords` 한 곳), `#`·공백·대소문자를 무시한 키로 "니트 가디건"과 "니트가디건"을 같은 태그로 센다. 표시 이름은 처음 들어온 표기.
   - 대표 카테고리는 그 캡처들의 현재 `category`(사용자 수정 반영) 최빈값, 동점이면 가장 최근 캡처의 값.
-  - 앱은 휴지통에 넣은 캡처를 횟수에서 빼고, 기준 아래로 내려가면 그 관심사를 숨긴다(응답의 `recent`에 있는 캡처만 알 수 있는 한계).
+  - 앱은 휴지통에 넣은 캡처를 횟수에서 빼고, 기준 아래로 내려가면 그 관심사를 숨긴다. 마지막 캡처가 빠지면 남은 최신 캡처(`recent[].takenAt`)로 30일 경계를 다시 잰다(응답의 `recent`에 있는 캡처만 알 수 있는 한계).
 - 앱 화면
-  - 관심사 카드(관심사 탭·홈)·상세의 "같은 관심사"·관심사 알림을 누르면 **태그 모아보기**: "#태그" 제목 아래 "최근 2주 N장 · 전체 M장", 그리드는 "최근 2주" → "그 전" 순. 상세의 좌우 넘기기는 이 목록 안에서만.
-  - 관심사 탭에 들어올 때마다 먼저 **머릿속 캡처 지도**(약 3초 동안 그려짐): 뇌 윤곽 → 채움 → 소뇌·뇌간 → 주름 → 관심사 원(상위 7개, 많이 캡처할수록 큼) → `linkedTags` 연결선 → 잊은 관심사(마지막 캡처 7일 이상)가 레몬색으로 깨어남. 다 그려져도 지도 그대로이고, 아래 [목록 보기]나 화면을 누르면 목록. 애니메이션 줄이기면 완성된 지도를 바로 보여 준다. 관심사가 없으면 바로 빈 상태.
+  - 관심사 목록: 제목 "관심사" + "여러 번 캡처한 것들을 모았어요". 섹션 "잊고 있었던 관심사 N"(레몬, 처음 2개 + [N개 더 보기]) → "요즘 모으는 중 N"(셀라돈, 카드 약 80% 높이). 잊은 카드 멘트 "9월에 12번이나 캡처했어요. / 다시 볼까요?", 요즘 카드 "11월에 5번이나 캡처했어요."(5번 미만이면 "N번"). 잊은 것이 없으면 점선 안내, 요즘 것이 없으면 섹션째 숨김.
+  - 관심사 카드(관심사 탭·홈)·상세의 "같은 관심사"·관심사 알림을 누르면 **태그 모아보기**: "#태그" 제목 + 큰 숫자(전체 장수), 아래 "전체 N장 · N일 전 마지막"과 월별 막대(첫 캡처 달 ~ 이번 달, 최근 12개월까지), 그리드는 달별 묶음(2026.11 / 2026.10 …). 상세의 좌우 넘기기는 이 목록 안에서만.
+  - 관심사 탭에 들어올 때마다 먼저 **머릿속 캡처 지도**(약 3초 동안 그려짐): 뇌 윤곽 → 채움 → 소뇌·뇌간 → 주름 → 관심사 원(상위 7개, 많이 캡처할수록 큼) → `linkedTags` 연결선 → 잊고 있었던 관심사(서버 status FORGOTTEN)가 레몬색으로 깨어남. 다 그려져도 지도 그대로이고, 아래 [목록 보기]나 화면을 누르면 목록. 애니메이션 줄이기면 완성된 지도를 바로 보여 준다. 관심사가 없으면 바로 빈 상태.
 - 주간 집계: 주 1회(월 10시, Asia/Seoul) 기기마다 관심사 1순위를 `interest_alert`에 `PENDING`으로 저장한다.
   - 멱등: 기기당 한 주 1건(`device_id + week_start` unique). 같은 주에 다시 돌아도 결과가 같다.
   - 쿨다운: 최근 28일 안에 후보였던 태그는 다시 고르지 않고 다음 순위를 본다. 횟수가 늘어도 예외 없음(주 1건이라 같은 태그 반복보다 다른 관심사에 자리를 준다). 필요해지면 저장해 둔 `capture_count`와 비교해 "2배 이상이면 무시"를 추가할 수 있다.
@@ -287,7 +290,7 @@
 | POST | `/api/screenshots/trash` | 앱 휴지통 캡처를 관심사 집계·푸시에서 뺀다(행·태그·목록은 유지). 본문 `{"assetIds":[...]}`(최대 500개), 없는 id는 무시, 다시 보내도 결과가 같다. 204 |
 | POST | `/api/screenshots/restore` | 되살린 캡처를 다시 집계에 넣는다. 본문·규칙은 `trash`와 같다. 204 |
 | GET | `/api/categories/summary` | 홈 화면용. 7개 카테고리 전부 반환(0장은 count 0), 카테고리별 개수·대표 태그 상위 3개·최신 localAssetId 4개 |
-| GET | `/api/interests` | 감지된 관심사 목록(횟수 많은 순 → 마지막 캡처 최근 순 → 이름순). `{windowDays:14, minCount:3, items:[{tag, category, captureCount, dormantDays, recent:[{id, localAssetId}], linkedTags:[tag]}]}`. `recent`는 최근 3장(최신순, 앱이 기기 사진으로 썸네일을 그림), `dormantDays`는 마지막 캡처 이후 일수, `linkedTags`는 기간 안에 같은 캡처에 함께 붙은 다른 관심사 태그(앱의 머릿속 지도 연결선, 이미 읽은 행으로 묶어 쿼리 추가 없음). OCR 원문·요약은 없다. 없으면 `items: []` |
+| GET | `/api/interests` | 감지된 관심사 목록(FORGOTTEN 장수↓ → 오래 안 본 순, 그다음 RECENT 장수↓ → 최근 순, 이름순). `{windowDays:30, recentDays:30, minCount:3, items:[{tag, category, status, captureCount, dormantDays, peakMonth, peakMonthCount, latestMonth, latestMonthCount, recent:[{id, localAssetId, takenAt}], linkedTags:[tag]}]}`. `windowDays`는 옛 앱 호환용(값은 recentDays, 새 앱은 읽지 않음, deprecated). `status`는 `FORGOTTEN`/`RECENT`, `captureCount`는 전체 기간 장수, `peakMonth`(1~12)는 캡처가 가장 많던 달(동점이면 최근 달)·`peakMonthCount`는 그 달 장수, `latestMonth`·`latestMonthCount`는 마지막 캡처의 달과 그 달 장수. `recent`는 최근 3장(최신순, 앱이 기기 사진으로 썸네일을 그림), `dormantDays`는 마지막 캡처 이후 일수, `linkedTags`는 같은 캡처에 함께 붙은 다른 관심사 태그(앱의 머릿속 지도 연결선, 이미 읽은 행으로 묶어 쿼리 추가 없음). OCR 원문·요약은 없다. 없으면 `items: []` |
 
 - 기기 등록(`POST /api/devices`)을 제외한 모든 API는 `X-Device-Id` 헤더로 기기를 식별한다. 미등록 기기는 404, 헤더 누락은 400. (로그인 없는 MVP의 임시 방식)
 
@@ -337,7 +340,7 @@
 - [ ] 기기당 하루 분석 상한(Gemini 남용·무료 한도 소진 방지) — 배포 이후
 - [ ] 3주차 서버 연동 시 `GET /api/screenshots` 항목에 `autoCategory`, `categorySource` 추가 (수정 시트의 "AI는 X라고 했어요"에 필요. 서버 변경은 연동 PR에서)
 - [x] `GET /api/interests` 응답 형식 — 9장 API 표
-- [x] 관심사 감지 규칙의 기준값 — 14일·3회, 쿨다운 28일 (설정 `remine.interest.*`)
+- [x] 관심사 감지 규칙의 기준값 — 전체 기간 3회, 상태 경계 30일, 쿨다운 28일 (설정 `remine.interest.*`)
 - [x] 관심사 알림 발송(FCM): `PENDING` 후보 → 문구 생성·전송·`SENT`, 지난주 `EXPIRED`, 무효 토큰 정리
 - [ ] FCM 토큰 → FID 등록(`register`/`onRegistered`) 전환 — firebase_messaging 17에서 토큰 API가 deprecated. 서버 발송 대상도 함께 바꿔야 함
 - [ ] 앱이 앞에 있을 때 온 알림 표시(`flutter_local_notifications`) — 필요해지면

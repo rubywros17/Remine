@@ -115,21 +115,33 @@ public class InterestPushService {
         }
         PushMessage message = interestService.detect(deviceId, LocalDateTime.now(clock)).stream()
                 .findFirst()
-                .map(top -> message(top.tag(), top.captureCount(), top.category()))
+                .map(top -> top.forgotten()
+                        ? message(top.tag(), top.category(), top.peakMonth().getMonthValue(), top.peakMonthCount())
+                        : message(top.tag(), top.captureCount(), top.category()))
                 .orElseGet(() -> message(EXAMPLE_TAG, 3, Category.SHOPPING));
         return sender.send(device.getFcmToken(), message);
     }
 
     static PushMessage messageFor(InterestAlert alert) {
-        return message(alert.getTag().getName(), alert.getCaptureCount(), alert.getCategory());
+        String tag = alert.getTag().getName();
+        return alert.getPeakMonth() == null
+                ? message(tag, alert.getCaptureCount(), alert.getCategory())
+                : message(tag, alert.getCategory(), alert.getPeakMonth(), alert.getPeakMonthCount());
     }
 
-    /** 문구는 해요체, 내용은 태그·횟수뿐. data는 앱이 열 화면(카테고리 + 태그 필터). */
+    /** 요즘 관심사. 문구는 해요체, 내용은 태그·횟수뿐. data는 앱이 열 화면(카테고리 + 태그 필터). */
     static PushMessage message(String tag, int count, Category category) {
-        return new PushMessage(
-                "Remine",
-                "요즘 '%s'%s %d번 캡처했어요. 다시 볼까요?".formatted(tag, objectParticle(tag), count),
-                Map.of("type", "interest", "tag", tag, "category", category.name()));
+        return push("요즘 '%s'%s %d번 캡처했어요. 다시 볼까요?".formatted(tag, objectParticle(tag), count), tag, category);
+    }
+
+    /** 잊고 있었던 관심사: "9월에 '코바늘도안'을 12번이나 캡처했어요. 다시 볼까요?" (5번 미만이면 "이나" 없이). */
+    static PushMessage message(String tag, Category category, int peakMonth, int peakMonthCount) {
+        return push("%d월에 '%s'%s %d번%s 캡처했어요. 다시 볼까요?".formatted(peakMonth, tag, objectParticle(tag),
+                peakMonthCount, peakMonthCount >= 5 ? "이나" : ""), tag, category);
+    }
+
+    private static PushMessage push(String body, String tag, Category category) {
+        return new PushMessage("Remine", body, Map.of("type", "interest", "tag", tag, "category", category.name()));
     }
 
     /** 받침이 있으면 '을', 없으면 '를'("신발을", "드라마를"). 한글로 끝나지 않으면 "을(를)". */

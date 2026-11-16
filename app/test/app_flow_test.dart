@@ -52,10 +52,13 @@ void main() {
       expect(find.byType(HighlighterText), findsOneWidget);
       expect(find.text('꺼냈어요'), findsOneWidget);
       // 관심사 카드
-      expect(find.text('잊은 관심사'), findsOneWidget);
       expect(find.text('#니트가디건'), findsOneWidget);
       expect(find.text('SHOTS'), findsOneWidget);
-      expect(find.text('9일째 잠자는 중'), findsOneWidget);
+      expect(
+        find.text('9일 전 마지막'),
+        findsOneWidget,
+        reason: '30일 이내 = 요즘 모으는 중',
+      );
       // 서랍
       expect(find.text('내 캡처 서랍'), findsOneWidget);
       expect(find.text('30 shots'), findsOneWidget);
@@ -131,7 +134,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('목록 보기')); // 들어오면 머릿속 지도부터
       await tester.pumpAndSettle();
-      expect(find.text('잊은 관심사'), findsWidgets);
+      expect(find.text('잊고 있었던 관심사'), findsOneWidget);
+      expect(find.text('요즘 모으는 중'), findsOneWidget);
       expect(find.byType(InterestCard, skipOffstage: true), findsWidgets);
 
       await tester.tap(find.text('정리'));
@@ -288,7 +292,7 @@ void main() {
 
       expect(find.byType(TagScreen), findsOneWidget);
       expect(_tiles, findsNWidgets(4));
-      expect(find.textContaining('최근 2주 '), findsOneWidget);
+      expect(find.textContaining('전체 4장 · '), findsOneWidget);
     });
   });
 

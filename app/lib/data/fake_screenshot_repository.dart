@@ -27,8 +27,7 @@ class FakeScreenshotRepository implements ScreenshotRepository {
 
   static const _topTagCount = 3;
   static const _recentCount = 4;
-  static const _interestSpanDays = 14; // 서버 기본값(remine.interest.*)과 같게
-  static const _interestMinCount = 3;
+  static const _interestMinCount = 3; // 서버 기본값(remine.interest.*)과 같게
 
   List<ScreenshotItem> get _sorted {
     final list = _items.where((s) => !_trashed.contains(s.id)).toList();
@@ -141,55 +140,69 @@ class FakeScreenshotRepository implements ScreenshotRepository {
   @override
   Future<List<Interest>> interests() async {
     final today = DateTime(_now().year, _now().month, _now().day);
-    final since = today.subtract(const Duration(days: _interestSpanDays));
-    final recent = _sorted.where((s) => !s.takenAt.isBefore(since)).toList();
+    int daysSince(DateTime t) =>
+        today.difference(DateTime(t.year, t.month, t.day)).inDays;
 
+    // 서버와 같은 기준: 전체 기간, 최신순.
     final byTag = <String, List<ScreenshotItem>>{};
-    for (final s in recent) {
+    for (final s in _sorted) {
       for (final t in s.tags) {
         byTag.putIfAbsent(t, () => []).add(s);
       }
     }
-    final repeated =
-        byTag.entries.where((e) => e.value.length >= _interestMinCount).toList()
-          ..sort(
-            (a, b) => b.value.length != a.value.length
-                ? b.value.length.compareTo(a.value.length)
-                : a.key.compareTo(b.key),
-          );
-
+    final repeated = byTag.entries
+        .where((e) => e.value.length >= _interestMinCount)
+        .toList();
     final interestTags = {for (final e in repeated) e.key};
     // 서버와 같은 기준: 같은 캡처에 함께 붙은 다른 관심사 태그.
     List<String> linked(String tag) => [
-      for (final other in repeated.map((e) => e.key))
-        if (other != tag &&
-            byTag[tag]!.any((s) => s.tags.contains(other)) &&
-            interestTags.contains(other))
+      for (final other in interestTags)
+        if (other != tag && byTag[tag]!.any((s) => s.tags.contains(other)))
           other,
     ];
+    // 가장 많은 달(같으면 최근 달 — 최신순이라 먼저 센 달이 이긴다).
+    (int, int) peak(List<ScreenshotItem> shots) {
+      final byMonth = <(int, int), int>{};
+      for (final s in shots) {
+        byMonth.update(
+          (s.takenAt.year, s.takenAt.month),
+          (n) => n + 1,
+          ifAbsent: () => 1,
+        );
+      }
+      final best = byMonth.entries.reduce((a, b) => b.value > a.value ? b : a);
+      return (best.key.$2, best.value);
+    }
 
-    return [
+    return sortInterests([
       for (final e in repeated)
         Interest(
           tag: e.key,
           category: e.value.first.category,
+          forgotten:
+              daysSince(e.value.first.takenAt) > Interest.defaultRecentDays,
           captureCount: e.value.length,
-          spanDays: _interestSpanDays,
-          dormantDays: today
-              .difference(
-                DateTime(
-                  e.value.first.takenAt.year,
-                  e.value.first.takenAt.month,
-                  e.value.first.takenAt.day,
-                ),
+          dormantDays: daysSince(e.value.first.takenAt),
+          peakMonth: peak(e.value).$1,
+          peakMonthCount: peak(e.value).$2,
+          latestMonth: e.value.first.takenAt.month,
+          latestMonthCount: e.value
+              .where(
+                (s) =>
+                    s.takenAt.year == e.value.first.takenAt.year &&
+                    s.takenAt.month == e.value.first.takenAt.month,
               )
-              .inDays,
+              .length,
           recent: [
             for (final s in e.value.take(3))
-              InterestCapture(id: s.id, localAssetId: s.localAssetId),
+              InterestCapture(
+                id: s.id,
+                localAssetId: s.localAssetId,
+                takenAt: s.takenAt,
+              ),
           ],
           linkedTags: linked(e.key),
         ),
-    ];
+    ]);
   }
 }
