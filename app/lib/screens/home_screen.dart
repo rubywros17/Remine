@@ -169,7 +169,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       context,
                       TagScreen(
                         tag: interest.tag,
-                        windowDays: interest.spanDays,
+                        forgotten: interest.forgotten,
                       ),
                       heroes: false,
                     ),

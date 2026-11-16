@@ -181,7 +181,7 @@ void main() {
       expect(interests.first.tag, '니트가디건');
       expect(interests.first.captureCount, 4);
       expect(interests.first.dormantDays, 9);
-      expect(interests.first.spanDays, 14);
+      expect(interests.first.forgotten, isFalse, reason: '30일 이내');
       expect(interests.first.category, Category.shopping);
       expect(interests.first.recent.length, 3); // 카드 콜라주용 최근 3장
     });

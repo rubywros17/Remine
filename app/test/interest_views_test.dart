@@ -37,16 +37,16 @@ ScreenshotItem _shot(
   summary: '캡처 $id',
 );
 
-/// 뜨개질: 최근 2주 4장(쇼핑·정보) + 그 전 2장(문화생활). 뜨개질·도안이 캡처 1~3을 공유한다.
-/// 가방은 마지막 캡처가 9일 전이라 "잊은 관심사".
+/// 뜨개질: 10월 5장(쇼핑·정보·문화생활) + 9월 1장. 뜨개질·도안이 캡처 1~3을 공유한다.
+/// 가방은 마지막 캡처가 39일 전(30일 넘음)이라 "잊고 있었던 관심사".
 final _seed = [
   _shot(1, 1, Category.shopping, ['뜨개질', '도안']),
   _shot(2, 2, Category.info, ['뜨개질', '도안']),
   _shot(3, 3, Category.shopping, ['뜨개질', '도안']),
   _shot(9, 4, Category.info, ['뜨개질']),
-  _shot(4, 9, Category.shopping, ['가방']),
-  _shot(5, 10, Category.shopping, ['가방']),
-  _shot(6, 11, Category.shopping, ['가방']),
+  _shot(4, 39, Category.shopping, ['가방']),
+  _shot(5, 40, Category.shopping, ['가방']),
+  _shot(6, 41, Category.shopping, ['가방']),
   _shot(7, 20, Category.entertainment, ['뜨개질']),
   _shot(8, 30, Category.entertainment, ['뜨개질']),
 ];
@@ -133,27 +133,28 @@ void main() {
   });
 
   group('태그 모아보기', () {
-    testWidgets('카테고리 상관없이 그 태그 캡처 전부, 최근 2주가 먼저이고 숫자 두 개를 같이 보여 준다', (
-      tester,
-    ) async {
+    testWidgets('카테고리 상관없이 그 태그 캡처 전부, 전체 장수·월별 막대·달별 묶음', (tester) async {
       await tester.pumpWidget(_scoped(const TagScreen(tag: '뜨개질')));
       await tester.pumpAndSettle();
 
       expect(find.text('#뜨개질'), findsOneWidget);
-      expect(find.text('최근 2주 4장 · 전체 6장 · 어제 마지막'), findsOneWidget);
-      expect(find.text('4'), findsOneWidget, reason: '오른쪽 위 큰 숫자 = 최근 2주 장수');
-      expect(find.bySemanticsLabel('#뜨개질 최근 2주 4장'), findsOneWidget);
-      expect(find.bySemanticsLabel('최근 14일 중 4일 캡처'), findsOneWidget);
-      expect(find.text('오늘'), findsOneWidget);
-      expect(find.text('10.13'), findsOneWidget, reason: '막대 시작 날짜 = 13일 전');
-      // 1·2·3·4일 전 1장씩 → 최근 3일(오늘 포함) 2장 = 그 전 4일 2장, 몰아서·오늘 아님 → 그 외
+      expect(find.text('전체 6장 · 어제 마지막'), findsOneWidget);
+      expect(find.text('6'), findsOneWidget, reason: '오른쪽 위 큰 숫자 = 전체 장수');
+      expect(find.bySemanticsLabel('#뜨개질 전체 6장'), findsOneWidget);
+      expect(find.bySemanticsLabel('최근 2개월 중 2개월 캡처'), findsOneWidget);
+      expect(find.text('이번 달'), findsOneWidget);
       expect(
-        find.text('2주 동안 꾸준히 모았어요').evaluate().length +
-            find.text('2주 중 4일이나 캡처했어요. 진심이네요').evaluate().length,
+        find.text('2026.09'),
+        findsNWidgets(2),
+        reason: '막대 시작 = 첫 캡처의 달, 그리드 9월 묶음',
+      );
+      // 1·2·3·4·20일 전 1장씩 → 최근 3일(오늘 포함) 2장 = 그 전 4일 2장, 몰아서·오늘 아님 → 그 외
+      expect(
+        find.text('한 달 동안 꾸준히 모았어요').evaluate().length +
+            find.text('한 달 중 5일이나 캡처했어요. 진심이네요').evaluate().length,
         1,
       );
-      expect(find.text('최근 2주'), findsOneWidget);
-      expect(find.text('그 전'), findsOneWidget);
+      expect(find.text('2026.10'), findsOneWidget);
       for (final id in [1, 2, 3, 9, 7, 8]) {
         expect(
           find.byKey(ValueKey('tile-$id')),
@@ -163,10 +164,11 @@ void main() {
       }
       expect(find.byKey(const ValueKey('tile-4')), findsNothing);
       await tester.ensureVisible(find.byKey(const ValueKey('tile-7')));
-      // 최근 구역(1·2·3)이 그 전 구역(7·8)보다 위에 있다
+      // 10월 묶음(1·2·3·9·7)이 9월 묶음(8)보다 위에 있다
+      await tester.ensureVisible(find.byKey(const ValueKey('tile-8')));
       expect(
         tester.getTopLeft(find.byKey(const ValueKey('tile-3'))).dy,
-        lessThan(tester.getTopLeft(find.byKey(const ValueKey('tile-7'))).dy),
+        lessThan(tester.getTopLeft(find.byKey(const ValueKey('tile-8'))).dy),
       );
     });
 
@@ -213,33 +215,13 @@ void main() {
         expect(line, isNot(anyOf(contains('캡쳐'), contains('찍었'))));
       }
 
-      test('잠잠: 마지막 캡처가 7일 이상 전이면 가장 많던 날·잠잠한 일수', () {
-        // 9일 전 3장, 7일 전 1장 → 7일째 잠잠, 10월 17일에 가장
+      test('잊고 있었던 관심사(서버 status)면 패턴과 상관없이 오래 잠잠', () {
         final c = days({9: 3, 7: 1});
-        expectFrom('quiet', tagInsight('뜨개질', c, _now), [
-          '10월 17일엔 푹 빠져 있었는데, 요즘 7일째 조용하네요',
-          '한창일 땐 하루 3장씩 캡처했는데, 잊고 있었나요?',
-          '7일째 소식이 없어요. 아직 관심 있죠?',
+        expectFrom('dormant', tagInsight('뜨개질', c, _now, forgotten: true), [
+          '마지막 캡처가 7일 전이에요. 다시 꺼내 볼까요?',
+          '한 달 넘게 소식이 없어요. 아직 좋아하죠?',
         ]);
-      });
-
-      test('"하루 N장씩" 문구는 가장 많던 날이 2장 이상일 때만', () {
-        Set<String?> lines(List<int> c) => {
-          for (final pick in [0, 1, 2, 3, 4, 5])
-            tagInsight('뜨개질', c, _now, pick: pick)?.text,
-        };
-        final one = lines(days({9: 1, 7: 1}));
-        expect(one, hasLength(2));
-        expect(one.where((t) => t!.contains('장씩')), isEmpty);
-        expect(
-          lines(days({9: 2, 7: 1})),
-          contains('한창일 땐 하루 2장씩 캡처했는데, 잊고 있었나요?'),
-        );
-        // 쓸 수 있는 문구가 2개뿐이어도 직전 문구는 피한다
-        expect(
-          tagInsight('뜨개질', days({9: 1, 7: 1}), _now, avoid: ('quiet', 0))?.id,
-          ('quiet', 2),
-        );
+        expect(tagInsight('뜨개질', c, _now)?.id.$1, isNot('dormant'));
       });
 
       test('마지막 캡처 3~6일 전은 패턴 상황으로: 몰아서 또는 그 외', () {
@@ -281,15 +263,15 @@ void main() {
 
         test('3일 이상: 꾸준히·N일이나만, 기본 문구는 안 나온다', () {
           expect(lines(days({4: 1, 6: 1, 9: 1})), {
-            '2주 동안 꾸준히 모았어요',
-            '2주 중 3일이나 캡처했어요. 진심이네요',
+            '한 달 동안 꾸준히 모았어요',
+            '한 달 중 3일이나 캡처했어요. 진심이네요',
           });
         });
 
         test('3일 이상 + 가장 많던 날 2장: 가장 많던 날 문구도 나온다', () {
           expect(lines(days({4: 1, 6: 2, 9: 1, 10: 1, 11: 1})), {
-            '2주 동안 꾸준히 모았어요',
-            '2주 중 5일이나 캡처했어요. 진심이네요',
+            '한 달 동안 꾸준히 모았어요',
+            '한 달 중 5일이나 캡처했어요. 진심이네요',
             '10월 20일에 가장 푹 빠져 있었어요',
           });
         });
@@ -334,7 +316,7 @@ void main() {
         });
       });
 
-      test('마지막 캡처로부터 지난 날짜 경계: 2·3·6·7·13·14일', () {
+      test('마지막 캡처로부터 지난 날짜 경계: 2·3·13·14일, 기간 밖이어도 요즘 것이면 기본 문구', () {
         String? at(int daysAgo) => tagInsight(
           '뜨개질',
           days({daysAgo: 1}),
@@ -344,10 +326,8 @@ void main() {
 
         expect(at(2), 'new', reason: '최근 3일에만 있음');
         expect(at(3), 'steady', reason: '최근 3일 밖이라 새로 생김이 아니다');
-        expect(at(6), 'steady');
-        expect(at(7), 'quiet', reason: '카드 "잊은 관심사"와 같은 7일');
-        expect(at(13), 'quiet');
-        expect(at(14), 'dormant', reason: '14일 전은 막대 기간 밖');
+        expect(at(13), 'steady');
+        expect(at(14), 'steady', reason: '기간 밖(0장)이지만 서버가 요즘 것이라 했다');
       });
 
       test('오래 잠잠: 기간 안 0장이면 전체 목록의 마지막 캡처 기준, 그것도 없으면 null', () {
@@ -357,9 +337,10 @@ void main() {
             '뜨개질',
             List.filled(14, 0),
             _now,
-            lastCapture: DateTime(2026, 10, 6, 23),
+            forgotten: true,
+            lastCapture: DateTime(2026, 9, 6, 23),
           ),
-          ['마지막 캡처가 20일 전이에요. 다시 꺼내 볼까요?', '2주 넘게 소식이 없어요. 아직 좋아하죠?'],
+          ['마지막 캡처가 50일 전이에요. 다시 꺼내 볼까요?', '한 달 넘게 소식이 없어요. 아직 좋아하죠?'],
         );
       });
 
@@ -405,8 +386,8 @@ void main() {
         ]);
         final steady = days({1: 1, 3: 1, 4: 1, 6: 1, 9: 1});
         expectFrom('steady', tagInsight('뜨개질', steady, _now), [
-          '2주 동안 꾸준히 모았어요',
-          '2주 중 5일이나 캡처했어요. 진심이네요',
+          '한 달 동안 꾸준히 모았어요',
+          '한 달 중 5일이나 캡처했어요. 진심이네요',
         ]);
       });
 
@@ -431,21 +412,26 @@ void main() {
       });
 
       test('직전 문구는 상황 + 번호로 비교: 날이 지나 숫자가 달라져도 같은 틀은 연달아 안 나온다', () {
-        final seen = tagInsight('뜨개질', days({9: 2, 7: 1}), _now, pick: 0)!;
-        expect(seen.text, '10월 17일엔 푹 빠져 있었는데, 요즘 7일째 조용하네요');
+        final seen = tagInsight(
+          '뜨개질',
+          days({2: 1, 5: 1, 8: 4}),
+          _now,
+          pick: 0,
+        )!;
+        expect(seen.text, '10월 18일 하루에 4장을 몰아서 캡처했어요');
         final nextDay = tagInsight(
           '뜨개질',
-          days({10: 2, 8: 1}),
+          days({3: 1, 6: 1, 9: 4}),
           _now.add(const Duration(days: 1)),
           pick: 0,
           avoid: seen.id,
         );
-        expect(nextDay?.id, ('quiet', 1));
+        expect(nextDay?.id, ('burst', 1));
         // 상황이 다르면 번호가 같아도 피할 이유가 없다
         expect(
           tagInsight(
             '뜨개질',
-            days({9: 2, 7: 1}),
+            days({2: 1, 5: 1, 8: 4}),
             _now,
             pick: 0,
             avoid: ('steady', 0),
@@ -472,7 +458,7 @@ void main() {
           .getSize(
             find
                 .descendant(
-                  of: find.byType(DailyBars),
+                  of: find.byType(MonthlyBars),
                   matching: find.byWidgetPredicate(
                     (w) =>
                         w is Container &&
@@ -481,7 +467,7 @@ void main() {
                             AppColors.celadon,
                   ),
                 )
-                .first,
+                .last, // 이번 달(가장 많은 달)
           )
           .height;
 
@@ -492,7 +478,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       expect(barHeight(), allOf(greaterThan(0), lessThan(AppTagBars.height)));
       await tester.pumpAndSettle();
-      expect(barHeight(), AppTagBars.height, reason: '최댓값인 날이 높이를 꽉 채운다');
+      expect(barHeight(), AppTagBars.height, reason: '최댓값인 달이 높이를 꽉 채운다');
 
       await tester.pumpWidget(const SizedBox());
       await tester.pumpWidget(
@@ -509,7 +495,7 @@ void main() {
       tester,
     ) async {
       // 뜨개질 시드는 "그 외"(문구 2개)
-      const steady = ['2주 동안 꾸준히 모았어요', '2주 중 4일이나 캡처했어요. 진심이네요'];
+      const steady = ['한 달 동안 꾸준히 모았어요', '한 달 중 5일이나 캡처했어요. 진심이네요'];
       String shown() =>
           steady.singleWhere((t) => find.text(t).evaluate().isNotEmpty);
 
@@ -542,7 +528,9 @@ void main() {
       expect(shown(), isNot(first));
     });
 
-    testWidgets('캡처를 누르면 상세가 열리고 좌우 넘기기는 이 목록(최근 → 그 전) 안에서만', (tester) async {
+    testWidgets('캡처를 누르면 상세가 열리고 좌우 넘기기는 이 목록(최신순, 달 묶음 순서 그대로) 안에서만', (
+      tester,
+    ) async {
       await tester.pumpWidget(_scoped(const TagScreen(tag: '뜨개질')));
       await tester.pumpAndSettle();
 
@@ -814,37 +802,44 @@ void main() {
       expect(find.text('아직 반복해서 캡처한 게 없어요'), findsOneWidget);
     });
 
-    test('순서: 많이 캡처한 순, 7일 이상 지난 관심사는 잊은 것, 연결은 같은 캡처를 공유한 관심사', () async {
-      final interests = await FakeScreenshotRepository(
-        now: () => _now,
-        seed: _seed,
-      ).interests();
-      final nodes = layoutNodes(interests);
+    test(
+      '순서: 잊고 있었던 관심사(30일 넘음) 먼저, 그다음 많이 캡처한 순, 연결은 같은 캡처를 공유한 관심사',
+      () async {
+        final interests = await FakeScreenshotRepository(
+          now: () => _now,
+          seed: _seed,
+        ).interests();
+        final nodes = layoutNodes(interests);
 
-      // 횟수 많은 순(동점은 이름순): 뜨개질 4 → 가방 3 → 도안 3
-      expect(nodes.map((n) => n.interest.tag), ['뜨개질', '가방', '도안']);
-      expect(brainLinks(nodes), [(0, 2)]);
-      expect(nodes.map((n) => n.interest.forgotten), [false, true, false]);
-      expect(nodes[0].interest.linkedTags, ['도안']);
-      expect(nodes[1].interest.linkedTags, isEmpty);
-    });
+        // 잊은 가방 3 → 요즘 것 횟수 많은 순: 뜨개질 6 → 도안 3
+        expect(nodes.map((n) => n.interest.tag), ['가방', '뜨개질', '도안']);
+        expect(brainLinks(nodes), [(1, 2)]);
+        expect(nodes.map((n) => n.interest.forgotten), [true, false, false]);
+        expect(nodes[1].interest.linkedTags, ['도안']);
+        expect(nodes[0].interest.linkedTags, isEmpty);
+      },
+    );
 
     Interest interest(String tag, int count, {int dormant = 0}) => Interest(
       tag: tag,
       category: Category.etc,
+      forgotten: dormant > Interest.defaultRecentDays,
       captureCount: count,
-      spanDays: 14,
       dormantDays: dormant,
+      peakMonth: 10,
+      peakMonthCount: count,
+      latestMonth: 10,
+      latestMonthCount: count,
       recent: const [],
     );
 
     final longSeven = [
       interest('겨울캠핑장비추천리스트총정리', 9),
       interest('니트가디건코디', 8),
-      interest('제주도한달살기숙소', 7, dormant: 9),
+      interest('제주도한달살기숙소', 7, dormant: 39),
       interest('홈카페레시피', 6),
       interest('아이폰케이스', 5),
-      interest('주말브런치맛집', 4, dormant: 8),
+      interest('주말브런치맛집', 4, dormant: 38),
       interest('전시회일정정리', 3),
     ];
 
@@ -908,15 +903,20 @@ void main() {
       expect(chips.first.rect.height, greaterThan(chips[1].rect.height));
     });
 
-    test('서버 응답의 linkedTags를 읽고, 옛 응답(필드 없음)은 빈 목록', () {
+    test('서버 응답의 linkedTags·status를 읽고, 옛 응답(linkedTags 없음)은 빈 목록', () {
       Interest parse(Map<String, dynamic> extra) => Interest.fromJson({
         'tag': '뜨개질',
         'category': 'SHOPPING',
+        'status': 'FORGOTTEN',
         'captureCount': 3,
         'dormantDays': 8,
+        'peakMonth': 9,
+        'peakMonthCount': 3,
+        'latestMonth': 9,
+        'latestMonthCount': 3,
         'recent': <dynamic>[],
         ...extra,
-      }, spanDays: 14);
+      });
 
       expect(
         parse({
@@ -925,7 +925,8 @@ void main() {
         ['도안'],
       );
       expect(parse({}).linkedTags, isEmpty);
-      expect(parse({}).forgotten, isTrue);
+      expect(parse({}).forgotten, isTrue, reason: '일수로 다시 재지 않고 서버 status를 쓴다');
+      expect(parse({'status': 'RECENT'}).forgotten, isFalse);
     });
   });
 }

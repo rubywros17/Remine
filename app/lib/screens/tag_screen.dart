@@ -14,22 +14,17 @@ import 'detail_screen.dart';
 /// 태그 모아보기: 그 태그가 붙은 캡처 전부를 카테고리와 상관없이 최신순으로.
 /// 관심사 카드·상세의 "같은 관심사"·관심사 알림에서 들어온다.
 ///
-/// 관심사 카드의 횟수는 최근 [windowDays]일 기준이라, 오른쪽 위 큰 숫자도 최근 장수이고
-/// 제목 아래에 "최근 2주 15장 · 전체 40장 · 3일 전 마지막"과 날짜별 막대([windowDays]칸)를 같이 보여 준다.
-/// 그리드도 "최근 2주"와 "그 전"으로 나눈다. 상세의 좌우 넘기기는 이 목록(최근 → 그 전) 안에서만 돈다.
+/// 관심사는 전체 기간 기준이라, 오른쪽 위 큰 숫자는 전체 장수이고 제목 아래에 "전체 40장 · 3일 전 마지막"과
+/// 월별 막대(첫 캡처 달 ~ 이번 달, 최근 12개월까지)를 같이 보여 준다.
+/// 그리드는 달별로 묶는다(2026.11 / 2026.10 …). 상세의 좌우 넘기기는 이 목록(최신순) 안에서만 돈다.
 class TagScreen extends StatefulWidget {
-  const TagScreen({
-    super.key,
-    required this.tag,
-    this.windowDays = 14,
-    this.random,
-  });
+  const TagScreen({super.key, required this.tag, this.forgotten, this.random});
 
   /// '#' 없는 태그 이름.
   final String tag;
 
-  /// 관심사 집계 기간(서버 `windowDays`). 관심사 카드에서 들어오면 그 값, 아니면 서버 기본값과 같은 14.
-  final int windowDays;
+  /// 서버 관심사 상태(관심사 카드에서 들어올 때). null이면 마지막 캡처로 같은 경계(30일)를 직접 잰다.
+  final bool? forgotten;
 
   /// 해석 문장 고르기용. 테스트에서 시드를 넣어 결정적으로 만든다.
   final Random? random;
@@ -39,9 +34,8 @@ class TagScreen extends StatefulWidget {
 }
 
 class _TagScreenState extends State<TagScreen> {
-  // ponytail: 최신 100장까지만 받는다(서버 size 상한). 넘으면 "그 전" 구역에 페이지 나누기.
-  // 최근 장수·날짜별 막대도 이 목록에서 세므로, 한 태그를 기간 안에 100장 넘게 찍으면 모자라게 나온다.
-  // 정확히 하려면 서버 목록 응답에 일자별 개수를 같이 내려 준다.
+  // 서버 size 상한(100)씩 끝까지 받는다: 장수·월별 막대·그리드가 100장을 넘어도 맞다.
+  // ponytail: 한 태그 캡처를 전부 메모리에 든다. 수천 장이 되면 서버 목록 응답에 월별 개수를 내려 주고 그리드는 무한 스크롤로.
   static const _pageSize = 100;
 
   /// 태그별로 마지막에 보여 준 해석 문장. 다시 들어오면 가능하면 다른 문장을 고른다(앱 실행 중 메모리만).
@@ -55,8 +49,6 @@ class _TagScreenState extends State<TagScreen> {
   int _loadSeq = 0;
   bool _loaded = false;
   List<ScreenshotItem> _items = const [];
-  int _total = 0;
-  int _recentCount = 0;
   DateTime _today = DateTime(0);
 
   final Map<int, GlobalKey> _tileKeys = {};
@@ -81,14 +73,19 @@ class _TagScreenState extends State<TagScreen> {
 
   Future<void> _load(RemineStore store) async {
     final seq = ++_loadSeq;
-    final page = await store.repository.list(tag: widget.tag, size: _pageSize);
-    if (!mounted || seq != _loadSeq) return;
-    // 서버 관심사 집계와 같은 기준: 지금부터 windowDays일 전 이후에 찍은 캡처. 목록이 최신순이라 앞쪽이 최근이다.
-    final since = store.now().subtract(Duration(days: widget.windowDays));
+    final items = <ScreenshotItem>[];
+    for (var p = 0; ; p++) {
+      final page = await store.repository.list(
+        tag: widget.tag,
+        page: p,
+        size: _pageSize,
+      );
+      if (!mounted || seq != _loadSeq) return;
+      items.addAll(page.items);
+      if (page.items.isEmpty || p + 1 >= page.totalPages) break;
+    }
     setState(() {
-      _items = page.items;
-      _total = page.totalElements;
-      _recentCount = page.items.where((s) => !s.takenAt.isBefore(since)).length;
+      _items = items;
       _today = store.now();
       _loaded = true;
     });
@@ -131,23 +128,39 @@ class _TagScreenState extends State<TagScreen> {
 
   GlobalKey _keyFor(int id) => _tileKeys.putIfAbsent(id, GlobalKey.new);
 
-  List<int> get _counts => dailyCounts(_items, _today, widget.windowDays);
+  /// 서버 status와 같은 경계: 마지막 캡처가 30일을 넘으면 잊고 있었던 관심사.
+  bool get _forgotten =>
+      widget.forgotten ??
+      (_items.isNotEmpty &&
+          _calendarDays(_items.first.takenAt, _today) >
+              Interest.defaultRecentDays);
 
   @override
   Widget build(BuildContext context) {
-    final window = windowLabel(widget.windowDays);
-    final recent = _items.take(_recentCount).toList();
-    final older = _items.skip(_recentCount).toList();
+    final total = _items.length;
     final insight = _loaded
         ? tagInsight(
             widget.tag,
-            _counts,
+            dailyCounts(_items, _today, Interest.defaultRecentDays),
             _today,
+            forgotten: _forgotten,
             lastCapture: _items.firstOrNull?.takenAt,
             pick: _pick,
             avoid: _avoidInsight,
           )
         : null;
+    // 달별 묶음(최신순 목록이라 같은 달이 이어진다). 상세 넘기기 순서는 _items 그대로.
+    final months = <(int, int), List<ScreenshotItem>>{};
+    for (final s in _items) {
+      months.putIfAbsent((s.takenAt.year, s.takenAt.month), () => []).add(s);
+    }
+    // (제목, 캡처, 이 묶음의 첫 칸이 전체 목록에서 몇 번째인지)
+    final sections = <(String, List<ScreenshotItem>, int)>[];
+    var start = 0;
+    for (final MapEntry(key: (y, m), value: shots) in months.entries) {
+      sections.add(('$y.${m.toString().padLeft(2, '0')}', shots, start));
+      start += shots.length;
+    }
     if (insight != null) _lastInsight[widget.tag] = insight.id;
     return Scaffold(
       body: SafeArea(
@@ -166,12 +179,10 @@ class _TagScreenState extends State<TagScreen> {
                 child: BackButtonCircle(),
               ),
               const SizedBox(height: AppSpacing.s8),
-              // 제목과 최근 장수. 화면 리더가 "#뜨개질 최근 2주 4장"으로 한 번에 읽게 묶는다(카테고리 화면과 같은 모양).
+              // 제목과 전체 장수. 화면 리더가 "#뜨개질 전체 40장"으로 한 번에 읽게 묶는다(카테고리 화면과 같은 모양).
               Semantics(
                 header: true,
-                label: _loaded
-                    ? '#${widget.tag} 최근 $window $_recentCount장'
-                    : '#${widget.tag}',
+                label: _loaded ? '#${widget.tag} 전체 $total장' : '#${widget.tag}',
                 excludeSemantics: true,
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -188,7 +199,7 @@ class _TagScreenState extends State<TagScreen> {
                       FittedBox(
                         fit: BoxFit.scaleDown,
                         child: Text(
-                          '$_recentCount',
+                          '$total',
                           style: AppText.numHero(color: AppColors.celadonDeep),
                         ),
                       ),
@@ -199,8 +210,7 @@ class _TagScreenState extends State<TagScreen> {
                 const SizedBox(height: AppSpacing.s4),
                 Text(
                   [
-                    '최근 $window $_recentCount장',
-                    '전체 $_total장',
+                    '전체 $total장',
                     if (_items.isNotEmpty)
                       lastSeenLabel(_items.first.takenAt, _today),
                   ].join(' · '),
@@ -212,7 +222,10 @@ class _TagScreenState extends State<TagScreen> {
                   Text(insight.text, style: AppText.body),
                 ],
                 const SizedBox(height: AppSpacing.s16),
-                DailyBars(counts: _counts, today: _today),
+                MonthlyBars(
+                  counts: monthlyCounts(_items, _today),
+                  today: _today,
+                ),
               ],
               const SizedBox(height: AppSpacing.s20),
               if (_loaded && _items.isEmpty)
@@ -222,24 +235,15 @@ class _TagScreenState extends State<TagScreen> {
                   onOpen: _openDetail,
                   depth: true,
                 ),
-              if (recent.isNotEmpty) ...[
-                _SectionTitle('최근 $window'),
+              for (final (title, shots, first) in sections) ...[
+                if (first > 0) const SizedBox(height: AppSpacing.s16),
+                _SectionTitle(title),
                 CaptureGrid(
-                  items: recent,
+                  items: shots,
                   keyFor: _keyFor,
                   onOpen: _openDetail,
                   depth: true,
-                ),
-              ],
-              if (older.isNotEmpty) ...[
-                if (recent.isNotEmpty) const SizedBox(height: AppSpacing.s16),
-                const _SectionTitle('그 전'),
-                CaptureGrid(
-                  items: older,
-                  keyFor: _keyFor,
-                  onOpen: _openDetail,
-                  depth: true,
-                  indexOffset: recent.length,
+                  indexOffset: first,
                 ),
               ],
             ],
@@ -265,7 +269,28 @@ String lastSeenLabel(DateTime last, DateTime now) =>
       final d => '$d일 전 마지막',
     };
 
-/// 오늘을 마지막 칸으로 하는 [days]일치 날짜별 캡처 수. 0번 칸이 가장 오래된 날.
+/// 이번 달을 마지막 칸으로 하는 월별 캡처 수. 첫 칸은 첫 캡처의 달이고, 최대 [maxMonths]칸(넘으면 최근 달만).
+/// 캡처가 없으면 이번 달 한 칸(0).
+List<int> monthlyCounts(
+  List<ScreenshotItem> items,
+  DateTime now, {
+  int maxMonths = 12,
+}) {
+  int index(DateTime t) => t.year * 12 + t.month - 1;
+  final last = index(now);
+  final first = items.isEmpty
+      ? last
+      : items.map((s) => index(s.takenAt)).reduce(min);
+  final months = (last - first + 1).clamp(1, maxMonths);
+  final counts = List.filled(months, 0);
+  for (final s in items) {
+    final i = months - 1 - (last - index(s.takenAt));
+    if (i >= 0 && i < months) counts[i]++;
+  }
+  return counts;
+}
+
+/// 오늘을 마지막 칸으로 하는 [days]일치 날짜별 캡처 수. 0번 칸이 가장 오래된 날. 해석 문장의 패턴 판단에 쓴다.
 List<int> dailyCounts(List<ScreenshotItem> items, DateTime now, int days) {
   final counts = List.filled(days, 0);
   for (final s in items) {
@@ -303,18 +328,12 @@ class Phrase {
 }
 
 /// 해석 문장 문구. 상황마다 2개 이상이고 [tagInsight]가 그중 하나를 고른다.
-/// 자리표시: {tag} 태그 이름, {m}·{d} 가장 많던 날, {lastM}·{lastD} 마지막 캡처 날, {x} 마지막 캡처 후 일수, {n} 장수·일수, {window} 기간("2주").
+/// 자리표시: {tag} 태그 이름, {m}·{d} 가장 많던 날, {lastM}·{lastD} 마지막 캡처 날, {x} 마지막 캡처 후 일수, {n} 장수·일수.
 /// 표기는 "캡처"("캡쳐"·"찍었어요" 쓰지 않음).
 const insightPhrases = {
   'dormant': [
     Phrase('마지막 캡처가 {x}일 전이에요. 다시 꺼내 볼까요?'),
-    Phrase('{window} 넘게 소식이 없어요. 아직 좋아하죠?'),
-  ],
-  'quiet': [
-    Phrase('{m}월 {d}일엔 푹 빠져 있었는데, 요즘 {x}일째 조용하네요'),
-    // 1장인 날을 "한창"이라 부르기 어색해서 2장 이상일 때만
-    Phrase('한창일 땐 하루 {n}장씩 캡처했는데, 잊고 있었나요?', minPeak: 2),
-    Phrase('{x}일째 소식이 없어요. 아직 관심 있죠?'),
+    Phrase('한 달 넘게 소식이 없어요. 아직 좋아하죠?'),
   ],
   'new': [Phrase('오, 새로운 관심사가 생겼네요!'), Phrase('요즘 여기에 꽂혔군요. 앞으로가 기대돼요')],
   'rising': [
@@ -328,18 +347,18 @@ const insightPhrases = {
   ],
   'today': [Phrase('오늘도 캡처했어요. 한창 빠져 있는 중!'), Phrase('오늘의 관심사도 #{tag}')],
   'steady': [
-    Phrase('{window} 동안 꾸준히 모았어요', minDays: 3),
-    Phrase('{window} 중 {n}일이나 캡처했어요. 진심이네요', minDays: 3),
+    Phrase('한 달 동안 꾸준히 모았어요', minDays: 3),
+    Phrase('한 달 중 {n}일이나 캡처했어요. 진심이네요', minDays: 3),
     Phrase('{m}월 {d}일에 가장 푹 빠져 있었어요', minPeak: 2),
     Phrase('{lastM}월 {lastD}일에 마지막으로 캡처했어요', fallback: true),
     Phrase('{lastM}월 {lastD}일에 눈여겨봤던 관심사예요', fallback: true),
   ],
 };
 
-/// 날짜별 막대([counts], 오늘이 마지막 칸) 위 해석 문장. [lastCapture]는 기간과 상관없이 가장 최근 캡처 시각이고,
-/// 그것도 없으면 null.
-/// 상황은 마지막 캡처로부터 지난 날짜로 먼저 나눈다: 오래 잠잠(기간 안 0장 = 2주 이상) → 잠잠(7일 이상, 카드와 같은 기준)
-/// 그보다 최근이면 패턴으로: 새로 생김(최근 3일에만 있음)
+/// 막대 위 해석 문장. [counts]는 오늘이 마지막 칸인 날짜별 장수(최근 한 달), [lastCapture]는 기간과 상관없이
+/// 가장 최근 캡처 시각이고, 그것도 없으면 null.
+/// 상황은 먼저 [forgotten](서버 status, 30일 경계)으로 나눈다: 잊고 있었던 관심사 → 오래 잠잠.
+/// 요즘 것이면 패턴으로: (한 달 안 0장이면 기본 문구) → 새로 생김(최근 3일에만 있음)
 /// → 다시 늘어남(최근 3일 > 그 전 4일, 그보다 앞에도 있었음) → 몰아서(하루가 전체의 절반 이상)
 /// → 오늘 캡처함 → 그 외.
 /// 문구는 그 상황에서 조건([Phrase])에 맞는 것 중 [pick]번째(나머지 연산)이고, [avoid]와 같은 문구는 다른 문구가 있으면 뺀다.
@@ -348,6 +367,7 @@ const insightPhrases = {
   List<int> counts,
   DateTime today, {
   DateTime? lastCapture,
+  bool forgotten = false,
   int pick = 0,
   InsightId? avoid,
   Map<String, List<Phrase>> phrases = insightPhrases,
@@ -373,9 +393,8 @@ const insightPhrases = {
   final lastDay = today.subtract(Duration(days: sinceLast));
 
   final (key, n) = switch (()) {
-    _ when total == 0 => ('dormant', 0),
-    // 카드의 "잊은 관심사"와 같은 기준
-    _ when sinceLast >= Interest.forgottenAfterDays => ('quiet', counts[peak]),
+    _ when forgotten => ('dormant', 0),
+    _ when total == 0 => ('steady', 0),
     _ when recent3 == total => ('new', recent3),
     _ when recent3 > sum(last - 7, last - 3) && sum(0, last - 7) > 0 => (
       'rising',
@@ -416,17 +435,16 @@ const insightPhrases = {
         .replaceAll('{m}', '${peakDay.month}')
         .replaceAll('{d}', '${peakDay.day}')
         .replaceAll('{x}', '$sinceLast')
-        .replaceAll('{n}', '$n')
-        .replaceAll('{window}', windowLabel(last)),
+        .replaceAll('{n}', '$n'),
   );
 }
 
-/// 날짜별 캡처 수 막대. 있는 날은 셀라돈, 0인 날은 테두리색 낮은 막대. 아래 양끝에 시작 날짜와 "오늘".
-/// 처음 그려질 때 막대가 아래에서 올라온다("애니메이션 줄이기"면 시간 0이라 바로 다 그려진다).
+/// 월별 캡처 수 막대([counts], 이번 달이 마지막 칸). 있는 달은 셀라돈, 0인 달은 테두리색 낮은 막대.
+/// 아래 양끝에 시작 달("2026.03")과 "이번 달". 처음 그려질 때 막대가 아래에서 올라온다("애니메이션 줄이기"면 바로).
 ///
 /// [Flutter 메모] TweenAnimationBuilder는 처음 만들어질 때 begin → end로 한 번 움직이고, 값이 같으면 다시 움직이지 않는다.
-class DailyBars extends StatelessWidget {
-  const DailyBars({super.key, required this.counts, required this.today});
+class MonthlyBars extends StatelessWidget {
+  const MonthlyBars({super.key, required this.counts, required this.today});
 
   final List<int> counts;
   final DateTime today;
@@ -434,14 +452,14 @@ class DailyBars extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final max = counts.fold(1, (a, b) => b > a ? b : a);
-    final activeDays = counts.where((c) => c > 0).length;
-    final start = today.subtract(Duration(days: counts.length - 1));
+    final activeMonths = counts.where((c) => c > 0).length;
+    final start = DateTime(today.year, today.month - (counts.length - 1));
     final caption = AppText.caption.copyWith(
       fontSize: AppTagBars.labelSize,
       color: AppColors.inkSub,
     );
     return Semantics(
-      label: '최근 ${counts.length}일 중 $activeDays일 캡처',
+      label: '최근 ${counts.length}개월 중 $activeMonths개월 캡처',
       excludeSemantics: true,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -462,18 +480,30 @@ class DailyBars extends StatelessWidget {
               height: AppTagBars.height,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
+                // 첫 막대는 시작 달 글자 위, 마지막 막대는 "이번 달" 위에 오게.
+                mainAxisAlignment: counts.length == 1
+                    ? MainAxisAlignment.end
+                    : MainAxisAlignment.spaceBetween,
                 children: [
                   for (final (i, c) in counts.indexed) ...[
                     if (i > 0) const SizedBox(width: AppTagBars.gap),
-                    Expanded(
-                      child: Container(
-                        height: c == 0
-                            ? AppTagBars.emptyHeight
-                            : AppTagBars.height * c / max * t,
-                        decoration: BoxDecoration(
-                          color: c == 0 ? AppColors.border : AppColors.celadon,
-                          borderRadius: BorderRadius.circular(
-                            AppTagBars.radius,
+                    // 달이 적어도 막대가 지나치게 넓어지지 않게 한 칸 폭의 상한을 둔다.
+                    Flexible(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(
+                          maxWidth: AppTagBars.maxBarWidth,
+                        ),
+                        child: Container(
+                          height: c == 0
+                              ? AppTagBars.emptyHeight
+                              : AppTagBars.height * c / max * t,
+                          decoration: BoxDecoration(
+                            color: c == 0
+                                ? AppColors.border
+                                : AppColors.celadon,
+                            borderRadius: BorderRadius.circular(
+                              AppTagBars.radius,
+                            ),
                           ),
                         ),
                       ),
@@ -486,8 +516,14 @@ class DailyBars extends StatelessWidget {
           const SizedBox(height: AppSpacing.s4),
           Row(
             children: [
-              Expanded(child: Text(formatMonthDay(start), style: caption)),
-              Text('오늘', style: caption),
+              if (counts.length > 1)
+                Expanded(
+                  child: Text(
+                    '${start.year}.${start.month.toString().padLeft(2, '0')}',
+                    style: caption,
+                  ),
+                ),
+              Text('이번 달', style: caption),
             ],
           ),
         ],

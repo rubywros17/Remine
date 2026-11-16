@@ -159,7 +159,9 @@ abstract final class AppBrain {
 
 /// 관심사 카드(홈·관심사 탭). 한 화면(360×800)에 3장이 들어가는 높이.
 abstract final class AppInterestCard {
+  /// 잊고 있었던 관심사 카드 최소 높이. 요즘 모으는 중 카드는 약 80%.
   static const double minHeight = 168;
+  static const double recentMinHeight = 136;
 
   /// 콜라주 맨 앞 사진 오른쪽 위에 걸친 원형 스티커 "19 / SHOTS": 지름, 기울기(10°).
   static const double shotsSize = 58;
@@ -172,11 +174,6 @@ abstract final class AppInterestCard {
   static const double watermarkSize = 132;
   static const double watermarkStroke = 1.4;
   static const watermarkColor = Color(0x24FFFFFF);
-
-  /// 왼쪽 아래 점 게이지: 이 장수 이상이면 점 하나씩 더(5칸). 잊은 관심사는 레몬 1칸.
-  static const gaugeSteps = [3, 6, 10, 15, 20];
-  static const double gaugeDot = 7;
-  static const gaugeEmpty = Color(0x40FFFFFF); // 빈 칸: 흰색 25%
 }
 
 /// 상세 화면의 이미지 카드·배경 값. 값의 근거는 docs/design.md.
@@ -216,6 +213,7 @@ abstract final class AppTagBars {
   static const double radius = 4;
   static const double emptyHeight = 4;
   static const double labelSize = 10;
+  static const double maxBarWidth = 28; // 달이 몇 개뿐이어도 막대가 너무 넓어지지 않게
 }
 
 /// 정리 탭 벤토 그리드(디자인 캔버스 20안 O)와 묶음 기준.

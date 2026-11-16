@@ -219,25 +219,26 @@ class RemoteRepository implements ScreenshotRepository {
   static const fallbackMinCount = 3;
 
   /// GET /api/interests. 서버가 휴지통 캡처를 빼고 세지만, 아직 서버에 못 알린 캡처가 있을 수 있어 여기서도 뺀다.
-  /// 그래서 기준 횟수 아래로 내려간 관심사는 숨긴다(응답의 `recent`에 있는 캡처만 알 수 있는 한계는 알리기 전까지만이다).
+  /// 그래서 기준 횟수(전체 기간) 아래로 내려간 관심사는 숨기고, 상태는 30일 경계로 다시 정한다(응답의 `recent`에 있는 캡처만 알 수 있는 한계는 알리기 전까지만이다).
   @override
   Future<List<Interest>> interests() async {
     final json = await _fetch('interests', _api.interestsJson);
     if (json == null) return const [];
     try {
       final minCount = (json['minCount'] as num?)?.toInt() ?? fallbackMinCount;
-      final spanDays = (json['windowDays'] as num).toInt();
+      final recentDays =
+          (json['recentDays'] as num?)?.toInt() ?? Interest.defaultRecentDays;
       final trashed = {for (final t in await _serverTrash()) t.assetId};
       Interest withoutTrashed(Interest i) => i.without({
         for (final c in i.recent)
           if (trashed.contains(c.localAssetId)) c.id,
-      });
-      return [
+      }, recentDays: recentDays);
+      final kept = [
         for (final item in json['items'] as List)
-          withoutTrashed(
-            Interest.fromJson(item as Map<String, dynamic>, spanDays: spanDays),
-          ),
+          withoutTrashed(Interest.fromJson(item as Map<String, dynamic>)),
       ].where((i) => i.captureCount >= minCount).toList();
+      // 휴지통 차감으로 상태가 바뀌었을 수 있어 서버와 같은 순서로 다시 세운다.
+      return sortInterests(kept);
     } catch (_) {
       return const []; // 깨진 응답·캐시. 내용은 남기지 않는다.
     }

@@ -24,7 +24,7 @@ class CaptureGrid extends StatelessWidget {
   final ValueChanged<int>
   onOpen; // 전체 목록 안의 위치(index) = [indexOffset] + 이 그리드 안의 위치
 
-  /// 한 목록을 여러 구역(태그 화면의 "최근 2주"/"그 전")으로 나눠 그릴 때 이 구역이 시작하는 위치.
+  /// 한 목록을 여러 구역(태그 화면의 달별 묶음)으로 나눠 그릴 때 이 구역이 시작하는 위치.
   final int indexOffset;
 
   /// 카드에 [AppShadow.card] 그림자와 테두리를 넣는다(태그 화면).

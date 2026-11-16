@@ -3,7 +3,7 @@ import '../models/screenshot_item.dart';
 
 /// 가짜 샘플 30개(쇼핑 6 + 나머지 6개 카테고리 각 4). 실제 스크린샷은 쓰지 않는다.
 /// 날짜는 [now] 기준 며칠 전으로 만들어 홈 문구("N일째 잠자는 중")가 항상 같게 나온다.
-/// "니트가디건" 태그 4개가 잊은 관심사 카드의 재료다(가장 최근 것이 9일 전).
+/// "니트가디건" 태그 4개가 관심사 카드의 재료다(가장 최근 것이 9일 전 = 30일 이내라 "요즘 모으는 중").
 List<ScreenshotItem> buildFakeScreenshots(DateTime now) {
   DateTime ago(int days, int hour, int minute) =>
       DateTime(now.year, now.month, now.day - days, hour, minute);
