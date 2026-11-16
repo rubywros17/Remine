@@ -14,6 +14,7 @@ import 'package:remine/widgets/wordmark.dart';
 
 import 'support/fake_device.dart';
 import 'support/fake_remote.dart';
+import 'support/real_io.dart';
 
 Future<void> _pumpApp(WidgetTester tester, FakeGalleryReader reader) async {
   tester.view.physicalSize = const Size(390, 844);
@@ -21,17 +22,6 @@ Future<void> _pumpApp(WidgetTester tester, FakeGalleryReader reader) async {
   addTearDown(tester.view.reset);
   await tester.pumpWidget(RemineApp(device: fakeServices(reader)));
   await tester.pumpAndSettle();
-}
-
-/// 실제 파일 입출력이 끝날 시간을 준다(testWidgets는 가짜 시계라 IO가 진행되지 않는다).
-Future<void> _io(WidgetTester tester) async {
-  // IO는 실제 시간에, 그 뒤의 이어받기(await 다음 줄)는 가짜 시계에서 돌아가므로 번갈아 진행한다.
-  for (var i = 0; i < 100; i++) {
-    await tester.runAsync(
-      () => Future<void>.delayed(const Duration(milliseconds: 15)),
-    );
-    await tester.pump();
-  }
 }
 
 void main() {
@@ -135,13 +125,19 @@ void main() {
       expect(find.text('2장 선택 · 최근 300장까지'), findsOneWidget);
 
       await tester.tap(find.text('OCR 실행'));
-      await _io(tester);
+      await pumpUntil(
+        tester,
+        () => find.textContaining('2장 완료').evaluate().isNotEmpty,
+      );
       await tester.pumpAndSettle();
       expect(find.textContaining('2장 완료'), findsOneWidget);
       expect(find.textContaining('글자 0'), findsNothing); // OCR 원문은 화면에 띄우지 않는다
 
       await tester.tap(find.text('JSON 내보내기'));
-      await _io(tester);
+      await pumpUntil(
+        tester,
+        () => find.textContaining('내보냈어').evaluate().isNotEmpty,
+      );
       await tester.pumpAndSettle();
 
       final file = File('${out.path}/ocr-export-20261019-120509.json');

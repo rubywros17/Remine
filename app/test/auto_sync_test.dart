@@ -8,6 +8,7 @@ import 'package:remine/widgets/sync_banner.dart';
 import 'support/fake_device.dart';
 import 'support/fake_push.dart';
 import 'support/fake_remote.dart';
+import 'support/real_io.dart';
 
 /// 디버그 `--dart-define=AUTO_SYNC=false`: 저절로 도는 동기화만 끄고, 수동 실행·서버 조회·토큰·재등록은 그대로.
 void main() {
@@ -20,16 +21,6 @@ void main() {
           autoSync: autoSync,
         ),
       ))!;
-
-  Future<void> settle(WidgetTester tester) async {
-    // 동기화는 실제 파일 입출력(OCR 임시 파일)이 있어 진짜 시간으로 몇 번 돌려 준다
-    for (var i = 0; i < 30; i++) {
-      await tester.runAsync(
-        () => Future<void>.delayed(const Duration(milliseconds: 10)),
-      );
-      await tester.pump();
-    }
-  }
 
   Widget gate(SyncRig r) => MaterialApp(
     home: SyncGate(
@@ -50,10 +41,10 @@ void main() {
   ) async {
     final r = await rig(tester, autoSync: false);
     await tester.pumpWidget(gate(r));
-    await settle(tester);
+    await pumpRealTime(tester);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    await settle(tester);
+    await pumpRealTime(tester);
 
     expect(r.client.analyzeCalls, isEmpty);
     expect(r.ocr.recognized, isEmpty);
@@ -65,7 +56,7 @@ void main() {
   testWidgets('켜져 있으면(기본) 지금처럼 바로 동기화하고 안내는 없다', (tester) async {
     final r = await rig(tester, autoSync: true);
     await tester.pumpWidget(gate(r));
-    await settle(tester);
+    await pumpUntil(tester, () => r.client.analyzeCalls.isNotEmpty);
 
     expect(r.client.analyzeCalls, hasLength(1));
     expect(find.text('자동 정리 꺼짐(디버그)'), findsNothing);
@@ -83,7 +74,10 @@ void main() {
     await tester.pump();
 
     await tester.tap(find.text('지금 동기화'));
-    await settle(tester);
+    await pumpUntil(
+      tester,
+      () => find.textContaining('동기화 끝').evaluate().isNotEmpty,
+    );
 
     expect(r.client.analyzeCalls, hasLength(1));
     expect(find.textContaining('동기화 끝'), findsWidgets);
