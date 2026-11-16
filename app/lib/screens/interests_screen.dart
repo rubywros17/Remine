@@ -12,7 +12,9 @@ import '../widgets/small_widgets.dart';
 import 'tag_screen.dart';
 
 /// 관심사 탭: 반복해서 캡처한 관심사 카드 목록을 "잊고 있었던 관심사"(레몬)와 "요즘 모으는 중"(셀라돈) 두 섹션으로.
-/// 잊고 있었던 관심사는 처음 2개만 보이고 [더 보기]로 펼친다. 관심사가 아예 없으면 빈 상태 안내.
+/// 잊고 있었던 관심사는 처음 2개, 요즘 모으는 중은 3개만 보이고 [더 보기]로 펼치고 [접기]로 접는다.
+/// 오른쪽 위 검색으로 이미 불러온 목록을 태그로 거른다(서버 호출 없음). 관심사가 아예 없으면 빈 상태 안내.
+/// 다른 탭에 갔다 오면 펼침·검색은 처음 상태로, 태그 화면에 갔다 오면 그대로다.
 ///
 /// 홈과 같은 방식으로 store가 바뀌면(카테고리 수정·휴지통) 다시 읽는다.
 /// 탭에 들어올 때마다([active]가 켜질 때) 먼저 머릿속 캡처 지도([InterestBrainMap])를 보여 주고,
@@ -31,9 +33,19 @@ class InterestsScreen extends StatefulWidget {
 class _InterestsScreenState extends State<InterestsScreen> {
   int _seenRevision = -1;
 
-  /// 잊고 있었던 관심사는 처음 [_forgottenPreview]개만, [더 보기]를 누르면 전부.
+  /// 처음에 보이는 카드 수. [더 보기]를 누르면 그 섹션 전부.
   static const _forgottenPreview = 2;
-  bool _expanded = false;
+  static const _recentPreview = 3;
+  bool _forgottenOpen = false;
+  bool _recentOpen = false;
+
+  /// 접으면 그 섹션 머리가 보이게 스크롤한다.
+  final _forgottenHeader = GlobalKey();
+  final _recentHeader = GlobalKey();
+
+  /// 검색창이 열려 있는지와 입력값.
+  bool _searching = false;
+  final _query = TextEditingController();
 
   /// 이번에 탭에 들어와서 아직 목록으로 넘어가지 않았는지.
   bool _showMap = true;
@@ -68,8 +80,43 @@ class _InterestsScreenState extends State<InterestsScreen> {
     if (widget.active && !old.active) {
       _showMap = true;
       _entry++;
+      // 다른 탭에 갔다 오면 처음 상태로
+      _forgottenOpen = false;
+      _recentOpen = false;
+      _closeSearch();
     }
   }
+
+  @override
+  void dispose() {
+    _query.dispose();
+    super.dispose();
+  }
+
+  void _closeSearch() {
+    _searching = false;
+    _query.clear();
+  }
+
+  /// 접고 나서 그 섹션 머리가 보이게(아래에서 접으면 머리가 화면 위로 지나가 있을 수 있다).
+  void _collapse(GlobalKey header, VoidCallback close) {
+    setState(close);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final ctx = header.currentContext;
+      if (ctx != null && ctx.mounted) {
+        Scrollable.ensureVisible(
+          ctx,
+          duration: AppMotion.duration(context, MotionDuration.base),
+          curve: AppMotion.standard,
+          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtStart,
+        );
+      }
+    });
+  }
+
+  /// 대소문자·띄어쓰기·'#'를 무시한 비교 키.
+  static String _key(String s) =>
+      s.replaceAll('#', '').replaceAll(RegExp(r'\s+'), '').toLowerCase();
 
   @override
   Widget build(BuildContext context) {
@@ -94,11 +141,20 @@ class _InterestsScreenState extends State<InterestsScreen> {
   }
 
   Widget _list(List<Interest> interests) {
-    final forgotten = interests.where((i) => i.forgotten).toList();
-    final recent = interests.where((i) => !i.forgotten).toList();
-    final shownForgotten = _expanded
+    final query = _key(_query.text);
+    final filtering = _searching && query.isNotEmpty;
+    final matched = filtering
+        ? interests.where((i) => _key(i.tag).contains(query)).toList()
+        : interests;
+    final forgotten = matched.where((i) => i.forgotten).toList();
+    final recent = matched.where((i) => !i.forgotten).toList();
+    // 검색 중에는 더 보기 없이 전부
+    final showForgotten = filtering || _forgottenOpen
         ? forgotten
         : forgotten.take(_forgottenPreview).toList();
+    final showRecent = filtering || _recentOpen
+        ? recent
+        : recent.take(_recentPreview).toList();
     // 빈 상태도 ListView 안에 둬서 작은 화면·큰 글꼴에서 넘치지 않고 스크롤된다.
     return SafeArea(
       bottom: false,
@@ -110,7 +166,7 @@ class _InterestsScreenState extends State<InterestsScreen> {
           AppSpacing.s24,
         ),
         children: [
-          Semantics(header: true, child: Text('관심사', style: AppText.title)),
+          _searching ? _searchBar() : _titleBar(interests.isNotEmpty),
           const SizedBox(height: AppSpacing.s4),
           Text(
             '여러 번 캡처한 것들을 모았어요',
@@ -119,35 +175,118 @@ class _InterestsScreenState extends State<InterestsScreen> {
           const SizedBox(height: AppSpacing.s20),
           if (interests.isEmpty)
             const _EmptyInterests()
+          else if (filtering && matched.isEmpty)
+            _NoMatch(query: _query.text.trim())
           else ...[
-            _SectionHeader(
-              title: '잊고 있었던 관심사',
-              count: forgotten.length,
-              dot: AppColors.lemon,
-            ),
-            if (forgotten.isEmpty)
-              const _NoForgotten()
-            else
-              for (final interest in shownForgotten) _card(interest),
-            if (forgotten.length > shownForgotten.length)
-              _MoreButton(
-                hidden: forgotten.length - shownForgotten.length,
-                onTap: () => setState(() => _expanded = true),
+            // 검색 중에는 맞는 것이 없는 섹션을 숨긴다(점선 안내도 검색 아닐 때만).
+            if (!filtering || forgotten.isNotEmpty)
+              _SectionHeader(
+                key: _forgottenHeader,
+                title: '잊고 있었던 관심사',
+                count: forgotten.length,
+                dot: AppColors.lemon,
               ),
+            if (forgotten.isEmpty && !filtering) const _NoForgotten(),
+            for (final interest in showForgotten) _card(interest),
+            if (!filtering && forgotten.length > _forgottenPreview)
+              _forgottenOpen
+                  ? _HighlightButton(
+                      text: '접기 ↑',
+                      label: '잊고 있었던 관심사 접기',
+                      onTap: () => _collapse(
+                        _forgottenHeader,
+                        () => _forgottenOpen = false,
+                      ),
+                    )
+                  : _HighlightButton(
+                      text:
+                          '잊고 있었던 관심사 ${forgotten.length - _forgottenPreview}개 더 보기 ↓',
+                      onTap: () => setState(() => _forgottenOpen = true),
+                    ),
             if (recent.isNotEmpty) ...[
               const SizedBox(height: AppSpacing.s8),
               _SectionHeader(
+                key: _recentHeader,
                 title: '요즘 모으는 중',
                 count: recent.length,
                 dot: AppColors.celadon,
               ),
-              for (final interest in recent) _card(interest),
+              for (final interest in showRecent) _card(interest),
+              if (!filtering && recent.length > _recentPreview)
+                _recentOpen
+                    ? _HighlightButton(
+                        text: '접기 ↑',
+                        label: '요즘 모으는 중 접기',
+                        onTap: () =>
+                            _collapse(_recentHeader, () => _recentOpen = false),
+                      )
+                    : _HighlightButton(
+                        text:
+                            '요즘 모으는 중 ${recent.length - _recentPreview}개 더 보기 ↓',
+                        onTap: () => setState(() => _recentOpen = true),
+                      ),
             ],
           ],
         ],
       ),
     );
   }
+
+  /// 제목 줄: "관심사" + 오른쪽 검색 아이콘(관심사가 있을 때만).
+  Widget _titleBar(bool canSearch) => Row(
+    children: [
+      Expanded(
+        child: Semantics(
+          header: true,
+          child: Text('관심사', style: AppText.title),
+        ),
+      ),
+      if (canSearch)
+        IconButton(
+          tooltip: '관심사 검색',
+          icon: const Icon(LucideIcons.search, color: AppColors.ink),
+          onPressed: () => setState(() => _searching = true),
+        ),
+    ],
+  );
+
+  /// 검색 중 제목 줄: 입력창(키보드 바로 올라옴) + 닫기.
+  Widget _searchBar() => Row(
+    children: [
+      Expanded(
+        child: TextField(
+          controller: _query,
+          autofocus: true,
+          textInputAction: TextInputAction.search,
+          style: AppText.body,
+          onChanged: (_) => setState(() {}),
+          decoration: InputDecoration(
+            hintText: '태그로 찾기',
+            hintStyle: AppText.body.copyWith(color: AppColors.inkSub),
+            prefixIcon: const Icon(LucideIcons.search, color: AppColors.inkSub),
+            isDense: true,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppRadii.pill),
+              borderSide: const BorderSide(color: AppColors.border),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppRadii.pill),
+              borderSide: const BorderSide(color: AppColors.border),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(AppRadii.pill),
+              borderSide: const BorderSide(color: AppColors.ink),
+            ),
+          ),
+        ),
+      ),
+      IconButton(
+        tooltip: '검색 닫기',
+        icon: const Icon(LucideIcons.x, color: AppColors.ink),
+        onPressed: () => setState(_closeSearch),
+      ),
+    ],
+  );
 
   Widget _card(Interest interest) => Padding(
     padding: const EdgeInsets.only(bottom: AppSpacing.s12),
@@ -169,6 +308,7 @@ class _InterestsScreenState extends State<InterestsScreen> {
 /// 섹션 머리: 색 점 + 굵은 제목 + 개수. 화면 리더는 "잊고 있었던 관심사 3개"로 한 번에 읽는다.
 class _SectionHeader extends StatelessWidget {
   const _SectionHeader({
+    super.key,
     required this.title,
     required this.count,
     required this.dot,
@@ -213,12 +353,15 @@ class _SectionHeader extends StatelessWidget {
   );
 }
 
-/// "잊고 있었던 관심사 N개 더 보기 ↓": 검정 굵은 글씨 + 아래쪽 절반 레몬 형광펜(태그 화면 제목과 같은 표현).
-class _MoreButton extends StatelessWidget {
-  const _MoreButton({required this.hidden, required this.onTap});
+/// "… N개 더 보기 ↓"·"접기 ↑": 검정 굵은 글씨 + 아래쪽 절반 레몬 형광펜(태그 화면 제목과 같은 표현).
+class _HighlightButton extends StatelessWidget {
+  const _HighlightButton({required this.text, required this.onTap, this.label});
 
-  final int hidden;
+  final String text;
   final VoidCallback onTap;
+
+  /// 화면 리더 문장. 없으면 [text]에서 화살표만 뺀다.
+  final String? label;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -226,7 +369,7 @@ class _MoreButton extends StatelessWidget {
     child: Center(
       child: PressableScale(
         onTap: onTap,
-        label: '잊고 있었던 관심사 $hidden개 더 보기',
+        label: label ?? text.replaceAll(RegExp(r' [↓↑]$'), ''),
         child: ConstrainedBox(
           constraints: const BoxConstraints(minHeight: 48),
           child: Center(
@@ -234,7 +377,7 @@ class _MoreButton extends StatelessWidget {
             child: DecoratedBox(
               decoration: highlighterDecoration(),
               child: Text(
-                '잊고 있었던 관심사 $hidden개 더 보기 ↓',
+                text,
                 style: AppText.body.copyWith(
                   color: AppColors.ink,
                   fontWeight: FontWeight.w700,
@@ -244,6 +387,23 @@ class _MoreButton extends StatelessWidget {
           ),
         ),
       ),
+    ),
+  );
+}
+
+/// 검색 결과가 없을 때.
+class _NoMatch extends StatelessWidget {
+  const _NoMatch({required this.query});
+
+  final String query;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: AppSpacing.s32),
+    child: Text(
+      "'$query'와 맞는 관심사가 없어요",
+      style: AppText.body,
+      textAlign: TextAlign.center,
     ),
   );
 }

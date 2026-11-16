@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:remine/core/tokens.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
@@ -164,14 +165,18 @@ void main() {
       expect(find.text('19'), findsWidgets); // 스티커 + 워터마크
     });
 
-    testWidgets('목록의 요즘 카드는 잊은 카드보다 낮다(약 80%), 홈 카드는 그대로', (tester) async {
+    // 시안 높이(약 140 / 80%)는 실제 폰트로 재는 layout_matrix에서 확인한다(테스트 기본 폰트는 알약이 커진다).
+    testWidgets('목록의 요즘 카드는 잊은 카드보다 낮고, 홈 카드는 잊은 카드 높이 그대로', (tester) async {
       await tester.pumpWidget(_card(_interest(dormantDays: 52)));
       final forgotten = tester.getSize(find.byType(InterestCard)).height;
       await tester.pumpWidget(_card(_interest()));
       final recent = tester.getSize(find.byType(InterestCard)).height;
-      expect(recent / forgotten, closeTo(0.8, 0.05));
+      expect(recent, lessThan(forgotten));
       await tester.pumpWidget(_card(_interest(), compact: false));
-      expect(tester.getSize(find.byType(InterestCard)).height, forgotten);
+      expect(
+        tester.getSize(find.byType(InterestCard)).height,
+        greaterThanOrEqualTo(AppInterestCard.minHeight),
+      );
     });
 
     testWidgets('화면 읽기: 상태·태그·잠든 일수·달별 횟수 / 상태·태그·마지막·전체 횟수', (tester) async {
@@ -248,6 +253,161 @@ void main() {
         },
       );
     }
+  });
+
+  group('관심사 목록 다듬기', () {
+    testWidgets('요즘 모으는 중도 3개만 → 더 보기 → 접기 ↑로 접히고 섹션 머리가 보인다', (tester) async {
+      await _openList(tester, _seed(forgotten: 0, recent: 5));
+      expect(find.byType(InterestCard), findsNWidgets(3));
+      expect(find.text('요즘 모으는 중 2개 더 보기 ↓'), findsOneWidget);
+
+      await tester.tap(find.text('요즘 모으는 중 2개 더 보기 ↓'));
+      await tester.pumpAndSettle();
+      expect(find.byType(InterestCard, skipOffstage: false), findsNWidgets(5));
+      await tester.scrollUntilVisible(
+        find.text('접기 ↑'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.text('접기 ↑'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InterestCard, skipOffstage: false), findsNWidgets(3));
+      expect(find.text('요즘 모으는 중 2개 더 보기 ↓'), findsOneWidget);
+      final header = tester.getRect(find.text('요즘 모으는 중'));
+      expect(header.top, greaterThanOrEqualTo(0));
+      expect(header.bottom, lessThanOrEqualTo(800 - 72));
+    });
+
+    testWidgets('잊은 섹션 접기 ↑도 같은 스타일(레몬 형광펜)', (tester) async {
+      await _openList(tester, _seed(forgotten: 3, recent: 0));
+      await tester.tap(find.text('잊고 있었던 관심사 1개 더 보기 ↓'));
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('접기 ↑'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      final box = tester.widget<DecoratedBox>(
+        find
+            .ancestor(
+              of: find.text('접기 ↑'),
+              matching: find.byType(DecoratedBox),
+            )
+            .first,
+      );
+      expect(box.decoration, highlighterDecoration());
+      await tester.tap(find.text('접기 ↑'));
+      await tester.pumpAndSettle();
+      expect(find.text('잊고 있었던 관심사 1개 더 보기 ↓'), findsOneWidget);
+    });
+
+    testWidgets('다른 탭에 갔다 오면 더 보기·검색이 처음 상태, 태그 화면에 갔다 오면 그대로', (tester) async {
+      tester.view.physicalSize = const Size(412, 2000);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final active = ValueNotifier(true);
+      await tester.pumpWidget(
+        RemineScope(
+          store: RemineStore(
+            FakeScreenshotRepository(
+              now: () => _now,
+              seed: _seed(forgotten: 4, recent: 1),
+            ),
+            now: () => _now,
+          ),
+          child: MaterialApp(
+            home: Scaffold(
+              body: ValueListenableBuilder<bool>(
+                valueListenable: active,
+                builder: (_, on, _) => InterestsScreen(active: on),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('목록 보기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('잊고 있었던 관심사 2개 더 보기 ↓'));
+      await tester.pumpAndSettle();
+      expect(find.byType(InterestCard), findsNWidgets(5));
+
+      // 태그 화면에 갔다 오면 그대로
+      await tester.tap(find.text('#잊은0'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(BackButtonCircle));
+      await tester.pumpAndSettle();
+      expect(find.byType(InterestCard), findsNWidgets(5));
+
+      // 검색을 열어 둔 채 다른 탭에 갔다 오면 처음 상태
+      await tester.tap(find.byIcon(LucideIcons.search));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '잊은');
+      await tester.pumpAndSettle();
+      active.value = false;
+      await tester.pumpAndSettle();
+      active.value = true;
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('목록 보기'));
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsNothing);
+      expect(find.byType(InterestCard), findsNWidgets(3));
+      expect(find.text('잊고 있었던 관심사 2개 더 보기 ↓'), findsOneWidget);
+    });
+
+    testWidgets('검색: 대소문자·띄어쓰기·# 무시, 섹션 유지, 더 보기 없이 전부 / 없으면 안내 / 닫으면 원래대로', (
+      tester,
+    ) async {
+      final seed = [
+        ..._seed(forgotten: 3, recent: 0),
+        for (final (k, tag) in const ['Nail Art', '네일아트팁'].indexed)
+          for (var d = 0; d < 3; d++)
+            ScreenshotItem(
+              id: 900 + k * 10 + d,
+              localAssetId: 'n$k$d',
+              takenAt: _now.subtract(Duration(days: 1 + d)),
+              category: Category.shopping,
+              tags: [tag],
+              summary: '',
+            ),
+      ];
+      await _openList(tester, seed, size: const Size(412, 1600));
+      expect(find.text('관심사'), findsOneWidget);
+
+      await tester.tap(find.byIcon(LucideIcons.search));
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsOneWidget);
+      expect(
+        tester.testTextInput.isVisible,
+        isTrue,
+        reason: '검색창을 열면 키보드가 올라온다',
+      );
+
+      await tester.enterText(find.byType(TextField), '#nailart');
+      await tester.pumpAndSettle();
+      expect(find.text('#Nail Art'), findsOneWidget);
+      expect(find.text('#네일아트팁'), findsNothing);
+      expect(find.text('잊고 있었던 관심사'), findsNothing, reason: '맞는 게 없는 섹션은 숨김');
+      expect(find.text('요즘 모으는 중'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), '잊 은');
+      await tester.pumpAndSettle();
+      expect(find.byType(InterestCard), findsNWidgets(3), reason: '더 보기 없이 전부');
+      expect(find.textContaining('더 보기'), findsNothing);
+      expect(find.text('잊고 있었던 관심사'), findsOneWidget);
+
+      await tester.enterText(find.byType(TextField), '캠핑');
+      await tester.pumpAndSettle();
+      expect(find.text("'캠핑'와 맞는 관심사가 없어요"), findsOneWidget);
+      expect(find.byType(InterestCard), findsNothing);
+
+      await tester.tap(find.byIcon(LucideIcons.x));
+      await tester.pumpAndSettle();
+      expect(find.byType(TextField), findsNothing);
+      expect(find.text('관심사'), findsOneWidget);
+      expect(find.byType(InterestCard), findsNWidgets(4));
+    });
   });
 
   group('관심사 카드 레이아웃 매트릭스', () {

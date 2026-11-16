@@ -21,7 +21,10 @@ import 'package:remine/models/category.dart';
 import 'package:remine/screens/debug_ocr_screen.dart';
 import 'package:remine/widgets/drawer_stage.dart';
 import 'package:remine/widgets/interest_brain_map.dart';
+import 'package:remine/core/tokens.dart';
+import 'package:remine/data/fake_data.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
+import 'package:remine/widgets/home_widgets.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:remine/widgets/small_widgets.dart';
 import 'package:remine/widgets/wordmark.dart';
@@ -110,6 +113,25 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
   await tester.pumpAndSettle(); // 스크롤 애니메이션이 끝난 뒤 눌러야 위치가 맞는다
   await tester.tap(finder.first, warnIfMissed: false);
   await tester.pumpAndSettle();
+}
+
+/// 관심사 목록 두 섹션: 크롬 데모(잊은 4 · 요즘 3) + 긴 태그 요즘 관심사 3개(각 3장).
+List<ScreenshotItem> _twoSectionInterests() {
+  final demo = buildDemoScreenshots(_now);
+  var id = demo.length;
+  return [
+    ...demo,
+    for (final (i, tag) in const ['데스크테리어', '프로필사진', '홈카페인테리어'].indexed)
+      for (var k = 0; k < 3; k++)
+        ScreenshotItem(
+          id: ++id,
+          localAssetId: 'longtag$id',
+          takenAt: _now.subtract(Duration(days: 2 + i, hours: k)),
+          category: Category.etc,
+          tags: [tag],
+          summary: '캡처 $id',
+        ),
+  ];
 }
 
 /// 긴 키워드 관심사 7개(많이 캡처한 순 = 9, 8, … 3장). 첫 키워드가 가장 길다.
@@ -271,6 +293,57 @@ void defineLayoutMatrix({
         );
       });
       _expectClean('정리 탭 $label', errors);
+    });
+
+    testWidgets('관심사 목록 두 섹션·더 보기·검색 · $label', (tester) async {
+      final errors = await _errorsDuring(() async {
+        await _pump(
+          tester,
+          size,
+          scale,
+          repository: FakeScreenshotRepository(
+            now: () => _now,
+            seed: _twoSectionInterests(),
+          ),
+        );
+        await tester.tap(find.byIcon(LucideIcons.star));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('목록 보기'));
+        await tester.pumpAndSettle();
+        // 큰 폰 기본 글자: 잊은 카드 2개 + 요즘 카드 2개가 첫 화면(탭바 위)에 보인다
+        if (size == const Size(412, 915) && scale == 1.0) {
+          final tabTop = tester.getTopLeft(find.byType(AppTabBar)).dy;
+          final cards = find.byType(InterestCard);
+          expect(
+            tester.getBottomLeft(cards.at(3)).dy,
+            lessThanOrEqualTo(tabTop),
+            reason: '네 번째 카드(요즘 2번째)가 첫 화면 밖',
+          );
+          // 실제 폰트에서 시안 높이: 잊은 카드 약 140, 요즘 카드는 그 80%
+          if (realFonts) {
+            final forgotten = tester.getSize(cards.at(0)).height;
+            final recent = tester.getSize(cards.at(2)).height;
+            expect(forgotten, closeTo(AppInterestCard.minHeight, 2));
+            expect(recent / forgotten, closeTo(0.8, 0.03));
+          }
+        }
+        await _tap(tester, find.textContaining('잊고 있었던 관심사 2개 더 보기'));
+        await _tap(tester, find.textContaining('요즘 모으는 중 3개 더 보기'));
+        await _tap(tester, find.text('접기 ↑'));
+        await tester.drag(find.byType(Scrollable).first, const Offset(0, 3000));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byIcon(LucideIcons.search));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField), '홈카페');
+        await tester.pumpAndSettle();
+        // 잊은 #홈카페 + 요즘 #홈카페인테리어(작은 화면에서는 아래 카드가 화면 밖)
+        // (홈 탭의 관심사 카드도 화면 밖에 있어 카드 수 대신 태그로 센다)
+        for (final tag in ['#홈카페', '#홈카페인테리어']) {
+          expect(find.text(tag, skipOffstage: false), findsOneWidget);
+        }
+        expect(find.text('#코바늘도안'), findsNothing);
+      });
+      _expectClean('관심사 목록 두 섹션 $label', errors);
     });
 
     testWidgets('관심사 탭 빈 상태 · $label', (tester) async {
