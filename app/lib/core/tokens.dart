@@ -176,6 +176,21 @@ abstract final class AppInterestCard {
   static const watermarkColor = Color(0x24FFFFFF);
 }
 
+/// 관심사 목록의 "맨 아래로 / 맨 위로" 떠 있는 버튼.
+abstract final class AppScrollJump {
+  static const double size = 48; // 지름 = 누르는 영역
+  static const double iconSize = 24;
+  static const double gap = 16; // 탭 바·화면 오른쪽에서 띄우는 거리
+  static const int minCards = 10; // 펼쳐진 카드가 이보다 많아야 보인다
+  static const appear = Duration(milliseconds: 180); // 페이드 + 살짝 커지기
+  static const double hiddenScale = 0.85;
+  static const shadow = BoxShadow(
+    color: AppColors.cardShadow,
+    blurRadius: 10,
+    offset: Offset(0, 3),
+  );
+}
+
 /// 상세 화면의 이미지 카드·배경 값. 값의 근거는 docs/design.md.
 abstract final class AppDetail {
   /// 이미지 카드 최대 폭(영역 폭 비율), 상단 바 아래 최소 여백(px), 기울기(-2°, 라디안).

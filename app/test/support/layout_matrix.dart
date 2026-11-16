@@ -115,13 +115,18 @@ Future<void> _tap(WidgetTester tester, Finder finder) async {
   await tester.pumpAndSettle();
 }
 
-/// 관심사 목록 두 섹션: 크롬 데모(잊은 4 · 요즘 3) + 긴 태그 요즘 관심사 3개(각 3장).
+/// 관심사 목록 두 섹션: 크롬 데모(잊은 4 · 요즘 3) + 긴 태그 요즘 관심사 4개(각 3장). 다 펼치면 카드 11개.
 List<ScreenshotItem> _twoSectionInterests() {
   final demo = buildDemoScreenshots(_now);
   var id = demo.length;
   return [
     ...demo,
-    for (final (i, tag) in const ['데스크테리어', '프로필사진', '홈카페인테리어'].indexed)
+    for (final (i, tag) in const [
+      '데스크테리어',
+      '프로필사진',
+      '홈카페인테리어',
+      '캘리그라피',
+    ].indexed)
       for (var k = 0; k < 3; k++)
         ScreenshotItem(
           id: ++id,
@@ -328,7 +333,22 @@ void defineLayoutMatrix({
           }
         }
         await _tap(tester, find.textContaining('잊고 있었던 관심사 2개 더 보기'));
-        await _tap(tester, find.textContaining('요즘 모으는 중 3개 더 보기'));
+        await _tap(tester, find.textContaining('요즘 모으는 중 4개 더 보기'));
+        // 카드 11개: 맨 아래로 → 맨 위로 버튼(화면 안, 눌러서 이동)
+        final jump = find.byKey(const ValueKey('scroll-jump'));
+        expect(jump.hitTestable(), findsOneWidget, reason: '내려온 상태라 보인다');
+        final screen = Offset.zero & size;
+        expect(screen.contains(tester.getRect(jump).bottomRight), isTrue);
+        // 펼친 직후 위치에 따라 아래·위 어느 쪽이든: 아래면 맨 아래로 가서 위로 바뀌고, 위면 맨 위로 가서 숨는다.
+        final up = find.byIcon(Icons.keyboard_double_arrow_up);
+        if (up.evaluate().isEmpty) {
+          await tester.tap(jump);
+          await tester.pumpAndSettle();
+          expect(up, findsOneWidget, reason: '맨 아래에서는 위 화살표');
+        }
+        await tester.tap(jump);
+        await tester.pumpAndSettle();
+        expect(jump.hitTestable(), findsNothing, reason: '맨 위에서는 숨는다');
         await _tap(tester, find.text('접기 ↑'));
         await tester.drag(find.byType(Scrollable).first, const Offset(0, 3000));
         await tester.pumpAndSettle();

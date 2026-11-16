@@ -410,6 +410,122 @@ void main() {
     });
   });
 
+  group('맨 아래로 / 맨 위로 버튼', () {
+    final jump = find.byKey(const ValueKey('scroll-jump'));
+    ScrollPosition position(WidgetTester tester) =>
+        tester.state<ScrollableState>(find.byType(Scrollable).first).position;
+
+    /// 요즘 관심사 [n]개를 펼친 목록.
+    Future<void> openExpanded(WidgetTester tester, int n) async {
+      await _openList(tester, _seed(forgotten: 0, recent: n));
+      await tester.tap(find.text('요즘 모으는 중 ${n - 3}개 더 보기 ↓'));
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> scrollDown(WidgetTester tester, double by) async {
+      await tester.drag(find.byType(Scrollable).first, Offset(0, -by));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('펼친 카드가 10개 이하면 스크롤해도 안 보인다', (tester) async {
+      await openExpanded(tester, 10);
+      await scrollDown(tester, 600);
+      expect(position(tester).pixels, greaterThan(400));
+      expect(jump.hitTestable(), findsNothing);
+      expect(find.bySemanticsLabel('맨 아래로'), findsNothing);
+    });
+
+    testWidgets('10개 초과 + 화면 절반 이상 내리면 보이고, 접어서 10개 이하가 되면 숨는다', (
+      tester,
+    ) async {
+      await openExpanded(tester, 12);
+      expect(jump.hitTestable(), findsNothing, reason: '아직 안 내림');
+      await scrollDown(tester, 300);
+      expect(jump.hitTestable(), findsNothing, reason: '화면 절반(약 364) 미만');
+      await scrollDown(tester, 200);
+      expect(jump.hitTestable(), findsOneWidget);
+      expect(find.byIcon(Icons.keyboard_double_arrow_down), findsOneWidget);
+      // 오른쪽 아래, 탭 바(72) 위로 16
+      final rect = tester.getRect(jump);
+      expect(rect.size, const Size(48, 48));
+      expect(rect.right, closeTo(360 - 16, 0.5));
+      expect(rect.bottom, closeTo(800 - 72 - 16, 0.5));
+
+      await tester.scrollUntilVisible(
+        find.text('접기 ↑'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.text('접기 ↑'));
+      await tester.pumpAndSettle();
+      expect(jump.hitTestable(), findsNothing);
+    });
+
+    testWidgets('누르면 맨 아래로, 맨 아래에서는 위 화살표 → 누르면 맨 위로', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await openExpanded(tester, 12);
+      await scrollDown(tester, 500);
+      expect(find.bySemanticsLabel('맨 아래로'), findsOneWidget);
+
+      await tester.tap(jump);
+      await tester.pumpAndSettle();
+      final p = position(tester);
+      expect(p.pixels, p.maxScrollExtent);
+      expect(find.byIcon(Icons.keyboard_double_arrow_up), findsOneWidget);
+      expect(find.bySemanticsLabel('맨 위로'), findsOneWidget);
+      // 마지막 카드가 버튼에 가리지 않는다
+      final last = tester.getRect(find.byType(InterestCard).last);
+      expect(last.bottom, lessThanOrEqualTo(tester.getRect(jump).top));
+
+      await tester.tap(jump);
+      await tester.pumpAndSettle();
+      expect(position(tester).pixels, 0);
+      expect(jump.hitTestable(), findsNothing);
+      semantics.dispose();
+    });
+
+    testWidgets('애니메이션 줄이기면 바로 이동한다', (tester) async {
+      await openExpanded(tester, 12);
+      await scrollDown(tester, 500);
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(disableAnimations: true);
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+      await tester.pump();
+      await tester.tap(jump);
+      await tester.pump(); // 이동
+      await tester.pump(); // 새로 그려진 카드만큼 늘어난 끝까지
+      final p = position(tester);
+      expect(p.pixels, p.maxScrollExtent);
+      expect(tester.hasRunningAnimations, isFalse, reason: '애니메이션 없이 바로');
+    });
+
+    testWidgets('아래·위 아이콘 모두 원의 정가운데(오차 0.5 이내)', (tester) async {
+      for (final up in [false, true]) {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: ScrollJumpButton(visible: true, up: up, onTap: () {}),
+              ),
+            ),
+          ),
+        );
+        final icon = find.byIcon(
+          up
+              ? Icons.keyboard_double_arrow_up
+              : Icons.keyboard_double_arrow_down,
+        );
+        final c = tester.getCenter(jump);
+        final i = tester.getCenter(icon);
+        expect((i - c).distance, lessThanOrEqualTo(0.5), reason: 'up=$up');
+        expect(tester.getSize(icon), const Size(24, 24));
+        expect(tester.getSize(jump), const Size(48, 48));
+      }
+    });
+  });
+
   group('관심사 카드 레이아웃 매트릭스', () {
     testWidgets(
       '폭 320/360/412 × 글자 1.0/1.3/2.0 × 상태 × 콜라주 0/1/3 × 긴 태그: 넘침 없음',

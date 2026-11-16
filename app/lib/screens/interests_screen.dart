@@ -46,6 +46,60 @@ class _InterestsScreenState extends State<InterestsScreen> {
   /// 검색창이 열려 있는지와 입력값.
   bool _searching = false;
   final _query = TextEditingController();
+  final _searchFocus = FocusNode();
+
+  /// 목록 스크롤. "맨 아래로 / 맨 위로" 버튼이 보일지·방향을 정한다.
+  final _scroll = ScrollController();
+
+  /// 마지막으로 그린 (화면 절반 이상 내림, 맨 아래 근처). 바뀔 때만 다시 그린다.
+  (bool, bool) _jump = (false, false);
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(_onScroll);
+    _searchFocus.addListener(() => setState(() {}));
+  }
+
+  (bool, bool) get _jumpState {
+    if (!_scroll.hasClients || !_scroll.position.hasContentDimensions) {
+      return (false, false);
+    }
+    final p = _scroll.position;
+    final half = p.viewportDimension / 2;
+    return (p.pixels >= half, p.maxScrollExtent - p.pixels < half);
+  }
+
+  void _onScroll() {
+    final now = _jumpState;
+    if (now != _jump) setState(() => _jump = now);
+  }
+
+  /// 아래 모양이면 맨 아래로, 위 모양이면 맨 위로. 애니메이션 줄이기면 바로 이동.
+  Future<void> _jumpTo({required bool top}) async {
+    final p = _scroll.position;
+    if (AppMotion.reduced(context)) {
+      _scroll.jumpTo(top ? 0 : p.maxScrollExtent);
+      // 아래쪽 카드가 처음 그려지며 목록 길이가 늘었으면 다음 프레임에 끝까지 마저 간다.
+      if (!top) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted && p.pixels < p.maxScrollExtent) {
+            _scroll.jumpTo(p.maxScrollExtent);
+          }
+        });
+      }
+      return;
+    }
+    await _scroll.animateTo(
+      top ? 0 : p.maxScrollExtent,
+      duration: AppMotion.duration(context, MotionDuration.slow),
+      curve: AppMotion.standard,
+    );
+    // 아래쪽 카드가 처음 그려지며 목록 길이가 늘었으면 끝까지 마저 간다.
+    if (!top && mounted && p.pixels < p.maxScrollExtent) {
+      _scroll.jumpTo(p.maxScrollExtent);
+    }
+  }
 
   /// 이번에 탭에 들어와서 아직 목록으로 넘어가지 않았는지.
   bool _showMap = true;
@@ -90,6 +144,8 @@ class _InterestsScreenState extends State<InterestsScreen> {
   @override
   void dispose() {
     _query.dispose();
+    _searchFocus.dispose();
+    _scroll.dispose();
     super.dispose();
   }
 
@@ -155,78 +211,101 @@ class _InterestsScreenState extends State<InterestsScreen> {
     final showRecent = filtering || _recentOpen
         ? recent
         : recent.take(_recentPreview).toList();
+    // 펼쳐진 카드가 많고 화면 절반 이상 내렸을 때만. 키보드(검색 입력 중)가 올라와 있으면 숨긴다.
+    final cards = showForgotten.length + showRecent.length;
+    final (scrolled, nearBottom) = _jumpState;
+    final keyboard =
+        _searchFocus.hasFocus || MediaQuery.viewInsetsOf(context).bottom > 0;
+    final showJump = cards > AppScrollJump.minCards && scrolled && !keyboard;
     // 빈 상태도 ListView 안에 둬서 작은 화면·큰 글꼴에서 넘치지 않고 스크롤된다.
     return SafeArea(
       bottom: false,
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(
-          AppSpacing.screenPadding,
-          AppSpacing.s16,
-          AppSpacing.screenPadding,
-          AppSpacing.s24,
-        ),
+      child: Stack(
         children: [
-          _searching ? _searchBar() : _titleBar(interests.isNotEmpty),
-          const SizedBox(height: AppSpacing.s4),
-          Text(
-            '여러 번 캡처한 것들을 모았어요',
-            style: AppText.caption.copyWith(color: AppColors.inkSub),
-          ),
-          const SizedBox(height: AppSpacing.s20),
-          if (interests.isEmpty)
-            const _EmptyInterests()
-          else if (filtering && matched.isEmpty)
-            _NoMatch(query: _query.text.trim())
-          else ...[
-            // 검색 중에는 맞는 것이 없는 섹션을 숨긴다(점선 안내도 검색 아닐 때만).
-            if (!filtering || forgotten.isNotEmpty)
-              _SectionHeader(
-                key: _forgottenHeader,
-                title: '잊고 있었던 관심사',
-                count: forgotten.length,
-                dot: AppColors.lemon,
+          ListView(
+            controller: _scroll,
+            // 아래 여백: 마지막 카드가 떠 있는 버튼에 가리지 않게
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.screenPadding,
+              AppSpacing.s16,
+              AppSpacing.screenPadding,
+              AppSpacing.s24 + AppScrollJump.size + AppScrollJump.gap,
+            ),
+            children: [
+              _searching ? _searchBar() : _titleBar(interests.isNotEmpty),
+              const SizedBox(height: AppSpacing.s4),
+              Text(
+                '여러 번 캡처한 것들을 모았어요',
+                style: AppText.caption.copyWith(color: AppColors.inkSub),
               ),
-            if (forgotten.isEmpty && !filtering) const _NoForgotten(),
-            for (final interest in showForgotten) _card(interest),
-            if (!filtering && forgotten.length > _forgottenPreview)
-              _forgottenOpen
-                  ? _HighlightButton(
-                      text: '접기 ↑',
-                      label: '잊고 있었던 관심사 접기',
-                      onTap: () => _collapse(
-                        _forgottenHeader,
-                        () => _forgottenOpen = false,
-                      ),
-                    )
-                  : _HighlightButton(
-                      text:
-                          '잊고 있었던 관심사 ${forgotten.length - _forgottenPreview}개 더 보기 ↓',
-                      onTap: () => setState(() => _forgottenOpen = true),
-                    ),
-            if (recent.isNotEmpty) ...[
-              const SizedBox(height: AppSpacing.s8),
-              _SectionHeader(
-                key: _recentHeader,
-                title: '요즘 모으는 중',
-                count: recent.length,
-                dot: AppColors.celadon,
-              ),
-              for (final interest in showRecent) _card(interest),
-              if (!filtering && recent.length > _recentPreview)
-                _recentOpen
-                    ? _HighlightButton(
-                        text: '접기 ↑',
-                        label: '요즘 모으는 중 접기',
-                        onTap: () =>
-                            _collapse(_recentHeader, () => _recentOpen = false),
-                      )
-                    : _HighlightButton(
-                        text:
-                            '요즘 모으는 중 ${recent.length - _recentPreview}개 더 보기 ↓',
-                        onTap: () => setState(() => _recentOpen = true),
-                      ),
+              const SizedBox(height: AppSpacing.s20),
+              if (interests.isEmpty)
+                const _EmptyInterests()
+              else if (filtering && matched.isEmpty)
+                _NoMatch(query: _query.text.trim())
+              else ...[
+                // 검색 중에는 맞는 것이 없는 섹션을 숨긴다(점선 안내도 검색 아닐 때만).
+                if (!filtering || forgotten.isNotEmpty)
+                  _SectionHeader(
+                    key: _forgottenHeader,
+                    title: '잊고 있었던 관심사',
+                    count: forgotten.length,
+                    dot: AppColors.lemon,
+                  ),
+                if (forgotten.isEmpty && !filtering) const _NoForgotten(),
+                for (final interest in showForgotten) _card(interest),
+                if (!filtering && forgotten.length > _forgottenPreview)
+                  _forgottenOpen
+                      ? _HighlightButton(
+                          text: '접기 ↑',
+                          label: '잊고 있었던 관심사 접기',
+                          onTap: () => _collapse(
+                            _forgottenHeader,
+                            () => _forgottenOpen = false,
+                          ),
+                        )
+                      : _HighlightButton(
+                          text:
+                              '잊고 있었던 관심사 ${forgotten.length - _forgottenPreview}개 더 보기 ↓',
+                          onTap: () => setState(() => _forgottenOpen = true),
+                        ),
+                if (recent.isNotEmpty) ...[
+                  const SizedBox(height: AppSpacing.s8),
+                  _SectionHeader(
+                    key: _recentHeader,
+                    title: '요즘 모으는 중',
+                    count: recent.length,
+                    dot: AppColors.celadon,
+                  ),
+                  for (final interest in showRecent) _card(interest),
+                  if (!filtering && recent.length > _recentPreview)
+                    _recentOpen
+                        ? _HighlightButton(
+                            text: '접기 ↑',
+                            label: '요즘 모으는 중 접기',
+                            onTap: () => _collapse(
+                              _recentHeader,
+                              () => _recentOpen = false,
+                            ),
+                          )
+                        : _HighlightButton(
+                            text:
+                                '요즘 모으는 중 ${recent.length - _recentPreview}개 더 보기 ↓',
+                            onTap: () => setState(() => _recentOpen = true),
+                          ),
+                ],
+              ],
             ],
-          ],
+          ),
+          Positioned(
+            right: AppScrollJump.gap,
+            bottom: AppScrollJump.gap,
+            child: ScrollJumpButton(
+              visible: showJump,
+              up: nearBottom,
+              onTap: () => _jumpTo(top: nearBottom),
+            ),
+          ),
         ],
       ),
     );
@@ -256,6 +335,7 @@ class _InterestsScreenState extends State<InterestsScreen> {
       Expanded(
         child: TextField(
           controller: _query,
+          focusNode: _searchFocus,
           autofocus: true,
           textInputAction: TextInputAction.search,
           style: AppText.body,
@@ -389,6 +469,72 @@ class _HighlightButton extends StatelessWidget {
       ),
     ),
   );
+}
+
+/// "맨 아래로 / 맨 위로" 떠 있는 버튼: 지름 48 검정 원 + 흰 겹화살표(정가운데), 약한 그림자.
+/// 숨을 때도 자리에 남아 페이드 + 살짝 작아지고, 누를 수 없고 화면 리더도 읽지 않는다.
+class ScrollJumpButton extends StatelessWidget {
+  const ScrollJumpButton({
+    super.key,
+    required this.visible,
+    required this.up,
+    required this.onTap,
+  });
+
+  final bool visible;
+
+  /// true면 위 화살표("맨 위로"), false면 아래 화살표("맨 아래로").
+  final bool up;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final d = AppMotion.reduced(context) ? Duration.zero : AppScrollJump.appear;
+    return IgnorePointer(
+      ignoring: !visible,
+      child: ExcludeSemantics(
+        excluding: !visible,
+        child: AnimatedOpacity(
+          opacity: visible ? 1 : 0,
+          duration: d,
+          curve: AppMotion.standard,
+          child: AnimatedScale(
+            scale: visible ? 1 : AppScrollJump.hiddenScale,
+            duration: d,
+            curve: AppMotion.standard,
+            child: Semantics(
+              button: true,
+              label: up ? '맨 위로' : '맨 아래로',
+              excludeSemantics: true,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: onTap,
+                child: Container(
+                  key: const ValueKey('scroll-jump'),
+                  width: AppScrollJump.size,
+                  height: AppScrollJump.size,
+                  decoration: const BoxDecoration(
+                    color: AppColors.ink,
+                    shape: BoxShape.circle,
+                    boxShadow: [AppScrollJump.shadow],
+                  ),
+                  child: Center(
+                    child: Icon(
+                      up
+                          ? Icons.keyboard_double_arrow_up
+                          : Icons.keyboard_double_arrow_down,
+                      size: AppScrollJump.iconSize,
+                      color: AppColors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// 검색 결과가 없을 때.
