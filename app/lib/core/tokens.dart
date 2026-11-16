@@ -189,6 +189,53 @@ abstract final class AppScrollJump {
     blurRadius: 10,
     offset: Offset(0, 3),
   );
+
+  /// 누르면 가는 시간: 거리에 비례(화면 하나당 [msPerScreen]), [minTravel] ~ [maxTravel].
+  static const minTravel = Duration(milliseconds: 380);
+  static const maxTravel = Duration(milliseconds: 700);
+  static const msPerScreen = 64;
+  static const Curve travelCurve = Curves.easeInOutCubic;
+
+  /// 화면 [longJumpScreens]개 이상 떨어져 있으면 끝에서 화면 [tailScreens]개 앞까지 바로 간 뒤 남은 구간만 부드럽게.
+  static const double longJumpScreens = 6;
+  static const double tailScreens = 2;
+
+  /// 목록 끝이 늘어나 덜 갔을 때 마저 가는 이동.
+  static const settle = Duration(milliseconds: 200);
+
+  /// 아래 ↔ 위 아이콘 크로스페이드.
+  static const iconSwap = Duration(milliseconds: 200);
+
+  static Duration travel(double distance, double screen) {
+    final ms =
+        minTravel.inMilliseconds +
+        msPerScreen * (screen <= 0 ? 0 : distance / screen);
+    return Duration(
+      milliseconds: ms
+          .clamp(minTravel.inMilliseconds, maxTravel.inMilliseconds)
+          .round(),
+    );
+  }
+}
+
+/// 관심사 목록 섹션의 더 보기(펼치기)·접기 모션.
+abstract final class AppReveal {
+  /// 펼치기: 섹션 높이가 [grow] 동안 늘고, 새 카드는 [stagger] 간격으로 차례로(최대 [maxStaggered]장, 그 뒤는 한꺼번에)
+  /// [item] 동안 페이드 + 아래에서 [shift]px 올라온다. "더 보기"는 [buttonFade] 동안 사라지고,
+  /// "접기"는 마지막 카드가 다 나온 뒤 [buttonFade] 동안 나타난다.
+  static const grow = Duration(milliseconds: 320);
+  static const Curve growCurve = Curves.easeOutCubic;
+  static const item = Duration(milliseconds: 260);
+  static const Curve itemCurve = Curves.easeOutCubic;
+  static const stagger = Duration(milliseconds: 40);
+  static const int maxStaggered = 8;
+  static const double shift = 12;
+  static const buttonFade = Duration(milliseconds: 150);
+
+  /// 접기: 펼쳤던 카드가 한꺼번에 [fadeOut] 동안 사라지고, 섹션 높이는 [shrink] 동안 준다(머리로 가는 스크롤도 같이).
+  static const fadeOut = Duration(milliseconds: 160);
+  static const shrink = Duration(milliseconds: 280);
+  static const Curve shrinkCurve = Curves.easeInOutCubic;
 }
 
 /// 상세 화면의 이미지 카드·배경 값. 값의 근거는 docs/design.md.

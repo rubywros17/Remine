@@ -281,11 +281,8 @@ void main() {
       await tester.tap(find.text('요즘 모으는 중 2개 더 보기 ↓'));
       await tester.pumpAndSettle();
       expect(find.byType(InterestCard, skipOffstage: false), findsNWidgets(5));
-      await tester.scrollUntilVisible(
-        find.text('접기 ↑'),
-        200,
-        scrollable: find.byType(Scrollable).first,
-      );
+      await tester.ensureVisible(find.text('접기 ↑'));
+      await tester.pumpAndSettle();
       expect(marker('접기 ↑'), highlighterDecoration(color: AppColors.celadon));
       await tester.tap(find.text('접기 ↑'));
       await tester.pumpAndSettle();
@@ -301,11 +298,8 @@ void main() {
       await _openList(tester, _seed(forgotten: 3, recent: 0));
       await tester.tap(find.text('잊고 있었던 관심사 1개 더 보기 ↓'));
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(
-        find.text('접기 ↑'),
-        200,
-        scrollable: find.byType(Scrollable).first,
-      );
+      await tester.ensureVisible(find.text('접기 ↑'));
+      await tester.pumpAndSettle();
       final box = tester.widget<DecoratedBox>(
         find
             .ancestor(
@@ -469,11 +463,8 @@ void main() {
       expect(rect.right, closeTo(360 - 16, 0.5));
       expect(rect.bottom, closeTo(800 - 72 - 16, 0.5));
 
-      await tester.scrollUntilVisible(
-        find.text('접기 ↑'),
-        200,
-        scrollable: find.byType(Scrollable).first,
-      );
+      await tester.ensureVisible(find.text('접기 ↑'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('접기 ↑'));
       await tester.pumpAndSettle();
       expect(jump.hitTestable(), findsNothing);
@@ -541,6 +532,147 @@ void main() {
         expect(tester.getSize(icon), const Size(24, 24));
         expect(tester.getSize(jump), const Size(48, 48));
       }
+    });
+  });
+
+  group('펼치기·접기 모션', () {
+    const more = '요즘 모으는 중 2개 더 보기 ↓';
+    double opacityOf(WidgetTester tester, Finder f) => tester
+        .widget<Opacity>(
+          find.ancestor(of: f, matching: find.byType(Opacity)).first,
+        )
+        .opacity;
+
+    testWidgets('펼치기: 새 카드는 차례로 나타나고, 더 보기가 먼저 사라진 뒤 카드가 다 나오면 접기', (
+      tester,
+    ) async {
+      await _openList(tester, _seed(forgotten: 0, recent: 5));
+      await tester.tap(find.text(more));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 60));
+      // 첫 새 카드가 둘째보다 먼저(40ms 간격), 둘 다 아직 다 안 나옴
+      final first = opacityOf(tester, find.text('#요즘3'));
+      final second = opacityOf(tester, find.text('#요즘4'));
+      expect(first, inExclusiveRange(0, 1));
+      expect(second, lessThan(first));
+      expect(find.text('접기 ↑'), findsNothing, reason: '카드가 다 나온 뒤에');
+      expect(opacityOf(tester, find.text(more)), lessThan(1));
+
+      await tester.pumpAndSettle();
+      expect(opacityOf(tester, find.text('#요즘3')), 1);
+      expect(opacityOf(tester, find.text('#요즘4')), 1);
+      expect(find.text(more), findsNothing);
+      expect(opacityOf(tester, find.text('접기 ↑')), 1);
+    });
+
+    testWidgets('접기: 펼쳤던 카드가 한꺼번에 사라지고 끝나면 빠진다', (tester) async {
+      await _openList(tester, _seed(forgotten: 0, recent: 5));
+      await tester.tap(find.text(more));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('접기 ↑'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('접기 ↑'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 80));
+      final a = opacityOf(tester, find.text('#요즘3'));
+      final b = opacityOf(tester, find.text('#요즘4'));
+      expect(a, inExclusiveRange(0, 1));
+      expect(b, closeTo(a, 0.001), reason: '한꺼번에');
+
+      await tester.pumpAndSettle();
+      expect(find.text('#요즘3', skipOffstage: false), findsNothing);
+      expect(find.byType(InterestCard, skipOffstage: false), findsNWidgets(3));
+      expect(opacityOf(tester, find.text(more)), 1);
+    });
+
+    // 긴 화면: 접을 때 머리로 가는 스크롤이 생기지 않게(스크롤이 움직이는 동안은 Flutter가 목록 안 탭을 막는다).
+    testWidgets('연타해도 꼬이지 않고 마지막으로 누른 상태로 끝난다', (tester) async {
+      await _openList(
+        tester,
+        _seed(forgotten: 0, recent: 5),
+        size: const Size(412, 1600),
+      );
+      await tester.tap(find.text(more));
+      await tester.pump(); // 애니메이션 시작 프레임
+      await tester.pump(const Duration(milliseconds: 30));
+      await tester.tap(find.text(more)); // 사라지는 중 또 누름
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('접기 ↑'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('접기 ↑'));
+      await tester.pump(); // 애니메이션 시작 프레임
+      await tester.pump(const Duration(milliseconds: 60));
+      expect(opacityOf(tester, find.text(more)), inExclusiveRange(0, 1));
+      await tester.tap(find.text(more)); // 접히는 중에 다시 펼침
+      await tester.pump(const Duration(milliseconds: 40));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InterestCard, skipOffstage: false), findsNWidgets(5));
+      expect(opacityOf(tester, find.text('#요즘3')), 1);
+      expect(opacityOf(tester, find.text('#요즘4')), 1);
+      expect(find.text('접기 ↑', skipOffstage: false), findsOneWidget);
+      expect(find.text(more, skipOffstage: false), findsNothing);
+    });
+
+    testWidgets('애니메이션 끄기면 펼치기·접기가 바로 끝난다', (tester) async {
+      tester.platformDispatcher.accessibilityFeaturesTestValue =
+          const FakeAccessibilityFeatures(disableAnimations: true);
+      addTearDown(
+        tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+      );
+      await _openList(tester, _seed(forgotten: 0, recent: 5));
+      await tester.tap(find.text(more));
+      await tester.pump();
+      expect(opacityOf(tester, find.text('#요즘4')), 1);
+      expect(find.text('접기 ↑', skipOffstage: false), findsOneWidget);
+      expect(tester.hasRunningAnimations, isFalse);
+
+      await tester.ensureVisible(find.text('접기 ↑'));
+      await tester.pump();
+      await tester.tap(find.text('접기 ↑'));
+      await tester.pump();
+      // 접힌 상태가 바로(목록이 짧아져 스크롤 위치가 끝에 맞춰지는 건 Flutter 스크롤 동작이라 확인하지 않는다)
+      expect(find.text('#요즘3', skipOffstage: false), findsNothing);
+      expect(opacityOf(tester, find.text(more)), 1);
+    });
+  });
+
+  group('맨 아래로 이동 시간', () {
+    test('거리에 비례해 380~700ms', () {
+      const screen = 700.0;
+      expect(AppScrollJump.travel(0, screen).inMilliseconds, 380);
+      expect(AppScrollJump.travel(100, screen).inMilliseconds, 389);
+      expect(AppScrollJump.travel(screen * 3, screen).inMilliseconds, 572);
+      expect(AppScrollJump.travel(screen * 20, screen).inMilliseconds, 700);
+    });
+
+    testWidgets('누르면 380~700ms(+끝 보정) 안에 맨 아래에 닿는다', (tester) async {
+      await _openList(tester, _seed(forgotten: 0, recent: 12));
+      await tester.tap(find.text('요즘 모으는 중 9개 더 보기 ↓'));
+      await tester.pumpAndSettle();
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -500));
+      await tester.pumpAndSettle();
+      final p = tester
+          .state<ScrollableState>(find.byType(Scrollable).first)
+          .position;
+
+      await tester.tap(find.byKey(const ValueKey('scroll-jump')));
+      var ms = 0;
+      while (p.pixels < p.maxScrollExtent && ms < 2000) {
+        await tester.pump(const Duration(milliseconds: 10));
+        ms += 10;
+      }
+      expect(p.pixels, p.maxScrollExtent);
+      expect(
+        ms,
+        inInclusiveRange(
+          AppScrollJump.minTravel.inMilliseconds - 20,
+          AppScrollJump.maxTravel.inMilliseconds +
+              AppScrollJump.settle.inMilliseconds +
+              20,
+        ),
+      );
     });
   });
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderAbstractViewport;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../core/helpers.dart';
@@ -8,6 +9,7 @@ import '../models/interest.dart';
 import '../widgets/home_widgets.dart';
 import '../widgets/interest_brain_map.dart';
 import '../widgets/pressable_scale.dart';
+import '../widgets/reveal_section.dart';
 import '../widgets/small_widgets.dart';
 import 'tag_screen.dart';
 
@@ -90,14 +92,26 @@ class _InterestsScreenState extends State<InterestsScreen> {
       }
       return;
     }
+    // 아주 멀면 끝에서 화면 몇 개 앞까지 바로 간 뒤 남은 구간만 부드럽게(긴 목록에서 버벅이지 않게).
+    final screen = p.viewportDimension;
+    var distance = ((top ? 0 : p.maxScrollExtent) - p.pixels).abs();
+    if (distance >= screen * AppScrollJump.longJumpScreens) {
+      final tail = screen * AppScrollJump.tailScreens;
+      _scroll.jumpTo(top ? tail : p.maxScrollExtent - tail);
+      distance = tail;
+    }
     await _scroll.animateTo(
       top ? 0 : p.maxScrollExtent,
-      duration: AppMotion.duration(context, MotionDuration.slow),
-      curve: AppMotion.standard,
+      duration: AppScrollJump.travel(distance, screen),
+      curve: AppScrollJump.travelCurve,
     );
-    // 아래쪽 카드가 처음 그려지며 목록 길이가 늘었으면 끝까지 마저 간다.
+    // 아래쪽 카드가 처음 그려지며 목록 길이가 늘었으면 끝까지 마저 부드럽게 간다.
     if (!top && mounted && p.pixels < p.maxScrollExtent) {
-      _scroll.jumpTo(p.maxScrollExtent);
+      await _scroll.animateTo(
+        p.maxScrollExtent,
+        duration: AppScrollJump.settle,
+        curve: AppMotion.standard,
+      );
     }
   }
 
@@ -154,19 +168,34 @@ class _InterestsScreenState extends State<InterestsScreen> {
     _query.clear();
   }
 
-  /// 접고 나서 그 섹션 머리가 보이게(아래에서 접으면 머리가 화면 위로 지나가 있을 수 있다).
+  /// 접으면서 그 섹션 머리가 화면 위로 지나가 있으면, 높이가 줄어드는 것과 같은 시간·곡선으로 머리까지 올린다.
+  /// 머리가 화면에 보이면 스크롤하지 않는다.
   void _collapse(GlobalKey header, VoidCallback close) {
     setState(close);
+    final reduced = AppMotion.reduced(context);
+    void reveal(RenderObject box) {
+      final target = RenderAbstractViewport.of(box)
+          .getOffsetToReveal(box, 0)
+          .offset;
+      if (!_scroll.hasClients || target >= _scroll.offset) return; // 이미 보인다
+      reduced
+          ? _scroll.jumpTo(target)
+          : _scroll.animateTo(
+              target,
+              duration: AppReveal.shrink,
+              curve: AppReveal.shrinkCurve,
+            );
+    }
+
+    final box = header.currentContext?.findRenderObject();
+    if (box != null && box.attached) {
+      reveal(box); // 머리는 접히는 부분보다 위라 지금 위치가 그대로 목표다
+      return;
+    }
+    // 머리가 너무 멀어 아직 안 그려져 있으면, 접힌 다음 프레임에 찾는다.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final ctx = header.currentContext;
-      if (ctx != null && ctx.mounted) {
-        Scrollable.ensureVisible(
-          ctx,
-          duration: AppMotion.duration(context, MotionDuration.base),
-          curve: AppMotion.standard,
-          alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtStart,
-        );
-      }
+      final later = header.currentContext?.findRenderObject();
+      if (mounted && later != null && later.attached) reveal(later);
     });
   }
 
@@ -253,22 +282,33 @@ class _InterestsScreenState extends State<InterestsScreen> {
                     dot: AppColors.lemon,
                   ),
                 if (forgotten.isEmpty && !filtering) const _NoForgotten(),
-                for (final interest in showForgotten) _card(interest),
-                if (!filtering && forgotten.length > _forgottenPreview)
-                  _forgottenOpen
-                      ? _HighlightButton(
-                          text: '접기 ↑',
-                          label: '잊고 있었던 관심사 접기',
-                          onTap: () => _collapse(
-                            _forgottenHeader,
-                            () => _forgottenOpen = false,
-                          ),
-                        )
-                      : _HighlightButton(
-                          text:
-                              '잊고 있었던 관심사 ${forgotten.length - _forgottenPreview}개 더 보기 ↓',
-                          onTap: () => setState(() => _forgottenOpen = true),
-                        ),
+                if (filtering || forgotten.length <= _forgottenPreview)
+                  for (final interest in forgotten) _card(interest)
+                else ...[
+                  for (final interest in forgotten.take(_forgottenPreview))
+                    _card(interest),
+                  RevealSection(
+                    key: const ValueKey('reveal-forgotten'),
+                    open: _forgottenOpen,
+                    cards: [
+                      for (final interest in forgotten.skip(_forgottenPreview))
+                        _card(interest),
+                    ],
+                    more: _HighlightButton(
+                      text:
+                          '잊고 있었던 관심사 ${forgotten.length - _forgottenPreview}개 더 보기 ↓',
+                      onTap: () => setState(() => _forgottenOpen = true),
+                    ),
+                    collapse: _HighlightButton(
+                      text: '접기 ↑',
+                      label: '잊고 있었던 관심사 접기',
+                      onTap: () => _collapse(
+                        _forgottenHeader,
+                        () => _forgottenOpen = false,
+                      ),
+                    ),
+                  ),
+                ],
                 if (recent.isNotEmpty) ...[
                   const SizedBox(height: AppSpacing.s8),
                   _SectionHeader(
@@ -277,24 +317,33 @@ class _InterestsScreenState extends State<InterestsScreen> {
                     count: recent.length,
                     dot: AppColors.celadon,
                   ),
-                  for (final interest in showRecent) _card(interest),
-                  if (!filtering && recent.length > _recentPreview)
-                    _recentOpen
-                        ? _HighlightButton(
-                            color: AppColors.celadon,
-                            text: '접기 ↑',
-                            label: '요즘 모으는 중 접기',
-                            onTap: () => _collapse(
-                              _recentHeader,
-                              () => _recentOpen = false,
-                            ),
-                          )
-                        : _HighlightButton(
-                            color: AppColors.celadon,
-                            text:
-                                '요즘 모으는 중 ${recent.length - _recentPreview}개 더 보기 ↓',
-                            onTap: () => setState(() => _recentOpen = true),
-                          ),
+                  if (filtering || recent.length <= _recentPreview)
+                    for (final interest in recent) _card(interest)
+                  else ...[
+                    for (final interest in recent.take(_recentPreview))
+                      _card(interest),
+                    RevealSection(
+                      key: const ValueKey('reveal-recent'),
+                      open: _recentOpen,
+                      cards: [
+                        for (final interest in recent.skip(_recentPreview))
+                          _card(interest),
+                      ],
+                      more: _HighlightButton(
+                        color: AppColors.celadon,
+                        text:
+                            '요즘 모으는 중 ${recent.length - _recentPreview}개 더 보기 ↓',
+                        onTap: () => setState(() => _recentOpen = true),
+                      ),
+                      collapse: _HighlightButton(
+                        color: AppColors.celadon,
+                        text: '접기 ↑',
+                        label: '요즘 모으는 중 접기',
+                        onTap: () =>
+                            _collapse(_recentHeader, () => _recentOpen = false),
+                      ),
+                    ),
+                  ],
                 ],
               ],
             ],
@@ -371,6 +420,7 @@ class _InterestsScreenState extends State<InterestsScreen> {
   );
 
   Widget _card(Interest interest) => Padding(
+    key: ValueKey('interest-${interest.tag}'),
     padding: const EdgeInsets.only(bottom: AppSpacing.s12),
     child: InterestCard(
       interest: interest,
@@ -500,6 +550,12 @@ class ScrollJumpButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final d = AppMotion.reduced(context) ? Duration.zero : AppScrollJump.appear;
+    final icon = Icon(
+      up ? Icons.keyboard_double_arrow_up : Icons.keyboard_double_arrow_down,
+      key: ValueKey(up),
+      size: AppScrollJump.iconSize,
+      color: AppColors.white,
+    );
     return IgnorePointer(
       ignoring: !visible,
       child: ExcludeSemantics(
@@ -528,14 +584,15 @@ class ScrollJumpButton extends StatelessWidget {
                     shape: BoxShape.circle,
                     boxShadow: [AppScrollJump.shadow],
                   ),
+                  // 아래 ↔ 위가 바뀔 때 크로스페이드(회전보다 화살표 모양이 덜 흔들린다).
+                  // 애니메이션 줄이기면 그냥 바꾼다.
                   child: Center(
-                    child: Icon(
-                      up
-                          ? Icons.keyboard_double_arrow_up
-                          : Icons.keyboard_double_arrow_down,
-                      size: AppScrollJump.iconSize,
-                      color: AppColors.white,
-                    ),
+                    child: AppMotion.reduced(context)
+                        ? icon
+                        : AnimatedSwitcher(
+                            duration: AppScrollJump.iconSwap,
+                            child: icon,
+                          ),
                   ),
                 ),
               ),
