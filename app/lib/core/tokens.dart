@@ -163,6 +163,14 @@ abstract final class AppInterestCard {
   static const double minHeight = 140; // 시안 높이
   static const double recentMinHeight = 112; // minHeight의 80%
 
+  /// 홈 카드 최소 높이(상태 스티커·태그·연결 태그·게이지 줄). 360×800(실제 폰트)에서 홈이 스크롤 없이 들어가는 높이.
+  static const double homeMinHeight = 184;
+
+  /// 홈 카드 왼쪽 아래 점 게이지: 이 장수 이상이면 점 하나씩 더(5칸). 잊은 관심사는 레몬 1칸.
+  static const gaugeSteps = [3, 6, 10, 15, 20];
+  static const double gaugeDot = 7;
+  static const gaugeEmpty = Color(0x40FFFFFF); // 빈 칸: 흰색 25%
+
   /// 콜라주 맨 앞 사진 오른쪽 위에 걸친 원형 스티커 "19 / SHOTS": 지름, 기울기(10°).
   static const double shotsSize = 58;
   static const double shotsTilt = 10 * math.pi / 180;
@@ -399,8 +407,15 @@ abstract final class AppShadow {
 /// 화면이 남으면 둘 다 남는 높이의 [cardGapShare](각각 최대 +[cardGapMaxExtra])만큼 같이 는다.
 /// 나머지는 알약 아래로. 알약 ↔ 탭바는 최소 [pillsToTabMin](모자라면 스크롤).
 abstract final class AppHome {
+  /// 제목 ↔ 카드 · 카드 ↔ 서랍 제목의 기본 간격(보이는 글자 끝 기준, 서랍 쪽은 홈 화면이 보정을 더한다).
+  static const double cardGap = 20;
+
+  /// 예전 기본 간격(24)에서 줄인 양. 남는 높이는 예전 기준으로 계산해서(최소 높이에서 2배를 뺀다)
+  /// 어떤 화면 크기에서든 두 간격이 이만큼씩 똑같이 줄고, 서랍이 2배만큼 올라간다.
+  static const double cardGapTrim = AppSpacing.s24 - cardGap;
+
   static const double cardGapShare = 1 / 3;
-  static const double cardGapMaxExtra = 32;
+  static const double cardGapMaxExtra = 16;
   static const double pillsToTabMin = 20;
 
   // ponytail: Pretendard Bold 한글을 픽셀로 재서 맞춘 보정값(글자 크기 대비). 폰트를 바꾸면 home_ink_gap_test로 다시 잰다.

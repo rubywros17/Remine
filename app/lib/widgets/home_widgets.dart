@@ -255,26 +255,42 @@ class CategoryPill extends StatelessWidget {
   }
 }
 
-/// 관심사 카드(다크그레이). 주인공은 태그 "#뜨개질"을 크게, 그 아래 멘트.
+/// 관심사 카드가 놓이는 곳. 바깥(다크그레이·워터마크·콜라주·SHOTS)은 같고 글자 영역만 다르다.
+enum InterestCardVariant {
+  /// 홈: 상태 스티커 "요즘 빠진 것"/"잊고 있었던 관심사" + #태그 + 연결 태그 + 점 게이지·마지막 캡처. 높이 168.
+  home,
+
+  /// 관심사 목록: 상태 알약 + #태그 + 멘트. 잊은 카드 140, 요즘 카드는 그 80%.
+  list,
+}
+
+/// 관심사 카드(다크그레이). 주인공은 태그 "#뜨개질"을 크게.
 ///
 /// 숫자는 맨 앞 사진 오른쪽 위 원형 스티커 "19 / SHOTS"와 카드 뒤 옅은 외곽선 워터마크로 보여 준다(전체 장수).
-/// 상태(서버 status, 30일 경계): 잊고 있었던 관심사는 레몬 "N일째 잠자는 중" + 멘트 2줄 "9월에 12번이나 캡처했어요." / "다시 볼까요?",
-/// 요즘 모으는 중은 셀라돈 "오늘/어제/N일 전 마지막" + 멘트 1줄. 누르면 태그 모아보기.
+/// 상태는 서버 status(30일 경계): 잊고 있었던 관심사는 레몬, 요즘 모으는 중은 셀라돈. 누르면 태그 모아보기.
+/// - list: 잊은 것은 "N일째 잠자는 중" + 멘트 2줄 "9월에 12번이나 캡처했어요." / "다시 볼까요?",
+///   요즘 것은 "오늘/어제/N일 전 마지막" + 멘트 1줄.
+/// - home: [InterestCardVariant.home] 참고.
 class InterestCard extends StatelessWidget {
   const InterestCard({
     super.key,
     required this.interest,
     required this.onTap,
-    this.compact = false,
+    this.variant = InterestCardVariant.list,
   });
 
   final Interest interest;
   final VoidCallback onTap;
-
-  /// 관심사 목록의 "요즘 모으는 중" 카드: 잊은 카드의 약 80% 높이. 홈 카드는 높이를 그대로 둔다.
-  final bool compact;
+  final InterestCardVariant variant;
 
   static const _hideCollageBelow = 280.0;
+
+  /// 홈 상태 스티커 문구. 잊은 쪽은 360×800 글자 1.3배에서도 한 줄에 들어가게 짧게(섹션 이름은 "잊고 있었던 관심사").
+  static String homeStatus(Interest i) => i.forgotten ? '잊었던 관심사' : '요즘 빠진 것';
+
+  /// 홈 게이지에서 셀라돈으로 채울 칸 수. 잊은 관심사는 레몬 1칸이라 이 값을 쓰지 않는다.
+  static int gaugeFilled(int captureCount) =>
+      AppInterestCard.gaugeSteps.where((s) => captureCount >= s).length;
 
   /// 상태 알약: "오늘 마지막"·"어제 마지막"·"N일 전 마지막", 잊은 것은 "N일째 잠자는 중".
   static String lastSeen(Interest i) => i.forgotten
@@ -299,17 +315,28 @@ class InterestCard extends StatelessWidget {
             '${i.peakMonth}월에 ${i.peakMonthCount}번 캡처'
       : '요즘 모으는 중 #${i.tag}, ${lastSeen(i)}, ${i.captureCount}번 캡처';
 
+  /// 홈 카드 화면 리더 문장: 상태·태그·전체 횟수·마지막 캡처·함께 캡처한 관심사.
+  static String homeSemanticsLabel(Interest i) {
+    final linked = i.linkedTags.take(3);
+    return '${homeStatus(i)} #${i.tag}, ${i.captureCount}번 캡처, ${lastSeen(i)}'
+        '${linked.isEmpty ? '' : ', 함께 캡처한 관심사 ${linked.join(', ')}'}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final i = interest;
-    final white70 = AppColors.white.withValues(alpha: 0.75);
-    final accent = i.forgotten ? AppColors.lemon : AppColors.celadon;
-    final minHeight = compact
+    final home = variant == InterestCardVariant.home;
+    // 목록의 요즘 모으는 중 카드: 잊은 카드의 약 80% 높이.
+    final compact = !home && !i.forgotten;
+    final minHeight = home
+        ? AppInterestCard.homeMinHeight
+        : compact
         ? AppInterestCard.recentMinHeight
         : AppInterestCard.minHeight;
+    final double vertical = home ? 22 : (compact ? 12 : 16);
     return PressableScale(
       onTap: onTap,
-      label: semanticsLabel(i),
+      label: home ? homeSemanticsLabel(i) : semanticsLabel(i),
       child: DecoratedBox(
         decoration: BoxDecoration(
           color: AppColors.darkGray,
@@ -349,38 +376,20 @@ class InterestCard extends StatelessWidget {
                     constraints: BoxConstraints(minHeight: minHeight),
                     child: Padding(
                       // 요즘 카드(compact)는 위아래 여백·줄 간격을 줄여 80% 높이에 들어가게 한다.
+                      // 홈 카드는 위아래를 넓혀 184 높이에서 스티커·태그·게이지가 고르게 퍼지게.
                       padding: EdgeInsets.fromLTRB(
                         20,
-                        compact ? 12 : 16,
+                        vertical,
                         collageWidth > 0
                             ? 16 +
                                   collageWidth +
                                   AppInterestCard.shotsSize * 0.6
                             : 20,
-                        compact ? 12 : 16,
+                        vertical,
                       ),
-                      // 멘트는 태그 바로 아래에 붙인다(카드 아래 끝으로 밀지 않는다).
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Sticker(label: lastSeen(i), color: accent),
-                          SizedBox(height: compact ? 6 : AppSpacing.s8),
-                          OneLineFit(
-                            '#${i.tag}',
-                            style: AppText.display.copyWith(
-                              color: AppColors.white,
-                              height: 1.15,
-                            ),
-                          ),
-                          SizedBox(height: compact ? 2 : AppSpacing.s4),
-                          Text(
-                            i.forgotten ? '${ment(i)}\n다시 볼까요?' : ment(i),
-                            maxLines: i.forgotten ? 2 : 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppText.caption.copyWith(color: white70),
-                          ),
-                        ],
-                      ),
+                      child: home
+                          ? _HomeText(interest: i)
+                          : _ListText(interest: i, compact: compact),
                     ),
                   ),
                 ],
@@ -391,6 +400,131 @@ class InterestCard extends StatelessWidget {
       ),
     );
   }
+}
+
+TextStyle get _tagStyle =>
+    AppText.display.copyWith(color: AppColors.white, height: 1.15);
+
+Color get _white70 => AppColors.white.withValues(alpha: 0.75);
+
+/// 목록 카드 글자: 상태 알약 + #태그 + 멘트(태그 바로 아래에 붙인다, 카드 아래 끝으로 밀지 않는다).
+class _ListText extends StatelessWidget {
+  const _ListText({required this.interest, required this.compact});
+
+  final Interest interest;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final i = interest;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Sticker(
+          label: InterestCard.lastSeen(i),
+          color: i.forgotten ? AppColors.lemon : AppColors.celadon,
+        ),
+        SizedBox(height: compact ? 6 : AppSpacing.s8),
+        OneLineFit('#${i.tag}', style: _tagStyle),
+        SizedBox(height: compact ? 2 : AppSpacing.s4),
+        Text(
+          i.forgotten
+              ? '${InterestCard.ment(i)}\n다시 볼까요?'
+              : InterestCard.ment(i),
+          maxLines: i.forgotten ? 2 : 1,
+          overflow: TextOverflow.ellipsis,
+          style: AppText.caption.copyWith(color: _white70),
+        ),
+      ],
+    );
+  }
+}
+
+/// 홈 카드 글자: 위에 상태 스티커·#태그·연결 태그(최대 3개), 아래 끝에 점 게이지 + 마지막 캡처.
+class _HomeText extends StatelessWidget {
+  const _HomeText({required this.interest});
+
+  final Interest interest;
+
+  @override
+  Widget build(BuildContext context) {
+    final i = interest;
+    final accent = i.forgotten ? AppColors.lemon : AppColors.celadon;
+    final linkedTags = i.linkedTags.take(3).toList();
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Sticker(label: InterestCard.homeStatus(i), color: accent),
+            const SizedBox(height: AppSpacing.s8),
+            OneLineFit('#${i.tag}', style: _tagStyle),
+            if (linkedTags.isNotEmpty) ...[
+              const SizedBox(height: AppSpacing.s4),
+              Text(
+                linkedTags.map((t) => '#$t').join(' · '),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.caption.copyWith(color: _white70),
+              ),
+            ],
+            const SizedBox(height: AppSpacing.s12),
+          ],
+        ),
+        Row(
+          children: [
+            _Gauge(
+              filled: i.forgotten
+                  ? 1
+                  : InterestCard.gaugeFilled(i.captureCount),
+              color: accent,
+            ),
+            const SizedBox(width: AppSpacing.s8),
+            Flexible(
+              child: Text(
+                InterestCard.lastSeen(i),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: AppText.caption.copyWith(color: _white70),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// 홈 카드의 점 5칸 게이지. 앞에서 [filled]칸을 [color]로 채운다.
+class _Gauge extends StatelessWidget {
+  const _Gauge({required this.filled, required this.color});
+
+  final int filled;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => ExcludeSemantics(
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var k = 0; k < AppInterestCard.gaugeSteps.length; k++)
+          Padding(
+            padding: const EdgeInsets.only(right: 3),
+            child: Container(
+              key: ValueKey(k < filled ? 'gauge-on-$k' : 'gauge-off-$k'),
+              width: AppInterestCard.gaugeDot,
+              height: AppInterestCard.gaugeDot,
+              decoration: BoxDecoration(
+                color: k < filled ? color : AppInterestCard.gaugeEmpty,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+      ],
+    ),
+  );
 }
 
 /// 항상 한 줄: 폭이 모자라면 글자를 [minScale]배까지 줄여 맞추고, 그래도 넘칠 때만 말줄임.

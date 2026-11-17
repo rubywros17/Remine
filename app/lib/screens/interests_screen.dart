@@ -392,7 +392,6 @@ class _InterestsScreenState extends State<InterestsScreen> {
     padding: const EdgeInsets.only(bottom: AppSpacing.s12),
     child: InterestCard(
       interest: interest,
-      compact: !interest.forgotten,
       onTap: () => Navigator.of(context).push(
         fadeThroughRoute(
           context,

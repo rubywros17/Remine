@@ -147,3 +147,18 @@ List<Interest> sortInterests(List<Interest> list) => [...list]
     }
     return a.tag.compareTo(b.tag);
   });
+
+/// 홈 카드에 띄울 관심사: 요즘 모으는 중(서버 status RECENT) 중 전체 장수가 가장 많은 것(같으면 최근 캡처 순).
+/// 요즘 것이 하나도 없을 때만 목록 첫 번째(잊고 있었던 관심사 1등).
+Interest? pickHomeInterest(List<Interest> list) {
+  final recent = list.where((i) => !i.forgotten);
+  if (recent.isEmpty) return list.firstOrNull;
+  // [Dart 메모] reduce는 앞에서부터 둘씩 비교해 하나만 남긴다. 완전히 같으면 앞의 것(서버 순서)을 둔다.
+  return recent.reduce(
+    (a, b) =>
+        b.captureCount > a.captureCount ||
+            (b.captureCount == a.captureCount && b.dormantDays < a.dormantDays)
+        ? b
+        : a,
+  );
+}

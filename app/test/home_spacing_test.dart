@@ -42,26 +42,29 @@ Future<List<double>> homeGaps(WidgetTester tester, Size size) async {
 
 /// 카드-서랍 제목 박스 간격의 기본값(보이는 글자 끝 보정 포함, 글자 크기 1배).
 final double _cardToDrawer =
-    AppSpacing.s24 +
+    AppHome.cardGap +
     AppText.display.fontSize! * AppHome.titleInkBottom -
     AppText.sectionTitle.fontSize! * AppHome.drawerTitleInkTop;
 
 void main() {
-  // 360×800도 관심사 카드에서 연결 태그·게이지 줄이 빠진 뒤로는 몇 px 남는다.
-  for (final size in const [Size(412, 915), Size(360, 800)]) {
+  // 이 테스트는 기본 테스트 폰트(앱 폰트를 못 불러온 최악의 경우)로 잰다.
+  // 홈 카드 184에서 360×800은 이 폰트로는 남는 높이가 거의 없어 간격이 기본값이다. 실제 폰트에서 스크롤 없음은 layout_matrix_test가 본다.
+  for (final size in const [Size(412, 915)]) {
     testWidgets(
-      '화면이 남으면 제목-카드·카드-서랍 제목이 남는 높이의 1/3씩(각각 최대 +32) 똑같이 늘고, 나머지는 알약 아래로 $size',
+      '화면이 남으면 제목-카드·카드-서랍 제목이 남는 높이의 1/3씩(각각 최대 +16) 똑같이 늘고, 나머지는 알약 아래로 $size',
       (tester) async {
         final g = await homeGaps(tester, size);
         expect(g[0], closeTo(AppSpacing.s24, 0.01));
         expect(g[3], closeTo(AppSpacing.s16, 0.01));
-        final extra = g[1] - AppSpacing.s24;
+        final extra = g[1] - AppHome.cardGap;
         expect(
           g[2] - _cardToDrawer,
           closeTo(extra, 0.01),
           reason: '두 간격이 똑같이 는다',
         );
-        final leftover = 2 * extra + g[5] - AppHome.pillsToTabMin;
+        // 남는 높이는 예전 간격(24) 기준이라, 줄인 만큼(2 × cardGapTrim)은 알약 아래에 더 남는다.
+        final leftover =
+            2 * extra + g[5] - AppHome.pillsToTabMin - 2 * AppHome.cardGapTrim;
         expect(extra, greaterThan(0));
         expect(
           extra,
@@ -75,14 +78,15 @@ void main() {
     );
   }
 
-  for (final size in const [Size(360, 640)]) {
-    testWidgets('모자라면 간격은 기본값, 끝까지 스크롤하면 알약 아래 최소 여백 $size', (tester) async {
+  for (final size in const [Size(360, 800), Size(360, 640)]) {
+    testWidgets('모자라면 간격은 기본값, 끝까지 스크롤하면 알약 아래 최소 여백 이상 $size', (tester) async {
       final g = await homeGaps(tester, size);
       expect(g[0], closeTo(AppSpacing.s24, 0.01));
-      expect(g[1], closeTo(AppSpacing.s24, 0.01));
+      expect(g[1], closeTo(AppHome.cardGap, 0.01));
       expect(g[2], closeTo(_cardToDrawer, 0.01));
       expect(g[3], closeTo(AppSpacing.s16, 0.01));
-      expect(g[5], closeTo(AppHome.pillsToTabMin, 0.01));
+      // 360×800은 이 폰트로 딱 들어가거나(1px 미만 남음) 스크롤된다. 어느 쪽이든 최소 여백 이상.
+      expect(g[5], greaterThanOrEqualTo(AppHome.pillsToTabMin - 0.01));
     });
   }
 }
