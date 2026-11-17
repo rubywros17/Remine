@@ -210,23 +210,23 @@ class BrainNode {
 
   final Interest interest;
 
-  /// -1은 가운데(1등), 0~5는 둘레 육각형 자리([hexSeat] 각도 순서, 원형으로 이웃).
+  /// -1은 가운데(1등), 0~5는 둘레 자리([AppBrain.seatAngles] 순서, 원형으로 이웃).
   final int seat;
 
   /// 0이 가장 많이 캡처한 것(가장 먼저·가장 크게 떠오른다).
   final int rank;
 
-  /// 반지름 1인 육각형 위 자리(모양만, 가운데 = 원점). 칩 위치가 없을 때 거리 비교에 쓴다.
-  Offset get slot => seat < 0 ? Offset.zero : hexSeat(seat, 1);
+  /// 가운데에서 본 자리 방향(길이 1, 가운데 = 원점). 칩 위치가 없을 때 거리 비교에 쓴다.
+  Offset get slot => seat < 0 ? Offset.zero : _seatDirection(seat);
 }
 
 /// 둘레 자리 수. 0 오른 → 1 오른아래 → 2 왼아래 → 3 왼 → 4 왼위 → 5 오른위(60도 간격, 5 다음은 0).
 const _seats = 6;
 
-/// 둘레 [seat]의 위치(가운데 기준): 가로 반지름 [rx], 세로는 [AppBrain.hexAspect]배로 납작한 타원 위 60도 간격.
-Offset hexSeat(int seat, double rx) {
-  final a = seat * math.pi / 3;
-  return Offset(math.cos(a) * rx, math.sin(a) * rx * AppBrain.hexAspect);
+/// 둘레 [seat]의 방향(길이 1). [shift]도만큼 돌릴 수 있다(겹칠 때 곡선을 따라 미끄러지기).
+Offset _seatDirection(int seat, [double shift = 0]) {
+  final a = (AppBrain.seatAngles[seat] + shift) * math.pi / 180;
+  return Offset(math.cos(a), math.sin(a));
 }
 
 /// 자리별 좁은 정도(글자 1개당 비용). 좌우 끝이 가장 좁고, 위 줄은 뇌 앞쪽(왼위)이 둥글게 깎여 오른위보다 좁다.
@@ -706,49 +706,26 @@ bool chipFitsBrain(
   ].every((p) => _cerebrum.contains(frame.toBrain(p)));
 }
 
-/// 육각형 가운데(캔버스): 대뇌 상자 안 [AppBrain.hexCenter] 비율 자리.
-Offset brainHexCenter(Size size) {
+/// 1등 자리(뇌 좌표): 대뇌 상자 안 [AppBrain.seatCenter] 비율(무게중심, 정가운데보다 살짝 위).
+final _seatCenter = () {
   final b = _cerebrum.getBounds();
-  return BrainFrame.end(size).toCanvas(
-    b.topLeft +
-        Offset(
-          b.width * AppBrain.hexCenter.dx,
-          b.height * AppBrain.hexCenter.dy,
-        ),
-  );
-}
+  return b.topLeft +
+      Offset(
+        b.width * AppBrain.seatCenter.dx,
+        b.height * AppBrain.seatCenter.dy,
+      );
+}();
 
-/// 칩들의 윤곽 여백(캔버스 px, 1px 단위): 모든 칩이 들어가는 가장 큰 값. 최대 [AppBrain.chipBrainMargin],
-/// 윤곽 밖으로 나가면 음수(최소 -[_maxOut]). 여백은 클수록 다 들어가기 어려워서 이분 탐색한다.
-double _brainRoom(Size size, List<Rect> rects) {
-  bool fits(int m) => rects.every((r) => chipFitsBrain(size, r, m.toDouble()));
-  var lo = -_maxOut; // 들어간다고 보는 값(아래)
-  var hi = AppBrain.chipBrainMargin.toInt();
-  if (fits(hi)) return hi.toDouble();
-  if (!fits(lo)) return lo.toDouble();
-  while (hi - lo > 1) {
-    final mid = (lo + hi) ~/ 2;
-    if (fits(mid)) {
-      lo = mid;
-    } else {
-      hi = mid;
-    }
-  }
-  return lo.toDouble();
-}
-
-// 칩 높이(최소 약 25px)의 절반보다 작게: 더 줄이면 사각형이 뒤집혀 판정이 틀어진다.
-const _maxOut = 10;
-
-/// 칩 자리: 가운데 + 둘레 타원 육각형(고정 모양, 칩을 밀어내지 않는다). 칩 사이는 [AppBrain.chipSpacing] 이상,
-/// 뇌 윤곽 여백은 [AppBrain.chipBrainMinMargin] 이상(그 안에서 가장 큰 반지름 쪽, 최대 [AppBrain.chipBrainMargin]).
-/// 말줄임 없이 글자 크기로만 맞춘다. 맞추는 순서:
-/// ① 육각형 반지름([AppBrain.hexRadius] 범위)을 키워 본다.
-/// ② 넘치면 가장 넓은 칩부터 그 칩만 글자를 줄인다([AppBrain.chipEachShrinkStep]씩, 둘레 칩 최소
+/// 칩 자리: 1등은 뇌 무게중심, 둘레 6칩은 뇌 윤곽을 안쪽으로 줄인 곡선 위. 각 자리는 무게중심에서
+/// [AppBrain.seatAngles] 방향으로, 칩 바깥 끝이 윤곽에서 [AppBrain.seatMargins](안 되면 [AppBrain.chipBrainMinMargin])
+/// 떨어질 때까지 나간 곳이라 키워드 길이와 상관없이 뇌 안에 고르게 퍼진다. 칩 사이가 [AppBrain.chipSpacing]보다
+/// 좁으면 그 칩만 곡선을 따라 옆으로 미끄러진다([AppBrain.seatSlideStep]도씩, 최대 [AppBrain.seatSlideMax]도).
+/// 말줄임 없이 글자 크기로만 맞춘다. 그래도 안 되면:
+/// ① 가장 넓은 칩부터 그 칩만 글자를 줄인다([AppBrain.chipEachShrinkStep]씩, 둘레 칩 최소
 ///    [AppBrain.chipEachMinShrink]·1등 최소 [AppBrain.chipTopEachMinShrink], 글자 [AppBrain.chipMinFont] 아래로는 안 내려감).
-/// ③ 그래도 안 되면 전체 글자 배율([AppBrain.chipShrinks])을 낮추고 ②를 다시.
-/// ④ 그래도 안 되면 가장 줄인 상태에서 윤곽에 가장 덜 걸리는 배치(캔버스 안), 그것도 안 되면 뒤 순위 칩부터
-///    지도에서 뺀다(목록에는 그대로 있다). 순위 순서로 돌려준다.
+/// ② 그래도 안 되면 전체 글자 배율([AppBrain.chipShrinks])을 낮추고 ①을 다시.
+/// ③ 그래도 안 되면 가장 줄인 상태에서 윤곽 여백을 0까지 낮춰(캔버스 안) 놓고, 그것도 안 되면 뒤 순위 칩부터
+///    지도에서 뺀다(목록에는 그대로 있다). 순위 순서로 돌려준다. 같은 데이터면 항상 같은 배치(랜덤 없음).
 List<BrainChip> layoutChips(
   List<BrainNode> nodes,
   Size size,
@@ -756,8 +733,8 @@ List<BrainChip> layoutChips(
 ) {
   if (nodes.isEmpty || size.isEmpty) return const [];
   final frame = BrainFrame.end(size);
-  final center = brainHexCenter(size);
-  final span = _cerebrum.getBounds().width * frame.scale;
+  final center = frame.toCanvas(_seatCenter);
+  final reach = _cerebrum.getBounds().width * frame.scale;
   final canvas = (Offset.zero & size).inflate(_eps);
 
   // 글자 크기 재기(같은 칩·배율은 한 번만). 높이는 전체 배율 [g] 기준이라 같은 줄 칩들이 같다.
@@ -775,47 +752,111 @@ List<BrainChip> layoutChips(
     measure(n, g).height + _chipPadding(n, g).vertical,
   );
 
-  List<Rect> place(List<BrainNode> kept, List<double> f, double g, double k) =>
-      [
-        for (final (i, node) in kept.indexed)
-          Rect.fromCenter(
-            center:
-                center +
-                (node.seat < 0 ? Offset.zero : hexSeat(node.seat, k * span)),
-            width: chipSize(node, f[i], g).width,
-            height: chipSize(node, f[i], g).height,
-          ),
-      ];
+  bool inside(Rect r, double margin) =>
+      canvas.contains(r.topLeft) &&
+      canvas.contains(r.bottomRight) &&
+      chipFitsBrain(size, r, margin);
 
-  // 반지름을 키워 보며 칩 사이·캔버스를 지키는 배치들. [enough] 여백을 지키는 것 중 여백이 가장 큰 것.
-  // 없으면 null, [loose]면 여백을 못 지켜도 윤곽에 가장 덜 걸리는 것.
-  List<Rect>? fit(
+  // [dir] 방향으로 윤곽에서 [margin] 떨어지는 가장 먼 자리(이분 탐색). 가운데서도 안 들어가면 null.
+  Rect? along(Offset dir, Size s, double margin) {
+    Rect at(double t) => Rect.fromCenter(
+      center: center + dir * t,
+      width: s.width,
+      height: s.height,
+    );
+    if (!inside(at(0), margin)) return null;
+    var lo = 0.0;
+    var hi = reach;
+    while (hi - lo > 0.5) {
+      final mid = (lo + hi) / 2;
+      if (inside(at(mid), margin)) {
+        lo = mid;
+      } else {
+        hi = mid;
+      }
+    }
+    return at(lo);
+  }
+
+  // 자리에 놓고, 겹치면 순위가 뒤인 둘레 칩을 곡선을 따라 상대에게서 멀어지게 민다.
+  // 안 되면 rects는 null이고 [culprits]는 넘친 칩들(자리에 못 들어간 칩, 끝내 겹친 쌍).
+  // [loose]면 윤곽 여백을 0까지 낮춰 본다.
+  ({List<Rect>? rects, Set<int> culprits}) fit(
     List<BrainNode> kept,
     List<double> f,
     double g, {
     bool loose = false,
   }) {
-    List<Rect>? best;
-    var bestRoom = double.negativeInfinity;
-    for (
-      var k = AppBrain.hexRadius.$1;
-      k <= AppBrain.hexRadius.$2 + _eps;
-      k += 0.01
-    ) {
-      final rects = place(kept, f, g, k);
-      final inCanvas = rects.every(
-        (r) => canvas.contains(r.topLeft) && canvas.contains(r.bottomRight),
-      );
-      if (!inCanvas || !_spaced(rects)) continue;
-      // 빠른 거르기: 최소 여백도 안 되면 건너뛴다([loose]일 때만 끝까지 잰다).
-      if (!loose && !rects.every((r) => chipFitsBrain(size, r))) continue;
-      final room = _brainRoom(size, rects);
-      if (room > bestRoom) {
-        best = rects;
-        bestRoom = room;
+    final sizes = [for (final (i, n) in kept.indexed) chipSize(n, f[i], g)];
+    final shift = List.filled(kept.length, 0.0);
+    Rect? put(int i) {
+      final seat = kept[i].seat;
+      for (final m in [
+        if (seat >= 0) AppBrain.seatMargins[seat],
+        AppBrain.chipBrainMinMargin,
+        if (loose) 0.0,
+      ]) {
+        final mid = Rect.fromCenter(
+          center: center,
+          width: sizes[i].width,
+          height: sizes[i].height,
+        );
+        final r = seat < 0
+            ? (inside(mid, m) ? mid : null)
+            : along(_seatDirection(kept[i].seat, shift[i]), sizes[i], m);
+        if (r != null) return r;
       }
+      return null;
     }
-    return best;
+
+    ({List<Rect>? rects, Set<int> culprits}) fail(Set<int> who) =>
+        (rects: null, culprits: who);
+    final rects = <Rect>[];
+    for (var i = 0; i < kept.length; i++) {
+      final r = put(i);
+      if (r == null) return fail({i});
+      rects.add(r);
+    }
+    // ponytail: 칩 7개라 겹친 쌍을 하나씩 푸는 단순 반복으로 충분.
+    for (var iter = 0; iter < 60; iter++) {
+      final clash = _firstClash(rects);
+      if (clash == null) {
+        // 이웃 거리가 고르지 않으면(넓은 칩이 안쪽으로 들어가 옆 칩을 밀어낸 경우) 둘레 칩이 넘친 것으로 본다.
+        if (!loose && _unevenness(kept, rects) > AppBrain.seatEvenness) {
+          return fail({
+            for (var k = 0; k < kept.length; k++)
+              if (kept[k].seat >= 0) k,
+          });
+        }
+        return (rects: rects, culprits: const {});
+      }
+      final (i, j) = clash;
+      if (iter == 59) return fail({i, j});
+      final mover = kept[i].rank > kept[j].rank ? i : j;
+      final other = mover == i ? j : i;
+      final bool away;
+      if (kept[other].seat < 0) {
+        // 1등(가로로 긴 칩)과 겹치면 옆쪽(좌우 끝)으로 미끄러진다.
+        final v = rects[mover].center - center;
+        away = (v.dx >= 0) == (v.dy < 0);
+      } else {
+        // 둘레 칩끼리는 서로 멀어지는 쪽으로.
+        var d =
+            (rects[mover].center - center).direction -
+            (rects[other].center - center).direction;
+        if (d > math.pi) d -= 2 * math.pi;
+        if (d <= -math.pi) d += 2 * math.pi;
+        away = d >= 0;
+      }
+      shift[mover] += away ? AppBrain.seatSlideStep : -AppBrain.seatSlideStep;
+      if (shift[mover].abs() > AppBrain.seatSlideMax + _eps) {
+        return fail({mover, other});
+      }
+      final r = put(mover);
+      if (r == null) return fail({mover, other});
+      rects[mover] = r;
+    }
+    throw StateError('unreachable');
   }
 
   for (var n = nodes.length; n > 0; n--) {
@@ -843,15 +884,16 @@ List<BrainChip> layoutChips(
     for (g in AppBrain.chipShrinks) {
       f = [for (final x in floor) math.max(g, x)];
       while (true) {
-        final rects = fit(kept, f, g);
+        // [Dart 메모] (:rects, :culprits)는 이름 붙은 레코드를 같은 이름의 변수 둘로 푸는 문법.
+        final (:rects, :culprits) = fit(kept, f, g);
         if (rects != null) {
           return [
             for (final (i, r) in rects.indexed) BrainChip(kept[i], r, f[i]),
           ];
         }
-        // 가장 넓은 칩(아직 줄일 수 있는 것)만 한 단계 줄인다.
+        // 넘친 칩 중 가장 넓은 칩(아직 줄일 수 있는 것)만 한 단계 줄인다. 넘치지 않은 칩은 그대로.
         int? widest;
-        for (var i = 0; i < kept.length; i++) {
+        for (final i in culprits) {
           if (f[i] <= floor[i] + _eps) continue;
           if (widest == null ||
               chipSize(kept[i], f[i], g).width >
@@ -866,8 +908,8 @@ List<BrainChip> layoutChips(
         );
       }
     }
-    // 끝까지 최소 여백을 못 지키면 가장 줄인 상태에서 윤곽에 가장 덜 걸리는 배치(캔버스 안).
-    final rects = fit(kept, f, g, loose: true);
+    // 끝까지 최소 여백을 못 지키면 가장 줄인 상태에서 윤곽 여백을 0까지 낮춰 본다(캔버스 안).
+    final rects = fit(kept, f, g, loose: true).rects;
     if (rects != null) {
       return [for (final (i, r) in rects.indexed) BrainChip(kept[i], r, f[i])];
     }
@@ -875,15 +917,33 @@ List<BrainChip> layoutChips(
   return const [];
 }
 
-/// 칩 테두리끼리 [AppBrain.chipSpacing] 이상 떨어져 있는지.
-bool _spaced(List<Rect> rects) {
+/// 이웃 칩 중심 거리(1등-둘레, 둘레끼리 원형 이웃)의 최대/최소. 칩이 2개 이하면 1.
+double _unevenness(List<BrainNode> kept, List<Rect> rects) {
+  final center = rects.first.center;
+  final bySeat = {
+    for (final (i, n) in kept.indexed)
+      if (n.seat >= 0) n.seat: rects[i].center,
+  };
+  final d = [
+    for (final p in bySeat.values) (p - center).distance,
+    for (final MapEntry(key: s, value: p) in bySeat.entries)
+      if (bySeat[(s + 1) % _seats] case final q?) (p - q).distance,
+  ];
+  if (d.length < 2) return 1;
+  return d.reduce(math.max) / d.reduce(math.min);
+}
+
+/// 테두리 사이가 [AppBrain.chipSpacing]보다 좁은 첫 쌍(순서대로).
+(int, int)? _firstClash(List<Rect> rects) {
   const half = AppBrain.chipSpacing / 2 - _eps;
   for (var i = 0; i < rects.length; i++) {
     for (var j = i + 1; j < rects.length; j++) {
-      if (rects[i].inflate(half).overlaps(rects[j].inflate(half))) return false;
+      if (rects[i].inflate(half).overlaps(rects[j].inflate(half))) {
+        return (i, j);
+      }
     }
   }
-  return true;
+  return null;
 }
 
 const _eps = 0.01;
