@@ -641,7 +641,8 @@ class BrainFrame {
     ..translate(-focus.dx, -focus.dy);
 }
 
-/// 키워드 칩 하나(캔버스 좌표). [shrink]는 글자 크기 배율(자리가 모자라면 [AppBrain.chipShrinks]만큼 줄인다).
+/// 키워드 칩 하나(캔버스 좌표). [shrink]는 이 칩의 글자 크기 배율(긴 칩만 따로 더 줄 수 있다).
+/// 가로 패딩도 같은 배율로 줄고, 높이는 같은 줄 칩들과 같게 둔다(글자만 작아지고 칩 줄은 맞는다).
 class BrainChip {
   const BrainChip(this.node, this.rect, [this.shrink = 1]);
 
@@ -652,8 +653,16 @@ class BrainChip {
   bool get top => node.rank == 0;
   Color get color =>
       top || node.interest.forgotten ? AppBrain.chipTop : AppBrain.chip;
-  EdgeInsets get padding =>
-      top ? AppBrain.chipTopPadding : AppBrain.chipPadding;
+  EdgeInsets get padding => _chipPadding(node, shrink);
+}
+
+/// 칩 패딩: 세로는 그대로, 가로는 글자 배율만큼 줄인다.
+EdgeInsets _chipPadding(BrainNode n, double shrink) {
+  final base = n.rank == 0 ? AppBrain.chipTopPadding : AppBrain.chipPadding;
+  return EdgeInsets.symmetric(
+    vertical: base.top,
+    horizontal: base.left * shrink,
+  );
 }
 
 TextPainter _chipText(
@@ -731,11 +740,15 @@ double _brainRoom(Size size, List<Rect> rects) {
 // 칩 높이(최소 약 25px)의 절반보다 작게: 더 줄이면 사각형이 뒤집혀 판정이 틀어진다.
 const _maxOut = 10;
 
-/// 칩 자리: 가운데 + 둘레 타원 육각형(고정 모양, 칩을 밀어내지 않는다). 반지름은 대뇌 폭 비율([AppBrain.hexRadius])
-/// 안에서 고르고, 칩 사이는 [AppBrain.chipSpacing] 이상. 글자를 덜 줄인 배율부터([AppBrain.chipShrinks]) 그 배율에서
-/// 뇌 윤곽 여백이 가장 큰 반지름을 고르고(최대 [AppBrain.chipBrainMargin]), 여백이 [AppBrain.chipBrainMinMargin] 이상이면
-/// 거기서 멈춘다. 끝까지 못 지키면(큰 글자·작은 화면) 캔버스 안까지 허용, 그래도 안 되면 뒤 순위 칩부터 지도에서 뺀다
-/// (목록에는 그대로 있다). 순위 순서로 돌려준다.
+/// 칩 자리: 가운데 + 둘레 타원 육각형(고정 모양, 칩을 밀어내지 않는다). 칩 사이는 [AppBrain.chipSpacing] 이상,
+/// 뇌 윤곽 여백은 [AppBrain.chipBrainMinMargin] 이상(그 안에서 가장 큰 반지름 쪽, 최대 [AppBrain.chipBrainMargin]).
+/// 말줄임 없이 글자 크기로만 맞춘다. 맞추는 순서:
+/// ① 육각형 반지름([AppBrain.hexRadius] 범위)을 키워 본다.
+/// ② 넘치면 가장 넓은 칩부터 그 칩만 글자를 줄인다([AppBrain.chipEachShrinkStep]씩, 둘레 칩 최소
+///    [AppBrain.chipEachMinShrink]·1등 최소 [AppBrain.chipTopEachMinShrink], 글자 [AppBrain.chipMinFont] 아래로는 안 내려감).
+/// ③ 그래도 안 되면 전체 글자 배율([AppBrain.chipShrinks])을 낮추고 ②를 다시.
+/// ④ 그래도 안 되면 가장 줄인 상태에서 윤곽에 가장 덜 걸리는 배치(캔버스 안), 그것도 안 되면 뒤 순위 칩부터
+///    지도에서 뺀다(목록에는 그대로 있다). 순위 순서로 돌려준다.
 List<BrainChip> layoutChips(
   List<BrainNode> nodes,
   Size size,
@@ -746,61 +759,65 @@ List<BrainChip> layoutChips(
   final center = brainHexCenter(size);
   final span = _cerebrum.getBounds().width * frame.scale;
   final canvas = (Offset.zero & size).inflate(_eps);
-  // 글자 배율별 칩 크기(순위 순서).
-  final sizes = {
-    for (final shrink in AppBrain.chipShrinks)
-      shrink: [
-        for (final n in nodes)
-          () {
-            final pad = n.rank == 0
-                ? AppBrain.chipTopPadding
-                : AppBrain.chipPadding;
-            final text = _chipText(
-              n,
-              size.width - pad.horizontal,
-              scaler,
-              shrink,
-            );
-            final s = Size(
-              text.width + pad.horizontal,
-              text.height + pad.vertical,
-            );
-            text.dispose();
-            return s;
-          }(),
-      ],
-  };
-  // 글자 배율·반지름별 후보(칩 사이 간격을 지키고 캔버스 안인 것만), 글자 덜 줄인 것 → 반지름 작은 것 순.
-  Iterable<(double, List<Rect>)> candidates(List<BrainNode> nodes) sync* {
-    for (final shrink in AppBrain.chipShrinks) {
-      for (
-        var k = AppBrain.hexRadius.$1;
-        k <= AppBrain.hexRadius.$2 + _eps;
-        k += 0.01
-      ) {
-        final rects = [
-          for (final (i, node) in nodes.indexed)
-            Rect.fromCenter(
-              center:
-                  center +
-                  (node.seat < 0 ? Offset.zero : hexSeat(node.seat, k * span)),
-              width: sizes[shrink]![i].width,
-              height: sizes[shrink]![i].height,
-            ),
-        ];
-        final inCanvas = rects.every(
-          (r) => canvas.contains(r.topLeft) && canvas.contains(r.bottomRight),
-        );
-        if (inCanvas && _spaced(rects)) yield (shrink, rects);
+
+  // 글자 크기 재기(같은 칩·배율은 한 번만). 높이는 전체 배율 [g] 기준이라 같은 줄 칩들이 같다.
+  final textSize = <(int, double), Size>{};
+  Size measure(BrainNode n, double shrink) =>
+      textSize[(n.rank, shrink)] ??= () {
+        final pad = _chipPadding(n, shrink);
+        final text = _chipText(n, size.width - pad.horizontal, scaler, shrink);
+        final s = Size(text.width, text.height);
+        text.dispose();
+        return s;
+      }();
+  Size chipSize(BrainNode n, double shrink, double g) => Size(
+    measure(n, shrink).width + _chipPadding(n, shrink).horizontal,
+    measure(n, g).height + _chipPadding(n, g).vertical,
+  );
+
+  List<Rect> place(List<BrainNode> kept, List<double> f, double g, double k) =>
+      [
+        for (final (i, node) in kept.indexed)
+          Rect.fromCenter(
+            center:
+                center +
+                (node.seat < 0 ? Offset.zero : hexSeat(node.seat, k * span)),
+            width: chipSize(node, f[i], g).width,
+            height: chipSize(node, f[i], g).height,
+          ),
+      ];
+
+  // 반지름을 키워 보며 칩 사이·캔버스를 지키는 배치들. [enough] 여백을 지키는 것 중 여백이 가장 큰 것.
+  // 없으면 null, [loose]면 여백을 못 지켜도 윤곽에 가장 덜 걸리는 것.
+  List<Rect>? fit(
+    List<BrainNode> kept,
+    List<double> f,
+    double g, {
+    bool loose = false,
+  }) {
+    List<Rect>? best;
+    var bestRoom = double.negativeInfinity;
+    for (
+      var k = AppBrain.hexRadius.$1;
+      k <= AppBrain.hexRadius.$2 + _eps;
+      k += 0.01
+    ) {
+      final rects = place(kept, f, g, k);
+      final inCanvas = rects.every(
+        (r) => canvas.contains(r.topLeft) && canvas.contains(r.bottomRight),
+      );
+      if (!inCanvas || !_spaced(rects)) continue;
+      // 빠른 거르기: 최소 여백도 안 되면 건너뛴다([loose]일 때만 끝까지 잰다).
+      if (!loose && !rects.every((r) => chipFitsBrain(size, r))) continue;
+      final room = _brainRoom(size, rects);
+      if (room > bestRoom) {
+        best = rects;
+        bestRoom = room;
       }
     }
+    return best;
   }
 
-  List<BrainChip> chips(List<BrainNode> nodes, (double, List<Rect>) c) => [
-    for (final (i, r) in c.$2.indexed) BrainChip(nodes[i], r, c.$1),
-  ];
-
-  const enough = AppBrain.chipBrainMinMargin;
   for (var n = nodes.length; n > 0; n--) {
     // 칩을 뺐으면 남은 칩으로 자리를 다시 배정한다(빈자리가 생기면 긴 칩이 한 줄에 혼자 앉을 수 있다).
     final seats = n == nodes.length
@@ -810,19 +827,50 @@ List<BrainChip> layoutChips(
       for (final (i, x) in nodes.take(n).indexed)
         BrainNode(x.interest, i == 0 ? -1 : seats[i - 1], x.rank),
     ];
-    (double, List<Rect>)? best;
-    var bestRoom = double.negativeInfinity;
-    // 글자를 덜 줄인 배율부터: 그 배율에서 윤곽 여백이 가장 큰 반지름. 최소 여백을 지키면 더 줄이지 않는다.
-    // 끝까지 못 지키면(큰 글자·작은 화면) 윤곽에 가장 덜 걸리는 것(캔버스 안).
-    for (final c in candidates(kept)) {
-      if (best != null && c.$1 != best.$1 && bestRoom >= enough) break;
-      final room = _brainRoom(size, c.$2);
-      if (room > bestRoom) {
-        best = c;
-        bestRoom = room;
+    // 칩마다 더 줄일 수 있는 하한(기본 글자 대비 배율).
+    final floor = [
+      for (final x in kept)
+        math.max(
+          x.rank == 0
+              ? AppBrain.chipTopEachMinShrink
+              : AppBrain.chipEachMinShrink,
+          AppBrain.chipMinFont /
+              (x.rank == 0 ? AppBrain.chipTopFont : AppBrain.chipFont),
+        ),
+    ];
+    var f = <double>[];
+    var g = 1.0;
+    for (g in AppBrain.chipShrinks) {
+      f = [for (final x in floor) math.max(g, x)];
+      while (true) {
+        final rects = fit(kept, f, g);
+        if (rects != null) {
+          return [
+            for (final (i, r) in rects.indexed) BrainChip(kept[i], r, f[i]),
+          ];
+        }
+        // 가장 넓은 칩(아직 줄일 수 있는 것)만 한 단계 줄인다.
+        int? widest;
+        for (var i = 0; i < kept.length; i++) {
+          if (f[i] <= floor[i] + _eps) continue;
+          if (widest == null ||
+              chipSize(kept[i], f[i], g).width >
+                  chipSize(kept[widest], f[widest], g).width) {
+            widest = i;
+          }
+        }
+        if (widest == null) break;
+        f[widest] = math.max(
+          floor[widest],
+          f[widest] - AppBrain.chipEachShrinkStep,
+        );
       }
     }
-    if (best != null) return chips(kept, best);
+    // 끝까지 최소 여백을 못 지키면 가장 줄인 상태에서 윤곽에 가장 덜 걸리는 배치(캔버스 안).
+    final rects = fit(kept, f, g, loose: true);
+    if (rects != null) {
+      return [for (final (i, r) in rects.indexed) BrainChip(kept[i], r, f[i])];
+    }
   }
   return const [];
 }

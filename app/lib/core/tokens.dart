@@ -161,7 +161,14 @@ abstract final class AppBrain {
   static const hexRadius = (0.18, 0.42);
   static const double hexAspect = 0.65;
 
-  /// 자리가 모자라면 칩 글자를 이 배율까지 차례로 줄인다(최소 85%).
+  /// 자리가 모자라면 먼저 넘치는 칩만 따로(가장 넓은 칩부터 [chipEachShrinkStep]씩) 줄인다.
+  /// 둘레 칩은 [chipEachMinShrink], 1등(가운데)은 [chipTopEachMinShrink]까지, 글자는 [chipMinFont] 아래로 안 내려간다.
+  static const double chipEachMinShrink = 0.7;
+  static const double chipTopEachMinShrink = 0.85;
+  static const double chipEachShrinkStep = 0.05;
+  static const double chipMinFont = 11;
+
+  /// 그래도 모자라면 칩 전체 글자를 이 배율까지 차례로 줄인다(최소 85%).
   static const chipShrinks = [1.0, 0.95, 0.9, 0.85];
 
   /// 같은 카테고리(실선): 그 카테고리 색([AppCategoryColors], 홈 서랍 점과 같은 색)을 흰색 쪽으로 30% 섞고 95%.
