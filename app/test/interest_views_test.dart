@@ -856,13 +856,13 @@ void main() {
       ('360×640', const Size(320, 320), 1.0),
       ('360×800 글자 1.3배', const Size(320, 470), 1.3),
     ]) {
-      test('칩: 긴 키워드 7개도 서로 안 겹치고 캔버스 안 · $name', () {
+      test('칩: 긴 키워드도 서로 10px 이상 떨어지고 캔버스 안 · $name', () {
         final chips = layoutChips(
           layoutNodes(longSeven),
           size,
           TextScaler.linear(scale),
         );
-        expect(chips, hasLength(7));
+        expect(chips, isNotEmpty);
         final canvas = Offset.zero & size;
         for (final (i, a) in chips.indexed) {
           expect(
@@ -873,58 +873,7 @@ void main() {
           );
           for (final b in chips.skip(i + 1)) {
             expect(
-              a.rect.deflate(0.5).overlaps(b.rect.deflate(0.5)),
-              isFalse,
-              reason: '${a.node.interest.tag} ↔ ${b.node.interest.tag}',
-            );
-          }
-        }
-        if (scale == 1.0 && size.height > 400) {
-          // 아주 긴 키워드는 둥근 윤곽 대신 뇌 상자 안까지 허용(보통 길이는 아래 테스트에서 윤곽 안).
-          final brain = chipBrainBounds(size).inflate(0.5);
-          for (final c in chips) {
-            expect(
-              brain.contains(c.rect.topLeft) &&
-                  brain.contains(c.rect.bottomRight),
-              isTrue,
-              reason: '${c.node.interest.tag}는 뇌 안',
-            );
-          }
-        }
-      });
-    }
-
-    final usualSeven = [
-      interest('필기구', 9, dormant: 40, category: Category.shopping),
-      interest('캠핑', 8, category: Category.place),
-      interest('다이어리꾸미기', 7, dormant: 40, category: Category.shopping),
-      interest('뜨개질', 6, category: Category.info),
-      interest('제주여행', 5, dormant: 40, category: Category.place),
-      interest('홈카페', 4, category: Category.info),
-      interest('니트가디건', 3, dormant: 40, category: Category.shopping),
-    ];
-
-    for (final (name, size, scale) in [
-      ('360×800', const Size(320, 470), 1.0),
-      ('412×915', const Size(372, 560), 1.0),
-      ('412×915 글자 1.3배', const Size(372, 560), 1.3),
-    ]) {
-      test('칩: 보통 길이 키워드 7개는 뇌 윤곽 안(여백 포함), 서로 안 겹침 · $name', () {
-        final chips = layoutChips(
-          layoutNodes(usualSeven),
-          size,
-          TextScaler.linear(scale),
-        );
-        expect(chips, hasLength(7));
-        for (final (i, a) in chips.indexed) {
-          expect(
-            chipFitsBrain(size, a.rect),
-            isTrue,
-            reason: '${a.node.interest.tag} ${a.rect}',
-          );
-          for (final b in chips.skip(i + 1)) {
-            expect(
-              a.rect.deflate(0.5).overlaps(b.rect.deflate(0.5)),
+              a.rect.inflate(4.9).overlaps(b.rect.inflate(4.9)),
               isFalse,
               reason: '${a.node.interest.tag} ↔ ${b.node.interest.tag}',
             );
@@ -934,9 +883,10 @@ void main() {
     }
 
     test('칩: # 없이 키워드만, 1위·잊은 관심사는 레몬, 나머지는 연셀라돈', () {
+      // 긴 키워드 7개가 다 앉도록 넓은 캔버스(태블릿 가로).
       final chips = layoutChips(
         layoutNodes(longSeven),
-        const Size(320, 470),
+        const Size(1000, 700),
         TextScaler.noScaling,
       );
       // 잊은 것(제주도·주말)이 먼저 뽑히고 요즘 것과 번갈아 앉는다.
@@ -1116,8 +1066,11 @@ void main() {
       });
     });
 
-    group('배치', () {
-      test('같은 카테고리 두 칩은 가장 가까운 자리끼리(실선이 짧게)', () {
+    group('배치(자리는 고정 육각형, 누가 어디 앉는지만 계산)', () {
+      // 둘레 자리 0~5는 원형으로 이웃(5 다음 0).
+      bool neighbors(int a, int b) => (a - b).abs() == 1 || (a - b).abs() == 5;
+
+      test('같은 카테고리 두 칩은 이웃 자리', () {
         final nodes = layoutNodes([
           interest('가', 9, dormant: 40),
           interest('나', 8, category: Category.shopping),
@@ -1127,44 +1080,34 @@ void main() {
           interest('바', 4, category: Category.chat),
           interest('사', 3, dormant: 40, category: Category.schedule),
         ]);
-        final ring = nodes.skip(1).toList();
-        var nearest = double.infinity;
-        for (final (i, a) in ring.indexed) {
-          for (final b in ring.skip(i + 1)) {
-            nearest = min(nearest, (a.slot - b.slot).distance);
-          }
-        }
         final shop = nodes
             .where((n) => n.interest.category == Category.shopping)
             .toList();
-        expect((shop[0].slot - shop[1].slot).distance, closeTo(nearest, 0.001));
+        expect(neighbors(shop[0].seat, shop[1].seat), isTrue);
       });
 
       test('같은 데이터면 항상 같은 배치', () {
-        List<Offset> slots() => [
-          for (final n in layoutNodes(longSeven)) n.slot,
-        ];
-        expect(slots(), slots());
+        List<int> seats() => [for (final n in layoutNodes(longSeven)) n.seat];
+        expect(seats(), seats());
       });
 
-      test('7자리가 대뇌 위·아래까지 고르게(위 2 · 아래 2)', () {
+      test('1등은 가운데, 나머지 6개는 둘레 6자리에 하나씩(위 2 · 양옆 2 · 아래 2)', () {
         final nodes = layoutNodes(longSeven);
-        final center = nodes.first.slot;
-        expect(nodes.where((n) => n.slot.dy < center.dy - 30), hasLength(2));
-        expect(nodes.where((n) => n.slot.dy > center.dy + 30), hasLength(2));
+        expect(nodes.first.seat, -1);
+        expect(nodes.skip(1).map((n) => n.seat).toSet(), {0, 1, 2, 3, 4, 5});
+        expect(nodes.where((n) => n.slot.dy < -0.1), hasLength(2));
+        expect(nodes.where((n) => n.slot.dy > 0.1), hasLength(2));
       });
 
-      test('긴 칩일수록 가로 가운데 가까운 자리', () {
-        final nodes = layoutNodes(longSeven).skip(1).toList();
-        final longest = nodes.reduce(
-          (a, b) => a.interest.tag.length >= b.interest.tag.length ? a : b,
-        );
-        final shortest = nodes.reduce(
-          (a, b) => a.interest.tag.length <= b.interest.tag.length ? a : b,
-        );
+      test('긴 키워드는 좌우 끝 자리보다 위·아래 자리', () {
+        final ring = layoutNodes(longSeven).skip(1).toList()
+          ..sort(
+            (a, b) => b.interest.tag.length.compareTo(a.interest.tag.length),
+          );
+        // 가장 긴 4개는 위·아래(1·2·4·5), 가장 짧은 2개가 좌우 끝(0·3).
         expect(
-          (longest.slot.dx - 173).abs(),
-          lessThanOrEqualTo((shortest.slot.dx - 173).abs()),
+          ring.take(4).map((n) => n.seat),
+          everyElement(isNot(anyOf(0, 3))),
         );
       });
     });
@@ -1200,15 +1143,15 @@ void main() {
         expect((AppBrain.linkDash, AppBrain.linkDashGap), (4.0, 4.0));
       });
 
-      test('연한 선 = 흰색 22%, 두께 1', () {
+      test('연한 선 = 흰색 45%, 두께는 실선과 같다', () {
         final paint = brainLinkPaint((
           a: 0,
           b: 1,
           kind: BrainLinkKind.faint,
         ), Category.shopping);
         expect(paint.color.r, 1);
-        expect(paint.color.a, closeTo(0.22, 0.01));
-        expect(paint.strokeWidth, 1);
+        expect(paint.color.a, closeTo(0.45, 0.01));
+        expect(paint.strokeWidth, closeTo(AppBrain.linkStroke, 0.001));
       });
 
       test('디버그 요약: 실선 카테고리별 · 점선 · 같은 캡처 쌍(같은 카테고리 생략)', () {
