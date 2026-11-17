@@ -1023,6 +1023,48 @@ void main() {
       });
     });
 
+    group('연결선 색', () {
+      test('실선 = 그 카테고리 색(서랍 점과 같은 토큰) 85%, 두께 그대로', () {
+        for (final c in Category.values) {
+          final paint = brainLinkPaint((a: 0, b: 1, dashed: false), c);
+          final want = AppCategoryColors.of(c);
+          expect(paint.color.r, closeTo(want.r, 0.001), reason: '$c');
+          expect(paint.color.g, closeTo(want.g, 0.001), reason: '$c');
+          expect(paint.color.b, closeTo(want.b, 0.001), reason: '$c');
+          expect(paint.color.a, closeTo(0.85, 0.01), reason: '$c');
+          expect(paint.strokeWidth, closeTo(AppBrain.linkStroke, 0.001));
+        }
+      });
+
+      test('점선 = 흰색 55%, 두께 1.5, 대시 4/4', () {
+        final paint = brainLinkPaint((
+          a: 0,
+          b: 1,
+          dashed: true,
+        ), Category.shopping);
+        expect(paint.color.r, 1);
+        expect(paint.color.g, 1);
+        expect(paint.color.b, 1);
+        expect(paint.color.a, closeTo(0.55, 0.01));
+        expect(paint.strokeWidth, 1.5);
+        expect((AppBrain.linkDash, AppBrain.linkDashGap), (4.0, 4.0));
+      });
+
+      test('디버그 요약: 실선 카테고리별 · 점선 · 같은 캡처 쌍(같은 카테고리 생략)', () {
+        final nodes = layoutNodes([
+          interest('가', 9, category: Category.shopping, linked: ['나', '다']),
+          interest('나', 8, category: Category.shopping, linked: ['가']),
+          interest('다', 7, category: Category.info, linked: ['가']),
+          interest('라', 6, category: Category.info),
+        ]);
+        expect(
+          brainLinkSummary(nodes),
+          '[brain] 실선 2(${Category.shopping.label} 1, ${Category.info.label} 1)'
+          ' · 점선 1 · 같은 캡처 쌍 2(같은 카테고리라 생략 1)',
+        );
+      });
+    });
+
     test('서버 응답의 linkedTags·status를 읽고, 옛 응답(linkedTags 없음)은 빈 목록', () {
       Interest parse(Map<String, dynamic> extra) => Interest.fromJson({
         'tag': '뜨개질',
