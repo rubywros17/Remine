@@ -408,7 +408,7 @@ abstract final class AppShadow {
 /// 나머지는 알약 아래로. 알약 ↔ 탭바는 최소 [pillsToTabMin](모자라면 스크롤).
 abstract final class AppHome {
   static const double cardGapShare = 1 / 3;
-  static const double cardGapMaxExtra = 24;
+  static const double cardGapMaxExtra = 16;
   static const double pillsToTabMin = 20;
 
   // ponytail: Pretendard Bold 한글을 픽셀로 재서 맞춘 보정값(글자 크기 대비). 폰트를 바꾸면 home_ink_gap_test로 다시 잰다.

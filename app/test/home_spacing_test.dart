@@ -51,7 +51,7 @@ void main() {
   // 홈 카드 184에서 360×800은 이 폰트로는 몇 px 모자라 스크롤된다. 실제 폰트에서 스크롤 없음은 layout_matrix_test가 본다.
   for (final size in const [Size(412, 915)]) {
     testWidgets(
-      '화면이 남으면 제목-카드·카드-서랍 제목이 남는 높이의 1/3씩(각각 최대 +24) 똑같이 늘고, 나머지는 알약 아래로 $size',
+      '화면이 남으면 제목-카드·카드-서랍 제목이 남는 높이의 1/3씩(각각 최대 +16) 똑같이 늘고, 나머지는 알약 아래로 $size',
       (tester) async {
         final g = await homeGaps(tester, size);
         expect(g[0], closeTo(AppSpacing.s24, 0.01));
