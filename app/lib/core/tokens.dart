@@ -154,7 +154,10 @@ abstract final class AppBrain {
     blurRadius: 12,
   );
   static const double chipSpacing = 6; // 칩 사이 최소 간격
-  static const double linkStroke = 1.8;
+  static const double linkStroke = 1.8; // 같은 카테고리(실선)
+  static const double linkDashStroke = 1.2; // 같은 캡처(점선): 실선보다 가늘게
+  static const double linkDash = 4;
+  static const double linkDashGap = 4;
 }
 
 /// 관심사 카드(홈·관심사 탭). 한 화면(360×800)에 3장이 들어가는 높이.

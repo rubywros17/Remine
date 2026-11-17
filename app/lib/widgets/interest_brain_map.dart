@@ -4,13 +4,14 @@ import 'dart:ui' show PathMetric;
 import 'package:flutter/material.dart';
 
 import '../core/tokens.dart';
+import '../models/category.dart';
 import '../models/interest.dart';
 import 'app_button.dart';
 
 /// 관심사 탭에 들어올 때마다 먼저 보여 주는 "머릿속 캡처 지도". 디자인 캔버스 19안 A.
 ///
 /// 첫 진입: 왼쪽을 보는 옆얼굴 선 → 머릿속으로 확대(안쪽에 셀라돈 빛) → 뇌 윤곽 → 채움 → 소뇌·뇌간 → 주름
-/// → 키워드 칩(1위부터) → 연결선(같은 캡처를 공유한 관심사) → 제목. 시간표는 [AppBrain].
+/// → 키워드 칩(1위부터) → 연결선(같은 카테고리 실선 · 같은 캡처 점선) → 제목. 시간표는 [AppBrain].
 /// 같은 앱 실행 중 두 번째 진입부터는 얼굴·확대를 건너뛰고 뇌 그리기부터 한다.
 /// 그리는 중에 아무 데나 누르면 바로 마지막 상태, 다 그려진 뒤 누르면(또는 [목록 보기]) [onList].
 /// "애니메이션 줄이기"면 마지막 상태를 바로 보여 준다.
@@ -24,7 +25,7 @@ class InterestBrainMap extends StatefulWidget {
     required this.onList,
   });
 
-  /// 많이 캡처한 순. 앞에서 [AppBrain.maxNodes]개만 지도에 올린다.
+  /// 서버 순서. 잊은 것 4 · 요즘 것 3을 골라 지도에 올린다([pickBrainInterests]).
   final List<Interest> interests;
   final VoidCallback onList;
 
@@ -201,36 +202,99 @@ class BrainNode {
   final int rank;
 }
 
-// 시안의 자리(대뇌 안쪽). 앞쪽일수록 많이 캡처한 관심사가 앉는다.
+// 시안의 자리(대뇌 안쪽). 0번은 가운데(1등).
+// 1등 뒤로는 잊은 것·요즘 것이 번갈아 앉으므로, 홀수 자리(오른위·왼아래·오른끝아래)와
+// 짝수 자리(오른아래·왼위·오른끝)가 각각 좌우·위아래로 퍼지게 순서를 정했다.
+// (이 조건을 만족하는 순서 중 긴 키워드 7개가 360×800 뇌 안에 들어가는 것. 앞 3자리는 시안 그대로.)
 const _slots = [
   Offset(150, 122),
   Offset(218, 92),
   Offset(206, 160),
   Offset(98, 168),
-  Offset(262, 176),
   Offset(92, 104),
+  Offset(262, 176),
   Offset(268, 126),
 ];
 
-/// 상위 [AppBrain.maxNodes]개를 자리에 앉힌다.
+/// 잊은 관심사 몫. 나머지([AppBrain.maxNodes] - 이것)는 요즘 모으는 중.
+const _forgottenShare = 4;
+
+/// 지도에 올릴 관심사를 순위 순서로 고른다. [interests]는 서버 순서(그룹 안에서 장수 많은 순).
+/// 잊은 것 4 + 요즘 것 3, 한쪽이 모자라면 다른 쪽에서 채워 최대 [AppBrain.maxNodes]개.
+/// 1등은 잊은 것 1등(없으면 요즘 1등), 그 뒤는 상대 그룹부터 번갈아.
+List<Interest> pickBrainInterests(List<Interest> interests) {
+  final max = math.min(AppBrain.maxNodes, _slots.length);
+  final f = interests.where((i) => i.forgotten).toList();
+  final r = interests.where((i) => !i.forgotten).toList();
+  final nf = math.min(f.length, math.max(_forgottenShare, max - r.length));
+  final nr = math.min(r.length, max - nf);
+  final (first, second) = nf > 0
+      ? (f.take(nf).toList(), r.take(nr).toList())
+      : (r.take(nr).toList(), <Interest>[]);
+  if (first.isEmpty) return const [];
+  final rest = first.skip(1).toList();
+  return [
+    first.first,
+    for (var i = 0; i < math.max(rest.length, second.length); i++) ...[
+      if (i < second.length) second[i],
+      if (i < rest.length) rest[i],
+    ],
+  ];
+}
+
+/// [pickBrainInterests]로 고른 관심사를 순위대로 자리에 앉힌다.
 List<BrainNode> layoutNodes(List<Interest> interests) => [
-  for (final (rank, interest)
-      in interests.take(math.min(AppBrain.maxNodes, _slots.length)).indexed)
+  for (final (rank, interest) in pickBrainInterests(interests).indexed)
     BrainNode(interest, _slots[rank], rank),
 ];
 
-/// 연결선 목록(같은 쌍은 한 번만): (앞 순위, 뒤 순위). 그리는 순서도 이 순서다.
-List<(int, int)> brainLinks(List<BrainNode> nodes) {
-  final rankOf = {for (final n in nodes) n.interest.tag: n.rank};
-  final links = <(int, int)>{};
+/// 연결선 하나: 순위 [a] < [b]. [dashed]면 같은 캡처에 함께 붙은 관심사(점선), 아니면 같은 카테고리(실선).
+typedef BrainLink = ({int a, int b, bool dashed});
+
+/// 연결선 목록. 그리는 순서도 이 순서다(실선 먼저, 그다음 점선).
+/// - 실선: 같은 카테고리끼리. 다 잇지 않고 가까운 자리끼리 짧은 선부터 한 줄로(최소 신장 트리, n개면 n-1개).
+/// - 점선: [Interest.linkedTags]. 같은 카테고리 쌍은 이미 실선으로 이어져 있어 긋지 않는다.
+List<BrainLink> brainLinks(List<BrainNode> nodes) {
+  final links = <BrainLink>[];
+  // [Dart 메모] groupBy 대신 맵에 차례로 넣는다. 맵은 넣은 순서를 지켜서 카테고리는 첫 등장 순위 순.
+  final byCategory = <Category, List<BrainNode>>{};
   for (final n in nodes) {
-    for (final other in n.interest.linkedTags) {
-      final m = rankOf[other];
-      if (m == null || m == n.rank) continue;
-      links.add((math.min(n.rank, m), math.max(n.rank, m)));
+    (byCategory[n.interest.category] ??= []).add(n);
+  }
+  for (final group in byCategory.values) {
+    // Prim: 이미 이은 칩들에서 가장 가까운 칩을 하나씩 붙인다.
+    // ponytail: 칩 7개라 O(n³) 단순 탐색으로 충분.
+    final inTree = [group.first];
+    final left = group.skip(1).toList();
+    while (left.isNotEmpty) {
+      var best = (from: inTree.first, to: left.first, d: double.infinity);
+      for (final a in inTree) {
+        for (final b in left) {
+          final d = (a.slot - b.slot).distance;
+          if (d < best.d) best = (from: a, to: b, d: d);
+        }
+      }
+      links.add((
+        a: math.min(best.from.rank, best.to.rank),
+        b: math.max(best.from.rank, best.to.rank),
+        dashed: false,
+      ));
+      inTree.add(best.to);
+      left.remove(best.to);
     }
   }
-  return links.toList();
+  final byTag = {for (final n in nodes) n.interest.tag: n};
+  final dashed = <(int, int)>{};
+  for (final n in nodes) {
+    for (final tag in n.interest.linkedTags) {
+      final m = byTag[tag];
+      if (m == null || m == n || m.interest.category == n.interest.category) {
+        continue;
+      }
+      dashed.add((math.min(n.rank, m.rank), math.max(n.rank, m.rank)));
+    }
+  }
+  return [...links, for (final (a, b) in dashed) (a: a, b: b, dashed: true)];
 }
 
 /// 시안 SVG 경로(M·Q·Z만)를 그대로 옮긴다.
@@ -609,20 +673,41 @@ class BrainPainter extends CustomPainter {
     }
   }
 
-  // 연결선은 칩 뒤에: 칩 가운데끼리, 하나씩 그려진다.
+  // 연결선은 칩 뒤에: 칩 가운데끼리, 하나씩 그려진다(점선도 앞에서부터 차례로).
   void _drawLinks(Canvas canvas) {
-    final paint = Paint()
+    final solid = Paint()
       ..color = AppBrain.outline
       ..strokeWidth = AppBrain.linkStroke
       ..strokeCap = StrokeCap.round;
+    final dash = Paint()
+      ..color = AppBrain.outline
+      ..strokeWidth = AppBrain.linkDashStroke;
     final byRank = {for (final c in chips) c.node.rank: c.rect.center};
-    for (final (i, (a, b)) in brainLinks([
-      for (final c in chips) c.node,
-    ]).indexed) {
+    for (final (i, l) in brainLinks([for (final c in chips) c.node]).indexed) {
       final start = AppBrain.linksStart + AppBrain.linkGap * i;
       final p = _phase((start, start + AppBrain.linkDraw), Curves.easeInOut);
       if (p <= 0) continue;
-      canvas.drawLine(byRank[a]!, Offset.lerp(byRank[a], byRank[b], p)!, paint);
+      final from = byRank[l.a]!;
+      final to = byRank[l.b]!;
+      if (!l.dashed) {
+        canvas.drawLine(from, Offset.lerp(from, to, p)!, solid);
+        continue;
+      }
+      final len = (to - from).distance;
+      if (len == 0) continue;
+      final dir = (to - from) / len;
+      final end = len * p;
+      for (
+        var d = 0.0;
+        d < end;
+        d += AppBrain.linkDash + AppBrain.linkDashGap
+      ) {
+        canvas.drawLine(
+          from + dir * d,
+          from + dir * math.min(d + AppBrain.linkDash, end),
+          dash,
+        );
+      }
     }
   }
 
