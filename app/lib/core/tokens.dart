@@ -160,8 +160,8 @@ abstract final class AppBrain {
 /// 관심사 카드(홈·관심사 탭). 한 화면(360×800)에 3장이 들어가는 높이.
 abstract final class AppInterestCard {
   /// 잊고 있었던 관심사 카드 최소 높이. 요즘 모으는 중 카드는 약 80%.
-  static const double minHeight = 168;
-  static const double recentMinHeight = 136;
+  static const double minHeight = 140; // 시안 높이
+  static const double recentMinHeight = 112; // minHeight의 80%
 
   /// 콜라주 맨 앞 사진 오른쪽 위에 걸친 원형 스티커 "19 / SHOTS": 지름, 기울기(10°).
   static const double shotsSize = 58;
@@ -174,6 +174,68 @@ abstract final class AppInterestCard {
   static const double watermarkSize = 132;
   static const double watermarkStroke = 1.4;
   static const watermarkColor = Color(0x24FFFFFF);
+}
+
+/// 관심사 목록의 "맨 아래로 / 맨 위로" 떠 있는 버튼.
+abstract final class AppScrollJump {
+  static const double size = 48; // 지름 = 누르는 영역
+  static const double iconSize = 24;
+  static const double gap = 16; // 탭 바·화면 오른쪽에서 띄우는 거리
+  static const int minCards = 10; // 펼쳐진 카드가 이보다 많아야 보인다
+  static const appear = Duration(milliseconds: 180); // 페이드 + 살짝 커지기
+  static const double hiddenScale = 0.85;
+  static const shadow = BoxShadow(
+    color: AppColors.cardShadow,
+    blurRadius: 10,
+    offset: Offset(0, 3),
+  );
+
+  /// 누르면 가는 시간: 거리에 비례(화면 하나당 [msPerScreen]), [minTravel] ~ [maxTravel].
+  static const minTravel = Duration(milliseconds: 380);
+  static const maxTravel = Duration(milliseconds: 700);
+  static const msPerScreen = 64;
+  static const Curve travelCurve = Curves.easeInOutCubic;
+
+  /// 화면 [longJumpScreens]개 이상 떨어져 있으면 끝에서 화면 [tailScreens]개 앞까지 바로 간 뒤 남은 구간만 부드럽게.
+  static const double longJumpScreens = 6;
+  static const double tailScreens = 2;
+
+  /// 목록 끝이 늘어나 덜 갔을 때 마저 가는 이동.
+  static const settle = Duration(milliseconds: 200);
+
+  /// 아래 ↔ 위 아이콘 크로스페이드.
+  static const iconSwap = Duration(milliseconds: 200);
+
+  static Duration travel(double distance, double screen) {
+    final ms =
+        minTravel.inMilliseconds +
+        msPerScreen * (screen <= 0 ? 0 : distance / screen);
+    return Duration(
+      milliseconds: ms
+          .clamp(minTravel.inMilliseconds, maxTravel.inMilliseconds)
+          .round(),
+    );
+  }
+}
+
+/// 관심사 목록 섹션의 더 보기(펼치기)·접기 모션.
+abstract final class AppReveal {
+  /// 펼치기: 섹션 높이가 [grow] 동안 늘고, 새 카드는 [stagger] 간격으로 차례로(최대 [maxStaggered]장, 그 뒤는 한꺼번에)
+  /// [item] 동안 페이드 + 아래에서 [shift]px 올라온다. "더 보기"는 [buttonFade] 동안 사라지고,
+  /// "접기"는 마지막 카드가 다 나온 뒤 [buttonFade] 동안 나타난다.
+  static const grow = Duration(milliseconds: 320);
+  static const Curve growCurve = Curves.easeOutCubic;
+  static const item = Duration(milliseconds: 260);
+  static const Curve itemCurve = Curves.easeOutCubic;
+  static const stagger = Duration(milliseconds: 40);
+  static const int maxStaggered = 8;
+  static const double shift = 12;
+  static const buttonFade = Duration(milliseconds: 150);
+
+  /// 접기: 펼쳤던 카드가 한꺼번에 [fadeOut] 동안 사라지고, 섹션 높이는 [shrink] 동안 준다(머리로 가는 스크롤도 같이).
+  static const fadeOut = Duration(milliseconds: 160);
+  static const shrink = Duration(milliseconds: 280);
+  static const Curve shrinkCurve = Curves.easeInOutCubic;
 }
 
 /// 상세 화면의 이미지 카드·배경 값. 값의 근거는 docs/design.md.

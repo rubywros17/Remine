@@ -348,37 +348,31 @@ class InterestCard extends StatelessWidget {
                   ConstrainedBox(
                     constraints: BoxConstraints(minHeight: minHeight),
                     child: Padding(
+                      // 요즘 카드(compact)는 위아래 여백·줄 간격을 줄여 80% 높이에 들어가게 한다.
                       padding: EdgeInsets.fromLTRB(
                         20,
-                        16,
+                        compact ? 12 : 16,
                         collageWidth > 0
                             ? 16 +
                                   collageWidth +
                                   AppInterestCard.shotsSize * 0.6
                             : 20,
-                        16,
+                        compact ? 12 : 16,
                       ),
+                      // 멘트는 태그 바로 아래에 붙인다(카드 아래 끝으로 밀지 않는다).
                       child: Column(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Sticker(label: lastSeen(i), color: accent),
-                              const SizedBox(height: AppSpacing.s8),
-                              Text(
-                                '#${i.tag}',
-                                maxLines: i.forgotten ? 2 : 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: AppText.display.copyWith(
-                                  color: AppColors.white,
-                                  height: 1.15,
-                                ),
-                              ),
-                              const SizedBox(height: AppSpacing.s8),
-                            ],
+                          Sticker(label: lastSeen(i), color: accent),
+                          SizedBox(height: compact ? 6 : AppSpacing.s8),
+                          OneLineFit(
+                            '#${i.tag}',
+                            style: AppText.display.copyWith(
+                              color: AppColors.white,
+                              height: 1.15,
+                            ),
                           ),
+                          SizedBox(height: compact ? 2 : AppSpacing.s4),
                           Text(
                             i.forgotten ? '${ment(i)}\n다시 볼까요?' : ment(i),
                             maxLines: i.forgotten ? 2 : 1,
@@ -395,6 +389,51 @@ class InterestCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// 항상 한 줄: 폭이 모자라면 글자를 [minScale]배까지 줄여 맞추고, 그래도 넘칠 때만 말줄임.
+/// (FittedBox는 최소 크기가 없어 긴 태그가 한없이 작아져서 직접 잰다.)
+class OneLineFit extends StatelessWidget {
+  const OneLineFit(
+    this.text, {
+    super.key,
+    required this.style,
+    this.minScale = 0.6,
+  });
+
+  final String text;
+  final TextStyle style;
+  final double minScale;
+
+  @override
+  Widget build(BuildContext context) {
+    final scaler = MediaQuery.textScalerOf(context);
+    // Text처럼 주변 기본 글자 스타일(자간 등)을 합쳐서 재야 실제 폭과 같다.
+    final full = DefaultTextStyle.of(context).style.merge(style);
+    return LayoutBuilder(
+      builder: (context, box) {
+        final painter = TextPainter(
+          text: TextSpan(text: text, style: full),
+          textDirection: TextDirection.ltr,
+          textScaler: scaler,
+          maxLines: 1,
+        )..layout();
+        final width = painter.width;
+        painter.dispose();
+        final fit = width <= box.maxWidth
+            ? 1.0
+            // 1px 여유: 글자 폭이 소수점에서 반올림돼 딱 맞춘 크기가 넘치는 일을 막는다.
+            : ((box.maxWidth - 1) / width).clamp(minScale, 1.0);
+        return Text(
+          text,
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.ellipsis,
+          style: style.copyWith(fontSize: style.fontSize! * fit),
+        );
+      },
     );
   }
 }
