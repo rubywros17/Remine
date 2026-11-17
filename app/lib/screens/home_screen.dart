@@ -60,7 +60,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       _excludedCount = excluded;
       _summary = summary;
-      _interest = interests.isEmpty ? null : interests.first;
+      _interest = pickHomeInterest(interests);
     });
   }
 
