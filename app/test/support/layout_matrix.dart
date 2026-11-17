@@ -140,6 +140,7 @@ List<ScreenshotItem> _twoSectionInterests() {
 }
 
 /// 긴 키워드 관심사 7개(많이 캡처한 순 = 9, 8, … 3장). 첫 키워드가 가장 길다.
+/// 마지막 둘(주말브런치·전시회, 서로 이어진 캡처 포함)은 40일 넘게 안 찍어 잊고 있었던 관심사 → 잊은 2 + 요즘 5.
 List<ScreenshotItem> _sevenLongInterests() {
   const tags = [
     '겨울캠핑장비추천리스트총정리',
@@ -157,7 +158,9 @@ List<ScreenshotItem> _sevenLongInterests() {
         ScreenshotItem(
           id: ++id,
           localAssetId: 'long$id',
-          takenAt: _now.subtract(Duration(days: k % 5, hours: k)),
+          takenAt: _now.subtract(
+            Duration(days: k % 5 + (i >= 5 ? 40 : 0), hours: k),
+          ),
           category: Category.values[i % Category.values.length],
           // 앞 키워드와 한 장씩 함께 → 연결선
           tags: [tag, if (k == 0 && i > 0) tags[i - 1]],
@@ -281,6 +284,67 @@ void defineLayoutMatrix({
       });
       _expectClean('관심사 지도 긴 키워드 $label', errors);
     });
+
+    // 보통 폰(360×800·412×915) 기본 글자: 칩 7개가 뇌 안, 애니메이션 끄기면 첫 프레임이 마지막 상태.
+    if (scale == 1.0 &&
+        (size == const Size(360, 800) || size == const Size(412, 915))) {
+      testWidgets('관심사 지도 칩 7개 뇌 안 · 애니메이션 끄기 · $label', (tester) async {
+        tester.platformDispatcher.accessibilityFeaturesTestValue =
+            const FakeAccessibilityFeatures(disableAnimations: true);
+        addTearDown(
+          tester.platformDispatcher.clearAccessibilityFeaturesTestValue,
+        );
+        final errors = await _errorsDuring(() async {
+          await _pump(
+            tester,
+            size,
+            scale,
+            repository: FakeScreenshotRepository(
+              now: () => _now,
+              seed: _sevenLongInterests(),
+            ),
+          );
+          await tester.tap(find.byIcon(LucideIcons.star));
+          await tester.pump();
+          final paint = find
+              .descendant(
+                of: find.byType(InterestBrainMap),
+                matching: find.byType(CustomPaint),
+              )
+              .evaluate()
+              .map((e) => e.widget as CustomPaint)
+              .firstWhere((c) => c.painter is BrainPainter);
+          final painter = paint.painter! as BrainPainter;
+          expect(
+            painter.ms,
+            brainTotalMs(
+              painter.chips.length,
+              brainLinks([for (final c in painter.chips) c.node]).length,
+            ),
+            reason: '애니메이션 끄기면 바로 끝 상태',
+          );
+          expect(tester.hasRunningAnimations, isFalse);
+          final chips = painter.chips;
+          expect(chips, hasLength(7));
+          expect(
+            chips.where((c) => c.node.interest.forgotten),
+            hasLength(2),
+            reason: '잊은 2 + 요즘 5',
+          );
+          final brain = chipBrainBounds(tester.getSize(find.byWidget(paint)))
+              .inflate(0.5);
+          for (final c in chips) {
+            expect(
+              brain.contains(c.rect.topLeft) &&
+                  brain.contains(c.rect.bottomRight),
+              isTrue,
+              reason: '${c.node.interest.tag} 칩이 뇌 밖 ${c.rect} / $brain',
+            );
+          }
+        });
+        _expectClean('관심사 지도 뇌 안 $label', errors);
+      });
+    }
 
     testWidgets('정리 탭 벤토·한 번에 보기 · $label', (tester) async {
       final errors = await _errorsDuring(() async {

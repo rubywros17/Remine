@@ -802,27 +802,34 @@ void main() {
       expect(find.text('아직 반복해서 캡처한 게 없어요'), findsOneWidget);
     });
 
-    test(
-      '순서: 잊고 있었던 관심사(30일 넘음) 먼저, 그다음 많이 캡처한 순, 연결은 같은 캡처를 공유한 관심사',
-      () async {
-        final interests = await FakeScreenshotRepository(
-          now: () => _now,
-          seed: _seed,
-        ).interests();
-        final nodes = layoutNodes(interests);
+    test('순서: 잊고 있었던 관심사(30일 넘음) 먼저, 그다음 많이 캡처한 순, 연결은 같은 카테고리 실선', () async {
+      final interests = await FakeScreenshotRepository(
+        now: () => _now,
+        seed: _seed,
+      ).interests();
+      final nodes = layoutNodes(interests);
 
-        // 잊은 가방 3 → 요즘 것 횟수 많은 순: 뜨개질 6 → 도안 3
-        expect(nodes.map((n) => n.interest.tag), ['가방', '뜨개질', '도안']);
-        expect(brainLinks(nodes), [(1, 2)]);
-        expect(nodes.map((n) => n.interest.forgotten), [true, false, false]);
-        expect(nodes[1].interest.linkedTags, ['도안']);
-        expect(nodes[0].interest.linkedTags, isEmpty);
-      },
-    );
+      // 잊은 가방 3 → 요즘 것 횟수 많은 순: 뜨개질 6 → 도안 3
+      expect(nodes.map((n) => n.interest.tag), ['가방', '뜨개질', '도안']);
+      // 셋 다 쇼핑 → 같은 카테고리 실선 2개(가까운 자리부터). 뜨개질-도안 같은 캡처는 이미 실선 줄로 이어져 점선 없음.
+      expect(brainLinks(nodes).map((l) => (l.a, l.b, l.dashed)), [
+        (0, 2, false),
+        (1, 2, false),
+      ]);
+      expect(nodes.map((n) => n.interest.forgotten), [true, false, false]);
+      expect(nodes[1].interest.linkedTags, ['도안']);
+      expect(nodes[0].interest.linkedTags, isEmpty);
+    });
 
-    Interest interest(String tag, int count, {int dormant = 0}) => Interest(
+    Interest interest(
+      String tag,
+      int count, {
+      int dormant = 0,
+      Category category = Category.etc,
+      List<String> linked = const [],
+    }) => Interest(
       tag: tag,
-      category: Category.etc,
+      category: category,
       forgotten: dormant > Interest.defaultRecentDays,
       captureCount: count,
       dormantDays: dormant,
@@ -831,6 +838,7 @@ void main() {
       latestMonth: 10,
       latestMonthCount: count,
       recent: const [],
+      linkedTags: linked,
     );
 
     final longSeven = [
@@ -891,16 +899,128 @@ void main() {
         const Size(320, 470),
         TextScaler.noScaling,
       );
+      // 잊은 것(제주도·주말)이 먼저 뽑히고 요즘 것과 번갈아 앉는다.
+      expect(chips.map((c) => c.node.interest.tag), [
+        '제주도한달살기숙소',
+        '겨울캠핑장비추천리스트총정리',
+        '주말브런치맛집',
+        '니트가디건코디',
+        '홈카페레시피',
+        '아이폰케이스',
+        '전시회일정정리',
+      ]);
       expect(chips.map((c) => c.color), [
-        AppBrain.chipTop, // 1위
+        AppBrain.chipTop, // 1위(잊은 관심사 1등)
         AppBrain.chip,
         AppBrain.chipTop, // 잊은 관심사
         AppBrain.chip,
         AppBrain.chip,
-        AppBrain.chipTop, // 잊은 관심사
+        AppBrain.chip,
         AppBrain.chip,
       ]);
       expect(chips.first.rect.height, greaterThan(chips[1].rect.height));
+    });
+
+    group('키워드 고르기: 잊은 4 + 요즘 3', () {
+      List<Interest> many(String p, int n, {bool forgotten = false}) => [
+        for (var i = 0; i < n; i++)
+          interest('$p$i', 20 - i, dormant: forgotten ? 40 : 0),
+      ];
+      List<String> tags(List<Interest> l) => [for (final i in l) i.tag];
+
+      test('잊은 6 · 요즘 5 → 잊은 4 + 요즘 3, 1등은 잊은 1등, 그 뒤 번갈아', () {
+        final picked = pickBrainInterests([
+          ...many('잊', 6, forgotten: true),
+          ...many('요', 5),
+        ]);
+        expect(tags(picked), ['잊0', '요0', '잊1', '요1', '잊2', '요2', '잊3']);
+      });
+
+      test('요즘 1개 → 잊은 6 + 요즘 1', () {
+        final picked = pickBrainInterests([
+          ...many('잊', 9, forgotten: true),
+          ...many('요', 1),
+        ]);
+        expect(tags(picked), ['잊0', '요0', '잊1', '잊2', '잊3', '잊4', '잊5']);
+      });
+
+      test('잊은 0개 → 요즘 7', () {
+        expect(tags(pickBrainInterests(many('요', 9))), [
+          '요0',
+          '요1',
+          '요2',
+          '요3',
+          '요4',
+          '요5',
+          '요6',
+        ]);
+      });
+
+      test('빈 목록 → 빈 지도', () {
+        expect(pickBrainInterests(const []), isEmpty);
+        expect(layoutNodes(const []), isEmpty);
+      });
+    });
+
+    group('연결선: 같은 카테고리 실선 · 같은 캡처 점선', () {
+      test('같은 카테고리 4개 → 실선 3개, 가까운 자리끼리 한 줄', () {
+        final nodes = layoutNodes([
+          for (var i = 0; i < 4; i++)
+            interest('쇼$i', 10 - i, category: Category.shopping),
+        ]);
+        final links = brainLinks(nodes);
+        expect(links, hasLength(3));
+        expect(links.every((l) => !l.dashed), isTrue);
+        // 4개가 모두 이어진다(신장 트리).
+        final reached = {0};
+        for (var k = 0; k < 3; k++) {
+          for (final l in links) {
+            if (reached.contains(l.a) || reached.contains(l.b)) {
+              reached.addAll([l.a, l.b]);
+            }
+          }
+        }
+        expect(reached, {0, 1, 2, 3});
+        // 가장 짧은 후보부터: 전체 길이가 모든 신장 트리 중 최소(4개라 전부 따져 본다).
+        double len(Iterable<(int, int)> es) => es.fold(
+          0,
+          (s, e) => s + (nodes[e.$1].slot - nodes[e.$2].slot).distance,
+        );
+        final all = [
+          for (var a = 0; a < 4; a++)
+            for (var b = a + 1; b < 4; b++) (a, b),
+        ];
+        var best = double.infinity;
+        for (var x = 0; x < all.length; x++) {
+          for (var y = x + 1; y < all.length; y++) {
+            for (var z = y + 1; z < all.length; z++) {
+              final es = [all[x], all[y], all[z]];
+              final seen = {0};
+              for (var k = 0; k < 3; k++) {
+                for (final e in es) {
+                  if (seen.contains(e.$1) || seen.contains(e.$2)) {
+                    seen.addAll([e.$1, e.$2]);
+                  }
+                }
+              }
+              if (seen.length == 4) best = min(best, len(es));
+            }
+          }
+        }
+        expect(len([for (final l in links) (l.a, l.b)]), closeTo(best, 0.001));
+      });
+
+      test('다른 카테고리 linkedTags → 점선, 같은 카테고리이면서 linkedTags → 실선 하나만', () {
+        final nodes = layoutNodes([
+          interest('가', 9, category: Category.shopping, linked: ['나', '다']),
+          interest('나', 8, category: Category.shopping, linked: ['가']),
+          interest('다', 7, category: Category.info, linked: ['가']),
+        ]);
+        expect(brainLinks(nodes).map((l) => (l.a, l.b, l.dashed)), [
+          (0, 1, false), // 가-나: 같은 카테고리 + 같은 캡처 → 실선 하나
+          (0, 2, true), // 가-다: 같은 캡처만 → 점선
+        ]);
+      });
     });
 
     test('서버 응답의 linkedTags·status를 읽고, 옛 응답(linkedTags 없음)은 빈 목록', () {
