@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -543,10 +545,15 @@ void main() {
         )
         .opacity;
 
+    // 긴 화면: 새 카드가 모두 화면 안이라 차례로 나타난다(화면 밖 카드는 바로 보이는 상태).
     testWidgets('펼치기: 새 카드는 차례로 나타나고, 더 보기가 먼저 사라진 뒤 카드가 다 나오면 접기', (
       tester,
     ) async {
-      await _openList(tester, _seed(forgotten: 0, recent: 5));
+      await _openList(
+        tester,
+        _seed(forgotten: 0, recent: 5),
+        size: const Size(412, 1600),
+      );
       await tester.tap(find.text(more));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 60));
@@ -636,6 +643,190 @@ void main() {
       expect(find.text('#요즘3', skipOffstage: false), findsNothing);
       expect(opacityOf(tester, find.text(more)), 1);
     });
+  });
+
+  group('보이는 만큼만 움직이기(4장 섹션 ↔ 38장 섹션)', () {
+    const screen = Size(412, 915);
+    const viewBottom = 915.0 - 72; // 탭 바 위
+    const forgottenMore = '잊고 있었던 관심사 2개 더 보기 ↓';
+    const recentMore = '요즘 모으는 중 35개 더 보기 ↓';
+    final forgottenReveal = find.byKey(const ValueKey('reveal-forgotten'));
+    final recentReveal = find.byKey(const ValueKey('reveal-recent'));
+
+    /// 잊은 관심사 4개 + 요즘 관심사 38개(모두 30일 이내).
+    List<ScreenshotItem> seed() => [
+      ..._seed(forgotten: 4, recent: 0),
+      for (var k = 0; k < 38; k++)
+        for (var d = 0; d < 3; d++)
+          ScreenshotItem(
+            id: 1000 + k * 10 + d,
+            localAssetId: 'r$k$d',
+            takenAt: _now.subtract(Duration(days: 1 + k % 20, hours: d)),
+            category: Category.shopping,
+            tags: ['요즘모음$k'],
+            summary: '',
+          ),
+    ];
+
+    ScrollPosition position(WidgetTester tester) =>
+        tester.state<ScrollableState>(find.byType(Scrollable).first).position;
+
+    /// [reveal](섹션의 더 보기 부분 + 버튼 자리) 아래 끝이 화면 [y]에 오게 스크롤.
+    Future<void> bottomAt(WidgetTester tester, Finder reveal, double y) async {
+      final p = position(tester);
+      p.jumpTo(p.pixels + tester.getRect(reveal).bottom - y);
+      await tester.pump();
+    }
+
+    /// 버튼 자리(섹션 아래 끝)의 화면 안 위치. 화면 아래로 나가면 화면 끝.
+    double visibleBottom(WidgetTester tester, Finder reveal) =>
+        math.min(tester.getRect(reveal).bottom, viewBottom);
+
+    /// 누른 뒤 첫 160ms 동안 화면 안에서 움직인 거리.
+    Future<double> moved(
+      WidgetTester tester,
+      Finder reveal,
+      Finder button,
+    ) async {
+      await tester.tap(button);
+      await tester.pump(); // 시작 프레임
+      final start = visibleBottom(tester, reveal);
+      await tester.pump(const Duration(milliseconds: 160));
+      final distance = (visibleBottom(tester, reveal) - start).abs();
+      await tester.pumpAndSettle();
+      return distance;
+    }
+
+    // 같은 화면 위치에서 4장 섹션은 자기 높이(약 300)를, 38장 섹션은 화면 아래 끝(약 385)까지 움직인다.
+    // 4장 섹션이 남은 화면보다 짧으면 이만큼(약 27%) 차이가 남는다 → 30% 이내.
+    // (작은 화면은 요즘 섹션 버튼이 목록 끝이라 같은 화면 위치에 둘 수 없어 비교하지 않는다.)
+    for (final (size, limit) in const [(Size(412, 915), 0.3)]) {
+      testWidgets(
+        '펼치기 ${size.width.toInt()}×${size.height.toInt()}: 첫 160ms 화면 안 이동 거리 차이 ${(limit * 100).toInt()}% 이내, 끝 상태는 다 펼침',
+        (tester) async {
+          final bottom = size.height - 72;
+          double seen(Finder reveal) =>
+              math.min(tester.getRect(reveal).bottom, bottom);
+          Future<double> movedHere(Finder reveal, Finder button) async {
+            await tester.tap(button);
+            await tester.pump(); // 시작 프레임
+            final start = seen(reveal);
+            await tester.pump(const Duration(milliseconds: 160));
+            final distance = (seen(reveal) - start).abs();
+            await tester.pumpAndSettle();
+            return distance;
+          }
+
+          await _openList(tester, seed(), size: size);
+          // 잊은 섹션은 목록 맨 위라 더 내려갈 수 없다: 그 자리를 재 두고 요즘 섹션 버튼도 같은 화면 위치에 둔다.
+          // 버튼 아래로 움직일 화면이 남게(아래 끝에서 250 위까지만). 큰 폰은 처음 자리 그대로다.
+          if (tester.getRect(forgottenReveal).bottom > bottom - 250) {
+            await bottomAt(tester, forgottenReveal, bottom - 250);
+          }
+          final at = tester.getRect(forgottenReveal).bottom;
+          final small = await movedHere(
+            forgottenReveal,
+            find.text(forgottenMore),
+          );
+          expect(find.text('#잊은3', skipOffstage: false), findsOneWidget);
+
+          await tester.scrollUntilVisible(
+            find.text(recentMore),
+            300,
+            scrollable: find.byType(Scrollable).first,
+          );
+          await bottomAt(tester, recentReveal, at);
+          final large = await movedHere(recentReveal, find.text(recentMore));
+          expect(small, greaterThan(30));
+          expect(
+            (large - small).abs() / small,
+            lessThan(limit),
+            reason: '4장 $small, 38장 $large',
+          );
+
+          // 끝 상태: 화면 밖 카드까지 다 보이는 상태
+          expect(
+            find.byType(InterestCard, skipOffstage: false),
+            findsNWidgets(42),
+          );
+          expect(find.text('접기 ↑', skipOffstage: false), findsNWidgets(2));
+          await tester.scrollUntilVisible(
+            find.text('#요즘모음37'),
+            300,
+            scrollable: find.byType(Scrollable).first,
+          );
+          final last = tester.widget<Opacity>(
+            find
+                .ancestor(
+                  of: find.text('#요즘모음37'),
+                  matching: find.byType(Opacity),
+                )
+                .first,
+          );
+          expect(last.opacity, 1);
+        },
+      );
+    }
+
+    testWidgets(
+      '접기: 머리가 멀면 스크롤을 먼저 옮기되 버튼 자리는 그대로, 첫 160ms 이동 거리가 20% 이내로 같다',
+      (tester) async {
+        await _openList(tester, seed(), size: screen);
+        await tester.tap(find.text(forgottenMore));
+        await tester.pumpAndSettle();
+        await bottomAt(tester, forgottenReveal, viewBottom - 20);
+        final small = await moved(
+          tester,
+          forgottenReveal,
+          find.descendant(of: forgottenReveal, matching: find.text('접기 ↑')),
+        );
+        expect(find.text(forgottenMore), findsOneWidget);
+
+        await tester.scrollUntilVisible(
+          find.text(recentMore),
+          300,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await bottomAt(tester, recentReveal, viewBottom - 20);
+        await tester.tap(find.text(recentMore));
+        await tester.pumpAndSettle();
+        await bottomAt(
+          tester,
+          recentReveal,
+          viewBottom - 20,
+        ); // 맨 아래 근처, 머리는 화면 몇 개 위
+        final before = visibleBottom(tester, recentReveal);
+        await tester.tap(
+          find.descendant(of: recentReveal, matching: find.text('접기 ↑')),
+        );
+        await tester.pump();
+        expect(
+          visibleBottom(tester, recentReveal),
+          closeTo(before, 2),
+          reason: '스크롤을 즉시 옮겨도 버튼 자리가 튀지 않는다',
+        );
+        final start = visibleBottom(tester, recentReveal);
+        await tester.pump(const Duration(milliseconds: 160));
+        final large = (visibleBottom(tester, recentReveal) - start).abs();
+        await tester.pumpAndSettle();
+
+        expect(small, greaterThan(50));
+        expect(
+          (large - small).abs() / small,
+          lessThan(0.2),
+          reason: '4장 $small, 38장 $large',
+        );
+        // 끝 상태: 접히고 섹션 머리가 화면에 보인다
+        expect(find.text(recentMore), findsOneWidget);
+        expect(
+          find.byType(InterestCard, skipOffstage: false),
+          findsNWidgets(5),
+        );
+        final header = tester.getRect(find.text('요즘 모으는 중'));
+        expect(header.top, greaterThanOrEqualTo(0));
+        expect(header.bottom, lessThanOrEqualTo(viewBottom));
+      },
+    );
   });
 
   group('맨 아래로 이동 시간', () {

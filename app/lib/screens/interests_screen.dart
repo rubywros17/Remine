@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show RenderAbstractViewport;
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../core/helpers.dart';
@@ -168,37 +167,6 @@ class _InterestsScreenState extends State<InterestsScreen> {
     _query.clear();
   }
 
-  /// 접으면서 그 섹션 머리가 화면 위로 지나가 있으면, 높이가 줄어드는 것과 같은 시간·곡선으로 머리까지 올린다.
-  /// 머리가 화면에 보이면 스크롤하지 않는다.
-  void _collapse(GlobalKey header, VoidCallback close) {
-    setState(close);
-    final reduced = AppMotion.reduced(context);
-    void reveal(RenderObject box) {
-      final target = RenderAbstractViewport.of(box)
-          .getOffsetToReveal(box, 0)
-          .offset;
-      if (!_scroll.hasClients || target >= _scroll.offset) return; // 이미 보인다
-      reduced
-          ? _scroll.jumpTo(target)
-          : _scroll.animateTo(
-              target,
-              duration: AppReveal.shrink,
-              curve: AppReveal.shrinkCurve,
-            );
-    }
-
-    final box = header.currentContext?.findRenderObject();
-    if (box != null && box.attached) {
-      reveal(box); // 머리는 접히는 부분보다 위라 지금 위치가 그대로 목표다
-      return;
-    }
-    // 머리가 너무 멀어 아직 안 그려져 있으면, 접힌 다음 프레임에 찾는다.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final later = header.currentContext?.findRenderObject();
-      if (mounted && later != null && later.attached) reveal(later);
-    });
-  }
-
   /// 대소문자·띄어쓰기·'#'를 무시한 비교 키.
   static String _key(String s) =>
       s.replaceAll('#', '').replaceAll(RegExp(r'\s+'), '').toLowerCase();
@@ -299,14 +267,13 @@ class _InterestsScreenState extends State<InterestsScreen> {
                           '잊고 있었던 관심사 ${forgotten.length - _forgottenPreview}개 더 보기 ↓',
                       onTap: () => setState(() => _forgottenOpen = true),
                     ),
-                    collapse: _HighlightButton(
+                    collapse: (onTap) => _HighlightButton(
                       text: '접기 ↑',
                       label: '잊고 있었던 관심사 접기',
-                      onTap: () => _collapse(
-                        _forgottenHeader,
-                        () => _forgottenOpen = false,
-                      ),
+                      onTap: onTap,
                     ),
+                    onCollapse: () => setState(() => _forgottenOpen = false),
+                    header: _forgottenHeader,
                   ),
                 ],
                 if (recent.isNotEmpty) ...[
@@ -335,13 +302,14 @@ class _InterestsScreenState extends State<InterestsScreen> {
                             '요즘 모으는 중 ${recent.length - _recentPreview}개 더 보기 ↓',
                         onTap: () => setState(() => _recentOpen = true),
                       ),
-                      collapse: _HighlightButton(
+                      collapse: (onTap) => _HighlightButton(
                         color: AppColors.celadon,
                         text: '접기 ↑',
                         label: '요즘 모으는 중 접기',
-                        onTap: () =>
-                            _collapse(_recentHeader, () => _recentOpen = false),
+                        onTap: onTap,
                       ),
+                      onCollapse: () => setState(() => _recentOpen = false),
+                      header: _recentHeader,
                     ),
                   ],
                 ],
