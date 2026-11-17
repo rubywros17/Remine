@@ -21,10 +21,12 @@ Interest _interest({
   int dormantDays = 1,
   int monthCount = 12,
   int recent = 3,
+  bool? forgotten,
+  List<String> linked = const [],
 }) => Interest(
   tag: tag,
   category: Category.shopping,
-  forgotten: dormantDays > Interest.defaultRecentDays,
+  forgotten: forgotten ?? dormantDays > Interest.defaultRecentDays,
   captureCount: count,
   dormantDays: dormantDays,
   peakMonth: 9,
@@ -35,13 +37,14 @@ Interest _interest({
     for (var i = 0; i < recent; i++)
       InterestCapture(id: i + 1, localAssetId: 'a$i'),
   ],
+  linkedTags: linked,
 );
 
 Widget _card(
   Interest i, {
   double width = 360,
   double scale = 1.0,
-  bool? compact,
+  InterestCardVariant variant = InterestCardVariant.list,
 }) => MaterialApp(
   home: MediaQuery(
     data: MediaQueryData(textScaler: TextScaler.linear(scale)),
@@ -50,11 +53,7 @@ Widget _card(
         child: Center(
           child: SizedBox(
             width: width - 2 * AppSpacing.screenPadding,
-            child: InterestCard(
-              interest: i,
-              onTap: () {},
-              compact: compact ?? !i.forgotten,
-            ),
+            child: InterestCard(interest: i, onTap: () {}, variant: variant),
           ),
         ),
       ),
@@ -168,17 +167,12 @@ void main() {
     });
 
     // 시안 높이(약 140 / 80%)는 실제 폰트로 재는 layout_matrix에서 확인한다(테스트 기본 폰트는 알약이 커진다).
-    testWidgets('목록의 요즘 카드는 잊은 카드보다 낮고, 홈 카드는 잊은 카드 높이 그대로', (tester) async {
+    testWidgets('목록의 요즘 카드는 잊은 카드보다 낮다', (tester) async {
       await tester.pumpWidget(_card(_interest(dormantDays: 52)));
       final forgotten = tester.getSize(find.byType(InterestCard)).height;
       await tester.pumpWidget(_card(_interest()));
       final recent = tester.getSize(find.byType(InterestCard)).height;
       expect(recent, lessThan(forgotten));
-      await tester.pumpWidget(_card(_interest(), compact: false));
-      expect(
-        tester.getSize(find.byType(InterestCard)).height,
-        greaterThanOrEqualTo(AppInterestCard.minHeight),
-      );
     });
 
     testWidgets('화면 읽기: 상태·태그·잠든 일수·달별 횟수 / 상태·태그·마지막·전체 횟수', (tester) async {
@@ -193,6 +187,91 @@ void main() {
       );
       expect(
         find.bySemanticsLabel('요즘 모으는 중 #네일아트, 9일 전 마지막, 17번 캡처'),
+        findsOneWidget,
+      );
+      semantics.dispose();
+    });
+  });
+
+  group('홈 관심사 카드(예전 모양)', () {
+    Widget home(Interest i) => _card(i, variant: InterestCardVariant.home);
+
+    testWidgets('요즘 모으는 중: 셀라돈 "요즘 빠진 것" + 오늘/어제/N일 전 마지막, 멘트 없음', (
+      tester,
+    ) async {
+      for (final (days, text) in [
+        (0, '오늘 마지막'),
+        (1, '어제 마지막'),
+        (12, '12일 전 마지막'), // 예전 7일 경계가 아니라 서버 status 기준
+      ]) {
+        await tester.pumpWidget(home(_interest(dormantDays: days)));
+        expect(find.text(text), findsOneWidget, reason: '$days일');
+        expect(_stickerColor(tester, '요즘 빠진 것'), AppColors.celadon);
+        expect(_shotsColor(tester), AppColors.celadon);
+        expect(find.text('잊고 있었던 관심사'), findsNothing);
+        expect(find.textContaining('잠자는 중'), findsNothing);
+        expect(find.textContaining('캡처했어요'), findsNothing);
+      }
+    });
+
+    testWidgets('잊고 있었던 관심사(서버 status): 레몬 스티커 + "N일째 잠자는 중"', (tester) async {
+      await tester.pumpWidget(home(_interest(dormantDays: 9, forgotten: true)));
+      expect(_stickerColor(tester, '잊고 있었던 관심사'), AppColors.lemon);
+      expect(_shotsColor(tester), AppColors.lemon);
+      expect(find.text('9일째 잠자는 중'), findsOneWidget);
+    });
+
+    testWidgets('#태그 아래 연결 태그 최대 3개, 없으면 줄 없음, 스티커 "19 / SHOTS"', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        home(_interest(linked: const ['도안', '키링', '코스터', '실'])),
+      );
+      expect(find.text('#뜨개질'), findsOneWidget);
+      expect(find.text('#도안 · #키링 · #코스터'), findsOneWidget);
+      expect(find.text('SHOTS'), findsOneWidget);
+      expect(find.text('19'), findsWidgets); // 스티커 + 워터마크
+      await tester.pumpWidget(home(_interest()));
+      expect(find.textContaining(' · '), findsNothing);
+    });
+
+    testWidgets('게이지: 많이 캡처할수록 셀라돈 점이 많고, 잊은 건 1칸', (tester) async {
+      int on() => find
+          .byWidgetPredicate(
+            (w) =>
+                w.key is ValueKey<String> &&
+                (w.key! as ValueKey<String>).value.startsWith('gauge-on'),
+          )
+          .evaluate()
+          .length;
+      for (final (count, dots) in [(3, 1), (6, 2), (10, 3), (19, 4), (25, 5)]) {
+        await tester.pumpWidget(home(_interest(count: count)));
+        expect(on(), dots, reason: '$count장');
+      }
+      await tester.pumpWidget(home(_interest(count: 25, dormantDays: 52)));
+      expect(on(), 1);
+      // 목록 카드에는 게이지가 없다.
+      await tester.pumpWidget(_card(_interest(count: 25)));
+      expect(find.byKey(const ValueKey('gauge-on-0')), findsNothing);
+    });
+
+    testWidgets('높이 168 이상', (tester) async {
+      for (final dormant in const [1, 52]) {
+        await tester.pumpWidget(home(_interest(dormantDays: dormant)));
+        expect(
+          tester.getSize(find.byType(InterestCard)).height,
+          greaterThanOrEqualTo(AppInterestCard.homeMinHeight),
+        );
+      }
+    });
+
+    testWidgets('화면 읽기: 상태·태그·횟수·마지막 캡처·함께 캡처한 관심사', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(home(_interest(linked: const ['도안', '코스터'])));
+      expect(
+        find.bySemanticsLabel(
+          '요즘 빠진 것 #뜨개질, 19번 캡처, 어제 마지막, 함께 캡처한 관심사 도안, 코스터',
+        ),
         findsOneWidget,
       );
       semantics.dispose();
@@ -869,7 +948,7 @@ void main() {
 
   group('관심사 카드 레이아웃 매트릭스', () {
     testWidgets(
-      '폭 320/360/412 × 글자 1.0/1.3/2.0 × 상태 × 콜라주 0/1/3 × 긴 태그: 넘침 없음',
+      '폭 320/360/412 × 글자 1.0/1.3/2.0 × 상태 × 콜라주 0/1/3 × 긴 태그 × 목록/홈(연결 태그 0/2/5): 넘침 없음',
       (tester) async {
         final errors = <String>[];
         final original = FlutterError.onError;
@@ -880,21 +959,28 @@ void main() {
               for (final dormant in [0, 52]) {
                 for (final recent in [0, 1, 3]) {
                   for (final tag in ['뜨개질', '아주아주긴관심사이름이라두줄을넘어가는태그']) {
-                    await tester.pumpWidget(
-                      _card(
-                        _interest(
-                          tag: tag,
-                          dormantDays: dormant,
-                          recent: recent,
+                    for (final (variant, linked) in [
+                      (InterestCardVariant.list, 0),
+                      for (final n in [0, 2, 5]) (InterestCardVariant.home, n),
+                    ]) {
+                      await tester.pumpWidget(
+                        _card(
+                          _interest(
+                            tag: tag,
+                            dormantDays: dormant,
+                            recent: recent,
+                            linked: [for (var k = 0; k < linked; k++) '연결$k'],
+                          ),
+                          width: width,
+                          scale: scale,
+                          variant: variant,
                         ),
-                        width: width,
-                        scale: scale,
-                      ),
-                    );
-                    if (errors.isNotEmpty) {
-                      fail(
-                        '$width/$scale/$dormant/$recent/$tag: ${errors.first}',
                       );
+                      if (errors.isNotEmpty) {
+                        fail(
+                          '$width/$scale/$dormant/$recent/$tag/${variant.name}/$linked: ${errors.first}',
+                        );
+                      }
                     }
                   }
                 }
@@ -913,15 +999,23 @@ void main() {
         (tester) async {
           for (final scale in const [1.0, 1.3]) {
             for (final dormant in const [1, 52]) {
-              for (final recent in const [1, 3]) {
+              for (final (recent, variant) in [
+                for (final r in const [1, 3])
+                  for (final v in InterestCardVariant.values) (r, v),
+              ]) {
                 await tester.pumpWidget(
                   _card(
-                    _interest(dormantDays: dormant, recent: recent),
+                    _interest(
+                      dormantDays: dormant,
+                      recent: recent,
+                      linked: const ['도안', '키링', '코스터'],
+                    ),
                     width: width,
                     scale: scale,
+                    variant: variant,
                   ),
                 );
-                final why = '$width/$scale/$dormant/$recent';
+                final why = '$width/$scale/$dormant/$recent/${variant.name}';
                 final card = tester.getRect(find.byType(InterestCard));
                 final c = tester.getCenter(
                   find.byKey(const ValueKey('shots-sticker')),

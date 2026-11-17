@@ -163,6 +163,14 @@ abstract final class AppInterestCard {
   static const double minHeight = 140; // 시안 높이
   static const double recentMinHeight = 112; // minHeight의 80%
 
+  /// 홈 카드 최소 높이(상태 스티커·태그·연결 태그·게이지 줄). 한 화면(360×800)에 홈 내용이 들어가는 높이.
+  static const double homeMinHeight = 168;
+
+  /// 홈 카드 왼쪽 아래 점 게이지: 이 장수 이상이면 점 하나씩 더(5칸). 잊은 관심사는 레몬 1칸.
+  static const gaugeSteps = [3, 6, 10, 15, 20];
+  static const double gaugeDot = 7;
+  static const gaugeEmpty = Color(0x40FFFFFF); // 빈 칸: 흰색 25%
+
   /// 콜라주 맨 앞 사진 오른쪽 위에 걸친 원형 스티커 "19 / SHOTS": 지름, 기울기(10°).
   static const double shotsSize = 58;
   static const double shotsTilt = 10 * math.pi / 180;

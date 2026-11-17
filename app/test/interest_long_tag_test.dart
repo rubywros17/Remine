@@ -8,6 +8,7 @@ import 'package:remine/core/tokens.dart';
 import 'package:remine/models/category.dart';
 import 'package:remine/models/interest.dart';
 import 'package:remine/widgets/home_widgets.dart';
+import 'package:remine/widgets/small_widgets.dart';
 
 /// 긴 태그는 실제 글자 폭이 중요해서 앱 폰트(Pretendard)를 불러와 잰다.
 /// (테스트 기본 폰트는 한글 한 글자가 글자 크기만큼 넓어 실제보다 훨씬 길다.)
@@ -26,24 +27,24 @@ Interest _interest(String tag, {required int dormantDays}) => Interest(
   ],
 );
 
-Widget _card(Interest i, {double width = 360, double scale = 1.0}) =>
-    MaterialApp(
-      home: MediaQuery(
-        data: MediaQueryData(textScaler: TextScaler.linear(scale)),
-        child: Scaffold(
-          body: Center(
-            child: SizedBox(
-              width: width - 2 * AppSpacing.screenPadding,
-              child: InterestCard(
-                interest: i,
-                onTap: () {},
-                compact: !i.forgotten,
-              ),
-            ),
-          ),
+Widget _card(
+  Interest i, {
+  double width = 360,
+  double scale = 1.0,
+  InterestCardVariant variant = InterestCardVariant.list,
+}) => MaterialApp(
+  home: MediaQuery(
+    data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+    child: Scaffold(
+      body: Center(
+        child: SizedBox(
+          width: width - 2 * AppSpacing.screenPadding,
+          child: InterestCard(interest: i, onTap: () {}, variant: variant),
         ),
       ),
-    );
+    ),
+  ),
+);
 
 void main() {
   setUpAll(() async {
@@ -70,12 +71,16 @@ void main() {
         testWidgets(
           '#$tag · 폭 $width 글자 $scale: 한 줄, 줄여서 맞추고(최소 60%) 말줄임은 최소 크기에서만',
           (tester) async {
-            for (final dormant in const [52, 1]) {
+            for (final (dormant, variant) in [
+              for (final d in const [52, 1])
+                for (final v in InterestCardVariant.values) (d, v),
+            ]) {
               await tester.pumpWidget(
                 _card(
                   _interest(tag, dormantDays: dormant),
                   width: width,
                   scale: scale,
+                  variant: variant,
                 ),
               );
               final finder = find.text('#$tag');
@@ -108,5 +113,32 @@ void main() {
         isTrue,
       );
     });
+  });
+
+  // 실측(Pretendard, 폭 360): ×1.0 스티커 약 123px / 글자 영역 약 139px → 한 줄.
+  // ×1.3은 두 줄로 접힌다(넘침 오류는 없음, interest_card_test 매트릭스에서 확인).
+  testWidgets('360×800: 홈 "잊고 있었던 관심사" 스티커가 한 줄, 글자 영역 안, SHOTS와 안 겹침', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _card(
+        _interest('뜨개질', dormantDays: 52),
+        variant: InterestCardVariant.home,
+      ),
+    );
+    final label = find.text('잊고 있었던 관심사');
+    expect(
+      tester.renderObject<RenderParagraph>(label).didExceedMaxLines,
+      isFalse,
+    );
+    expect(tester.getSize(label).height, lessThan(13 * 1.6), reason: '한 줄');
+    final sticker = tester.getRect(find.byType(Sticker));
+    final card = tester.getRect(find.byType(InterestCard));
+    final shots = tester.getRect(find.byKey(const ValueKey('shots-sticker')));
+    expect(sticker.overlaps(shots), isFalse);
+    expect(
+      sticker.right,
+      lessThanOrEqualTo(card.right - card.width * 0.36 - 16),
+    );
   });
 }

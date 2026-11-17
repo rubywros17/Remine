@@ -47,7 +47,7 @@ final double _cardToDrawer =
     AppText.sectionTitle.fontSize! * AppHome.drawerTitleInkTop;
 
 void main() {
-  // 360×800도 관심사 카드에서 연결 태그·게이지 줄이 빠진 뒤로는 몇 px 남는다.
+  // 홈 카드 168(태그는 OneLineFit으로 한 줄)이면 360×800도 몇 px 남는다. (00c6362는 테스트 폰트에서 태그가 두 줄로 접혀 카드가 182라 안 남았다.)
   for (final size in const [Size(412, 915), Size(360, 800)]) {
     testWidgets(
       '화면이 남으면 제목-카드·카드-서랍 제목이 남는 높이의 1/3씩(각각 최대 +32) 똑같이 늘고, 나머지는 알약 아래로 $size',

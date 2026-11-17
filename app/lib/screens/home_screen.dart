@@ -165,6 +165,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   InterestCard(
                     interest: interest,
+                    variant: InterestCardVariant.home,
                     onTap: () => _open(
                       context,
                       TagScreen(
