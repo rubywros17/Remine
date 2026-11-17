@@ -77,7 +77,7 @@ abstract final class AppCategoryColors {
 /// 관심사 탭 진입 "머릿속 캡처 지도"(디자인 캔버스 4안 · 관심사 · 머릿속 캡처 지도). 배경은 [AppColors.darkGray].
 abstract final class AppBrain {
   static const cerebrum = Color(0xFF56676B); // 대뇌 안쪽 채움
-  static const outline = AppColors.celadon; // 윤곽·연결선
+  static const outline = AppColors.celadon; // 뇌 윤곽
   static const fold = Color(0x807DC4CE); // 주름: 셀라돈 50%
   static const cerebellum = Color(0xFF4E9CA7);
   static const brainstem = AppColors.celadonDeep;
@@ -154,8 +154,15 @@ abstract final class AppBrain {
     blurRadius: 12,
   );
   static const double chipSpacing = 6; // 칩 사이 최소 간격
-  static const double linkStroke = 1.8; // 같은 카테고리(실선)
-  static const double linkDashStroke = 1.2; // 같은 캡처(점선): 실선보다 가늘게
+  /// 같은 카테고리(실선): 그 카테고리 색([AppCategoryColors], 홈 서랍 점과 같은 색)을 어두운 뇌 위에서 85%로.
+  static const double linkStroke = 1.8;
+  static const double linkAlpha = 0.85;
+  static Color linkColor(Category c) =>
+      AppCategoryColors.of(c).withValues(alpha: linkAlpha);
+
+  /// 같은 캡처(점선): 흰색 55%.
+  static const linkDashColor = Color(0x8CFFFFFF);
+  static const double linkDashStroke = 1.5;
   static const double linkDash = 4;
   static const double linkDashGap = 4;
 }

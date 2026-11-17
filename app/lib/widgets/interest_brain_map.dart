@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' show PathMetric;
 
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
 import '../core/tokens.dart';
@@ -58,6 +59,7 @@ class _InterestBrainMapState extends State<InterestBrainMap>
     super.didChangeDependencies();
     if (_started) return;
     _started = true;
+    if (kDebugMode) debugPrint(brainLinkSummary(_nodes));
     if (MediaQuery.disableAnimationsOf(context)) {
       _clock.value = 1; // 마지막 상태
       return;
@@ -295,6 +297,46 @@ List<BrainLink> brainLinks(List<BrainNode> nodes) {
     }
   }
   return [...links, for (final (a, b) in dashed) (a: a, b: b, dashed: true)];
+}
+
+/// 선 하나의 붓: 실선은 그 카테고리 색(홈 서랍 점과 같은 색), 점선은 흰색.
+Paint brainLinkPaint(BrainLink link, Category category) => link.dashed
+    ? (Paint()
+        ..color = AppBrain.linkDashColor
+        ..strokeWidth = AppBrain.linkDashStroke)
+    : (Paint()
+        ..color = AppBrain.linkColor(category)
+        ..strokeWidth = AppBrain.linkStroke
+        ..strokeCap = StrokeCap.round);
+
+/// 디버그 로그 한 줄: "[brain] 실선 N(카테고리별 개수) · 점선 M · 같은 캡처 쌍 K(같은 카테고리라 생략 L)".
+String brainLinkSummary(List<BrainNode> nodes) {
+  final links = brainLinks(nodes);
+  final byRank = {for (final n in nodes) n.rank: n};
+  final perCategory = <String, int>{};
+  for (final l in links.where((l) => !l.dashed)) {
+    final label = byRank[l.a]!.interest.category.label;
+    perCategory[label] = (perCategory[label] ?? 0) + 1;
+  }
+  final byTag = {for (final n in nodes) n.interest.tag: n};
+  final pairs = <(int, int)>{};
+  var sameCategory = 0;
+  for (final n in nodes) {
+    for (final tag in n.interest.linkedTags) {
+      final m = byTag[tag];
+      if (m == null || m == n) continue;
+      final added = pairs.add((
+        math.min(n.rank, m.rank),
+        math.max(n.rank, m.rank),
+      ));
+      if (added && m.interest.category == n.interest.category) sameCategory++;
+    }
+  }
+  final solid = links.where((l) => !l.dashed).length;
+  final detail = [for (final e in perCategory.entries) '${e.key} ${e.value}'];
+  return '[brain] 실선 $solid(${detail.join(', ')}) · '
+      '점선 ${links.length - solid} · '
+      '같은 캡처 쌍 ${pairs.length}(같은 카테고리라 생략 $sameCategory)';
 }
 
 /// 시안 SVG 경로(M·Q·Z만)를 그대로 옮긴다.
@@ -675,22 +717,16 @@ class BrainPainter extends CustomPainter {
 
   // 연결선은 칩 뒤에: 칩 가운데끼리, 하나씩 그려진다(점선도 앞에서부터 차례로).
   void _drawLinks(Canvas canvas) {
-    final solid = Paint()
-      ..color = AppBrain.outline
-      ..strokeWidth = AppBrain.linkStroke
-      ..strokeCap = StrokeCap.round;
-    final dash = Paint()
-      ..color = AppBrain.outline
-      ..strokeWidth = AppBrain.linkDashStroke;
-    final byRank = {for (final c in chips) c.node.rank: c.rect.center};
+    final byRank = {for (final c in chips) c.node.rank: c};
     for (final (i, l) in brainLinks([for (final c in chips) c.node]).indexed) {
       final start = AppBrain.linksStart + AppBrain.linkGap * i;
       final p = _phase((start, start + AppBrain.linkDraw), Curves.easeInOut);
       if (p <= 0) continue;
-      final from = byRank[l.a]!;
-      final to = byRank[l.b]!;
+      final from = byRank[l.a]!.rect.center;
+      final to = byRank[l.b]!.rect.center;
+      final paint = brainLinkPaint(l, byRank[l.a]!.node.interest.category);
       if (!l.dashed) {
-        canvas.drawLine(from, Offset.lerp(from, to, p)!, solid);
+        canvas.drawLine(from, Offset.lerp(from, to, p)!, paint);
         continue;
       }
       final len = (to - from).distance;
@@ -705,7 +741,7 @@ class BrainPainter extends CustomPainter {
         canvas.drawLine(
           from + dir * d,
           from + dir * math.min(d + AppBrain.linkDash, end),
-          dash,
+          paint,
         );
       }
     }
