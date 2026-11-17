@@ -407,6 +407,13 @@ abstract final class AppShadow {
 /// 화면이 남으면 둘 다 남는 높이의 [cardGapShare](각각 최대 +[cardGapMaxExtra])만큼 같이 는다.
 /// 나머지는 알약 아래로. 알약 ↔ 탭바는 최소 [pillsToTabMin](모자라면 스크롤).
 abstract final class AppHome {
+  /// 제목 ↔ 카드 · 카드 ↔ 서랍 제목의 기본 간격(보이는 글자 끝 기준, 서랍 쪽은 홈 화면이 보정을 더한다).
+  static const double cardGap = 20;
+
+  /// 예전 기본 간격(24)에서 줄인 양. 남는 높이는 예전 기준으로 계산해서(최소 높이에서 2배를 뺀다)
+  /// 어떤 화면 크기에서든 두 간격이 이만큼씩 똑같이 줄고, 서랍이 2배만큼 올라간다.
+  static const double cardGapTrim = AppSpacing.s24 - cardGap;
+
   static const double cardGapShare = 1 / 3;
   static const double cardGapMaxExtra = 16;
   static const double pillsToTabMin = 20;

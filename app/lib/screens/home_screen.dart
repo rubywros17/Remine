@@ -97,7 +97,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // 제목 글자 아래 끝은 글자 박스보다 위에, 서랍 제목 글자 위 끝은 박스보다 아래에 있어서 그 차이만큼 보정한다.
     final textScaler = MediaQuery.textScalerOf(context);
     final cardToDrawer =
-        AppSpacing.s24 +
+        AppHome.cardGap +
         textScaler.scale(AppText.display.fontSize!) * AppHome.titleInkBottom -
         textScaler.scale(AppText.sectionTitle.fontSize!) *
             AppHome.drawerTitleInkTop;
@@ -117,7 +117,14 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              minHeight: math.max(0, viewport.maxHeight - AppSpacing.s16),
+              // 관심사 카드가 있으면 간격을 줄인 만큼(2 × cardGapTrim) 최소 높이도 줄여서,
+              // 줄인 높이가 남는 높이로 돌아가 간격을 다시 늘리지 않게 한다(모든 화면에서 똑같이 줄게).
+              minHeight: math.max(
+                0,
+                viewport.maxHeight -
+                    AppSpacing.s16 -
+                    (interest == null ? 0 : 2 * AppHome.cardGapTrim),
+              ),
             ),
             child: GrowColumn(
               children: [
@@ -159,7 +166,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: AppSpacing.s24)
                 else ...[
                   GrowGap(
-                    AppSpacing.s24,
+                    AppHome.cardGap,
                     share: AppHome.cardGapShare,
                     maxExtra: AppHome.cardGapMaxExtra,
                   ),
