@@ -140,17 +140,30 @@ List<ScreenshotItem> _twoSectionInterests() {
 }
 
 /// 긴 키워드 관심사 7개(많이 캡처한 순 = 9, 8, … 3장). 첫 키워드가 가장 길다.
-/// 마지막 둘(주말브런치·전시회, 서로 이어진 캡처 포함)은 40일 넘게 안 찍어 잊고 있었던 관심사 → 잊은 2 + 요즘 5.
-List<ScreenshotItem> _sevenLongInterests() {
-  const tags = [
-    '겨울캠핑장비추천리스트총정리',
-    '니트가디건코디',
-    '제주도한달살기숙소',
-    '홈카페레시피',
-    '아이폰케이스',
-    '주말브런치맛집',
-    '전시회일정정리',
-  ];
+List<ScreenshotItem> _sevenLongInterests() => _sevenInterests(const [
+  '겨울캠핑장비추천리스트총정리',
+  '니트가디건코디',
+  '제주도한달살기숙소',
+  '홈카페레시피',
+  '아이폰케이스',
+  '주말브런치맛집',
+  '전시회일정정리',
+]);
+
+/// 보통 길이 키워드 관심사 7개.
+List<ScreenshotItem> _sevenUsualInterests() => _sevenInterests(const [
+  '필기구',
+  '캠핑',
+  '다이어리꾸미기',
+  '뜨개질',
+  '제주여행',
+  '홈카페',
+  '니트가디건',
+]);
+
+/// 관심사 7개(많이 캡처한 순 = 9, 8, … 3장).
+/// 마지막 둘(서로 이어진 캡처 포함)은 40일 넘게 안 찍어 잊고 있었던 관심사 → 잊은 2 + 요즘 5.
+List<ScreenshotItem> _sevenInterests(List<String> tags) {
   var id = 0;
   return [
     for (final (i, tag) in tags.indexed)
@@ -273,6 +286,18 @@ void defineLayoutMatrix({
             isTrue,
             reason: '${a.node.interest.tag} 칩이 캔버스 밖',
           );
+          // 보통 폰 기본 글자: 아주 긴 키워드도 뇌 상자 안(둥근 윤곽까지는 못 맞출 수 있다).
+          if (scale == 1.0 &&
+              (size == const Size(360, 800) || size == const Size(412, 915))) {
+            final brain = chipBrainBounds(tester.getSize(find.byWidget(paint)))
+                .inflate(0.5);
+            expect(
+              brain.contains(a.rect.topLeft) &&
+                  brain.contains(a.rect.bottomRight),
+              isTrue,
+              reason: '${a.node.interest.tag} 칩이 뇌 상자 밖',
+            );
+          }
           for (final b in chips.skip(i + 1)) {
             expect(
               a.rect.deflate(0.5).overlaps(b.rect.deflate(0.5)),
@@ -285,9 +310,9 @@ void defineLayoutMatrix({
       _expectClean('관심사 지도 긴 키워드 $label', errors);
     });
 
-    // 보통 폰(360×800·412×915) 기본 글자: 칩 7개가 뇌 안, 애니메이션 끄기면 첫 프레임이 마지막 상태.
-    if (scale == 1.0 &&
-        (size == const Size(360, 800) || size == const Size(412, 915))) {
+    // 보통 폰(360×800·412×915, 글자 1.0·1.3배): 보통 길이 칩 7개가 뇌 윤곽 안(여백 포함)·서로 안 겹침,
+    // 애니메이션 끄기면 첫 프레임이 마지막 상태.
+    if (size == const Size(360, 800) || size == const Size(412, 915)) {
       testWidgets('관심사 지도 칩 7개 뇌 안 · 애니메이션 끄기 · $label', (tester) async {
         tester.platformDispatcher.accessibilityFeaturesTestValue =
             const FakeAccessibilityFeatures(disableAnimations: true);
@@ -301,7 +326,7 @@ void defineLayoutMatrix({
             scale,
             repository: FakeScreenshotRepository(
               now: () => _now,
-              seed: _sevenLongInterests(),
+              seed: _sevenUsualInterests(),
             ),
           );
           await tester.tap(find.byIcon(LucideIcons.star));
@@ -331,15 +356,20 @@ void defineLayoutMatrix({
             hasLength(2),
             reason: '잊은 2 + 요즘 5',
           );
-          final brain = chipBrainBounds(tester.getSize(find.byWidget(paint)))
-              .inflate(0.5);
-          for (final c in chips) {
+          final canvasSize = tester.getSize(find.byWidget(paint));
+          for (final (i, c) in chips.indexed) {
             expect(
-              brain.contains(c.rect.topLeft) &&
-                  brain.contains(c.rect.bottomRight),
+              chipFitsBrain(canvasSize, c.rect),
               isTrue,
-              reason: '${c.node.interest.tag} 칩이 뇌 밖 ${c.rect} / $brain',
+              reason: '${c.node.interest.tag} 칩이 뇌 윤곽 밖 ${c.rect}',
             );
+            for (final d in chips.skip(i + 1)) {
+              expect(
+                c.rect.deflate(0.5).overlaps(d.rect.deflate(0.5)),
+                isFalse,
+                reason: '${c.node.interest.tag} ↔ ${d.node.interest.tag} 겹침',
+              );
+            }
           }
         });
         _expectClean('관심사 지도 뇌 안 $label', errors);
