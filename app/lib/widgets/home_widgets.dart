@@ -333,6 +333,7 @@ class InterestCard extends StatelessWidget {
         : compact
         ? AppInterestCard.recentMinHeight
         : AppInterestCard.minHeight;
+    final double vertical = home ? 22 : (compact ? 12 : 16);
     return PressableScale(
       onTap: onTap,
       label: home ? homeSemanticsLabel(i) : semanticsLabel(i),
@@ -375,15 +376,16 @@ class InterestCard extends StatelessWidget {
                     constraints: BoxConstraints(minHeight: minHeight),
                     child: Padding(
                       // 요즘 카드(compact)는 위아래 여백·줄 간격을 줄여 80% 높이에 들어가게 한다.
+                      // 홈 카드는 위아래를 넓혀 184 높이에서 스티커·태그·게이지가 고르게 퍼지게.
                       padding: EdgeInsets.fromLTRB(
                         20,
-                        compact ? 12 : 16,
+                        vertical,
                         collageWidth > 0
                             ? 16 +
                                   collageWidth +
                                   AppInterestCard.shotsSize * 0.6
                             : 20,
-                        compact ? 12 : 16,
+                        vertical,
                       ),
                       child: home
                           ? _HomeText(interest: i)

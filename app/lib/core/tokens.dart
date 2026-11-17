@@ -163,8 +163,8 @@ abstract final class AppInterestCard {
   static const double minHeight = 140; // 시안 높이
   static const double recentMinHeight = 112; // minHeight의 80%
 
-  /// 홈 카드 최소 높이(상태 스티커·태그·연결 태그·게이지 줄). 한 화면(360×800)에 홈 내용이 들어가는 높이.
-  static const double homeMinHeight = 168;
+  /// 홈 카드 최소 높이(상태 스티커·태그·연결 태그·게이지 줄). 360×800(실제 폰트)에서 홈이 스크롤 없이 들어가는 높이.
+  static const double homeMinHeight = 184;
 
   /// 홈 카드 왼쪽 아래 점 게이지: 이 장수 이상이면 점 하나씩 더(5칸). 잊은 관심사는 레몬 1칸.
   static const gaugeSteps = [3, 6, 10, 15, 20];
@@ -408,7 +408,7 @@ abstract final class AppShadow {
 /// 나머지는 알약 아래로. 알약 ↔ 탭바는 최소 [pillsToTabMin](모자라면 스크롤).
 abstract final class AppHome {
   static const double cardGapShare = 1 / 3;
-  static const double cardGapMaxExtra = 32;
+  static const double cardGapMaxExtra = 24;
   static const double pillsToTabMin = 20;
 
   // ponytail: Pretendard Bold 한글을 픽셀로 재서 맞춘 보정값(글자 크기 대비). 폰트를 바꾸면 home_ink_gap_test로 다시 잰다.

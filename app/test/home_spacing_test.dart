@@ -47,10 +47,11 @@ final double _cardToDrawer =
     AppText.sectionTitle.fontSize! * AppHome.drawerTitleInkTop;
 
 void main() {
-  // 홈 카드 168(태그는 OneLineFit으로 한 줄)이면 360×800도 몇 px 남는다. (00c6362는 테스트 폰트에서 태그가 두 줄로 접혀 카드가 182라 안 남았다.)
-  for (final size in const [Size(412, 915), Size(360, 800)]) {
+  // 이 테스트는 기본 테스트 폰트(앱 폰트를 못 불러온 최악의 경우)로 잰다.
+  // 홈 카드 184에서 360×800은 이 폰트로는 몇 px 모자라 스크롤된다. 실제 폰트에서 스크롤 없음은 layout_matrix_test가 본다.
+  for (final size in const [Size(412, 915)]) {
     testWidgets(
-      '화면이 남으면 제목-카드·카드-서랍 제목이 남는 높이의 1/3씩(각각 최대 +32) 똑같이 늘고, 나머지는 알약 아래로 $size',
+      '화면이 남으면 제목-카드·카드-서랍 제목이 남는 높이의 1/3씩(각각 최대 +24) 똑같이 늘고, 나머지는 알약 아래로 $size',
       (tester) async {
         final g = await homeGaps(tester, size);
         expect(g[0], closeTo(AppSpacing.s24, 0.01));
@@ -75,7 +76,7 @@ void main() {
     );
   }
 
-  for (final size in const [Size(360, 640)]) {
+  for (final size in const [Size(360, 800), Size(360, 640)]) {
     testWidgets('모자라면 간격은 기본값, 끝까지 스크롤하면 알약 아래 최소 여백 $size', (tester) async {
       final g = await homeGaps(tester, size);
       expect(g[0], closeTo(AppSpacing.s24, 0.01));

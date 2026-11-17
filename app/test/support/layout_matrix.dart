@@ -199,6 +199,24 @@ void defineLayoutMatrix({
     testWidgets('홈 · $label', (tester) async {
       final errors = await _errorsDuring(() => _pump(tester, size, scale));
       _expectClean('홈 $label', errors);
+      // 실제 폰트, 기본 글자: 360×800·412×915 홈은 스크롤 없이 서랍 알약까지 탭바 위에 다 보인다(홈 카드 184).
+      if (realFonts &&
+          scale == 1.0 &&
+          (size == const Size(360, 800) || size == const Size(412, 915))) {
+        final scroll = tester.state<ScrollableState>(
+          find.byType(Scrollable).first,
+        );
+        expect(scroll.position.maxScrollExtent, 0, reason: '홈이 스크롤된다');
+        expect(
+          tester.getRect(find.byType(Wrap).last).bottom,
+          lessThanOrEqualTo(tester.getRect(find.byType(AppTabBar)).top),
+          reason: '서랍 알약이 탭바에 가린다',
+        );
+        expect(
+          tester.getSize(find.byType(InterestCard)).height,
+          AppInterestCard.homeMinHeight,
+        );
+      }
     });
 
     testWidgets('관심사 탭 · $label', (tester) async {
