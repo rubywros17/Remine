@@ -204,31 +204,34 @@ int brainTotalMs(int chipCount, int linkCount) => <int>[
       AppBrain.linkDraw,
 ].reduce(math.max);
 
-/// 지도 위 관심사 하나: 뇌 그림 좌표(350×300)의 자리.
+/// 지도 위 관심사 하나와 그 자리.
 class BrainNode {
-  const BrainNode(this.interest, this.slot, this.rank);
+  const BrainNode(this.interest, this.seat, this.rank);
 
   final Interest interest;
-  final Offset slot;
+
+  /// -1은 가운데(1등), 0~5는 둘레 육각형 자리([hexSeat] 각도 순서, 원형으로 이웃).
+  final int seat;
 
   /// 0이 가장 많이 캡처한 것(가장 먼저·가장 크게 떠오른다).
   final int rank;
+
+  /// 반지름 1인 육각형 위 자리(모양만, 가운데 = 원점). 칩 위치가 없을 때 거리 비교에 쓴다.
+  Offset get slot => seat < 0 ? Offset.zero : hexSeat(seat, 1);
 }
 
-// 칩 자리(뇌 좌표). 1등은 가운데(시안 그대로), 나머지 6자리는 대뇌 안을 고르게: 위 2 · 가운데 양옆 2 · 아래 2.
-// [_ring]은 둘레 순서(왼위 → 오른위 → 오른 → 오른아래 → 왼아래 → 왼)라 이웃 자리끼리 잊은/요즘을 비교한다.
-const _center = Offset(150, 122);
-const _ring = [
-  Offset(118, 74),
-  Offset(226, 70),
-  Offset(270, 126),
-  Offset(228, 178),
-  Offset(116, 180),
-  Offset(76, 128),
-];
+/// 둘레 자리 수. 0 오른 → 1 오른아래 → 2 왼아래 → 3 왼 → 4 왼위 → 5 오른위(60도 간격, 5 다음은 0).
+const _seats = 6;
 
-/// 뇌 가로 가운데(대뇌 상자 중심 x). 긴 칩일수록 여기서 가까운 자리.
-const _brainMidX = 173.0;
+/// 둘레 [seat]의 위치(가운데 기준): 가로 반지름 [rx], 세로는 [AppBrain.hexAspect]배로 납작한 타원 위 60도 간격.
+Offset hexSeat(int seat, double rx) {
+  final a = seat * math.pi / 3;
+  return Offset(math.cos(a) * rx, math.sin(a) * rx * AppBrain.hexAspect);
+}
+
+/// 자리별 좁은 정도(글자 1개당 비용). 좌우 끝이 가장 좁고, 위 줄은 뇌 앞쪽(왼위)이 둥글게 깎여 오른위보다 좁다.
+/// 아래 줄이 가장 넓다. 긴 키워드는 숫자가 작은 자리로.
+const _seatTightness = [10, 0, 0, 10, 4, 2];
 
 /// 잊은 관심사 몫. 나머지([AppBrain.maxNodes] - 이것)는 요즘 모으는 중.
 const _forgottenShare = 4;
@@ -237,7 +240,7 @@ const _forgottenShare = 4;
 /// 잊은 것 4 + 요즘 것 3, 한쪽이 모자라면 다른 쪽에서 채워 최대 [AppBrain.maxNodes]개.
 /// 1등은 잊은 것 1등(없으면 요즘 1등), 그 뒤는 상대 그룹부터 번갈아.
 List<Interest> pickBrainInterests(List<Interest> interests) {
-  final max = math.min(AppBrain.maxNodes, _ring.length + 1);
+  final max = math.min(AppBrain.maxNodes, _seats + 1);
   final f = interests.where((i) => i.forgotten).toList();
   final r = interests.where((i) => !i.forgotten).toList();
   final nf = math.min(f.length, math.max(_forgottenShare, max - r.length));
@@ -256,50 +259,55 @@ List<Interest> pickBrainInterests(List<Interest> interests) {
   ];
 }
 
-/// [pickBrainInterests]로 고른 관심사를 자리에 앉힌다. 1등은 가운데, 나머지는 [_assignRing].
+/// [pickBrainInterests]로 고른 관심사를 자리에 앉힌다. 1등은 가운데, 나머지는 [_assignSeats].
 List<BrainNode> layoutNodes(List<Interest> interests) {
   final picked = pickBrainInterests(interests);
-  final ring = _assignRing(picked.skip(1).toList());
+  final seats = _assignSeats(picked.skip(1).toList());
   return [
     for (final (rank, interest) in picked.indexed)
-      BrainNode(interest, rank == 0 ? _center : _ring[ring[rank - 1]], rank),
+      BrainNode(interest, rank == 0 ? -1 : seats[rank - 1], rank),
   ];
 }
 
-/// 1등 뒤 칩들의 [_ring] 자리 번호. 모든 경우(최대 6! = 720)를 따져 비용이 가장 작은 것(같으면 먼저 본 것 → 결정적).
-/// 비용 = 같은 카테고리 실선 길이 합(가장 중요) + 긴 칩이 가장자리로 간 정도 + 이웃 자리 잊은/요즘 같음.
+/// 1등 뒤 칩들의 둘레 자리. 자리 좌표는 고정이고 누가 어디 앉는지만 정한다.
+/// 모든 경우(최대 6! = 720)를 따져 비용이 가장 작은 것(같으면 먼저 본 것 → 결정적). 비용은 앞 것일수록 크다:
+/// ① 같은 카테고리 묶음이 끊긴 수(이웃 자리끼리 이어지게) ② 좁은 자리에 앉은 글자 수(긴 키워드는 위·아래로, [_seatTightness])와
+/// 위·아래 줄 글자 수 합 중 큰 쪽 ③ 이웃 자리끼리 잊은/요즘이 같은 수(번갈아는 가능한 만큼만).
 // ponytail: 칩 7개라 전부 따져 본다. 자리가 늘면 탐욕 배치로 바꾼다.
-List<int> _assignRing(List<Interest> rest) {
+List<int> _assignSeats(List<Interest> rest) {
   if (rest.isEmpty) return const [];
   var best = <int>[];
   var bestCost = double.infinity;
-  for (final perm in _permutations([
-    for (var i = 0; i < _ring.length; i++) i,
-  ])) {
+  for (final perm in _permutations([for (var i = 0; i < _seats; i++) i])) {
     final idx = perm.take(rest.length).toList();
+    final at = <int, Interest>{for (final (i, it) in rest.indexed) idx[i]: it};
     var cost = 0.0;
-    // 같은 카테고리: 1등(가운데)까지 포함해 최소 신장 트리 길이.
-    final groups = <Category, List<Offset>>{};
-    for (final (i, it) in rest.indexed) {
-      (groups[it.category] ??= []).add(_ring[idx[i]]);
+    // ① 카테고리마다 이어진 덩어리 수 = 칩 수 - 이웃끼리 같은 쌍(한 바퀴 다 차면 1). 덩어리가 1보다 많으면 끊긴 것.
+    final count = <Category, int>{};
+    final joined = <Category, int>{};
+    for (final it in rest) {
+      count[it.category] = (count[it.category] ?? 0) + 1;
     }
-    for (final g in groups.values) {
-      cost += _prim(
-        g,
-        (a, b) => (a - b).distance,
-      ).fold(0.0, (s, e) => s + (e.$1 - e.$2).distance);
-    }
-    // 긴 칩은 가로 가운데 가까이: 글자 수 × 가로 거리.
-    for (final (i, it) in rest.indexed) {
-      cost += it.tag.length * (_ring[idx[i]].dx - _brainMidX).abs() / 10;
-    }
-    // 둘레 이웃끼리 잊은/요즘이 같으면 감점(번갈아 배치는 가능한 만큼만).
-    final at = {for (final (i, it) in rest.indexed) idx[i]: it.forgotten};
-    for (var k = 0; k < _ring.length; k++) {
+    for (var k = 0; k < _seats; k++) {
       final a = at[k];
-      final b = at[(k + 1) % _ring.length];
-      if (a != null && a == b) cost += 20;
+      final b = at[(k + 1) % _seats];
+      if (a == null || b == null) continue;
+      if (a.category == b.category) {
+        joined[a.category] = (joined[a.category] ?? 0) + 1;
+      }
+      if (a.forgotten == b.forgotten) cost += 1; // ③
     }
+    for (final MapEntry(key: c, value: m) in count.entries) {
+      final pieces = math.max(1, m - (joined[c] ?? 0));
+      cost += 1000 * (pieces - 1); // ①
+    }
+    for (final MapEntry(key: seat, value: it) in at.entries) {
+      cost += _seatTightness[seat] * it.tag.length; // ②
+    }
+    // ② 위(4·5)·아래(1·2) 줄은 두 칩이 나란히 앉아 그 글자 수 합이 반지름을 정한다 → 더 긴 줄을 짧게(긴 칩끼리 한 줄 피하기).
+    int row(int a, int b) =>
+        (at[a]?.tag.length ?? 0) + (at[b]?.tag.length ?? 0);
+    cost += 5 * math.max(row(4, 5), row(1, 2));
     if (cost < bestCost - 1e-9) {
       bestCost = cost;
       best = idx;
@@ -633,12 +641,13 @@ class BrainFrame {
     ..translate(-focus.dx, -focus.dy);
 }
 
-/// 키워드 칩 하나(캔버스 좌표).
+/// 키워드 칩 하나(캔버스 좌표). [shrink]는 글자 크기 배율(자리가 모자라면 [AppBrain.chipShrinks]만큼 줄인다).
 class BrainChip {
-  const BrainChip(this.node, this.rect);
+  const BrainChip(this.node, this.rect, [this.shrink = 1]);
 
   final BrainNode node;
   final Rect rect;
+  final double shrink;
 
   bool get top => node.rank == 0;
   Color get color =>
@@ -647,35 +656,35 @@ class BrainChip {
       top ? AppBrain.chipTopPadding : AppBrain.chipPadding;
 }
 
-TextPainter _chipText(BrainNode n, double maxWidth, TextScaler scaler) =>
-    TextPainter(
-      text: TextSpan(
-        text: n.interest.tag,
-        style: AppText.label.copyWith(
-          fontSize: n.rank == 0 ? AppBrain.chipTopFont : AppBrain.chipFont,
-          fontWeight: FontWeight.w800,
-          color: AppColors.ink,
-          height: 1.2,
-        ),
-      ),
-      textAlign: TextAlign.center,
-      textDirection: TextDirection.ltr,
-      textScaler: scaler,
-    )..layout(maxWidth: maxWidth);
+TextPainter _chipText(
+  BrainNode n,
+  double maxWidth,
+  TextScaler scaler, [
+  double shrink = 1,
+]) => TextPainter(
+  text: TextSpan(
+    text: n.interest.tag,
+    style: AppText.label.copyWith(
+      fontSize:
+          (n.rank == 0 ? AppBrain.chipTopFont : AppBrain.chipFont) * shrink,
+      fontWeight: FontWeight.w800,
+      color: AppColors.ink,
+      height: 1.2,
+    ),
+  ),
+  textAlign: TextAlign.center,
+  textDirection: TextDirection.ltr,
+  textScaler: scaler,
+)..layout(maxWidth: maxWidth);
 
-/// 칩을 먼저 가두는 영역: 마지막 상태의 대뇌 상자를 [_chipInset]만큼 줄인 것(캔버스 좌표, 캔버스 안으로 자름).
-/// 대뇌는 둥근 모양이라 상자 모서리는 뇌 밖이다 → 안쪽으로 줄여 칩이 윤곽 밖으로 삐져나가 보이지 않게 한다.
-const _chipInset = 16.0; // 뇌 좌표
-
-Rect chipBrainBounds(Size size) =>
-    BrainFrame.end(size)
-        .rectToCanvas(_cerebrum.getBounds().deflate(_chipInset))
-        .intersect(Offset.zero & size);
-
-/// 칩이 뇌 윤곽 안에 [AppBrain.chipBrainMargin]만큼 떨어져 들어가는지(모서리·변 가운데 8점이 대뇌 안).
-bool chipFitsBrain(Size size, Rect chip) {
+/// 칩이 뇌 윤곽 안에 [margin](캔버스 px)만큼 떨어져 들어가는지(모서리·변 가운데 8점이 대뇌 안).
+bool chipFitsBrain(
+  Size size,
+  Rect chip, [
+  double margin = AppBrain.chipBrainMinMargin,
+]) {
   final frame = BrainFrame.end(size);
-  final r = chip.inflate(AppBrain.chipBrainMargin);
+  final r = chip.inflate(margin);
   return [
     r.topLeft,
     r.topCenter,
@@ -688,9 +697,45 @@ bool chipFitsBrain(Size size, Rect chip) {
   ].every((p) => _cerebrum.contains(frame.toBrain(p)));
 }
 
-/// 칩 자리: 시안 자리에서 시작해 겹치는 칩끼리 밀어내고, 뇌 상자 안(안 되면 캔버스 안)에 가둔다.
-/// 순위 순서로 돌려준다(뺀 칩은 없음).
-/// 말줄임 없이 글자 길이만큼 늘어나고, 캔버스보다 길면 줄을 바꾼다.
+/// 육각형 가운데(캔버스): 대뇌 상자 안 [AppBrain.hexCenter] 비율 자리.
+Offset brainHexCenter(Size size) {
+  final b = _cerebrum.getBounds();
+  return BrainFrame.end(size).toCanvas(
+    b.topLeft +
+        Offset(
+          b.width * AppBrain.hexCenter.dx,
+          b.height * AppBrain.hexCenter.dy,
+        ),
+  );
+}
+
+/// 칩들의 윤곽 여백(캔버스 px, 1px 단위): 모든 칩이 들어가는 가장 큰 값. 최대 [AppBrain.chipBrainMargin],
+/// 윤곽 밖으로 나가면 음수(최소 -[_maxOut]). 여백은 클수록 다 들어가기 어려워서 이분 탐색한다.
+double _brainRoom(Size size, List<Rect> rects) {
+  bool fits(int m) => rects.every((r) => chipFitsBrain(size, r, m.toDouble()));
+  var lo = -_maxOut; // 들어간다고 보는 값(아래)
+  var hi = AppBrain.chipBrainMargin.toInt();
+  if (fits(hi)) return hi.toDouble();
+  if (!fits(lo)) return lo.toDouble();
+  while (hi - lo > 1) {
+    final mid = (lo + hi) ~/ 2;
+    if (fits(mid)) {
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+  return lo.toDouble();
+}
+
+// 칩 높이(최소 약 25px)의 절반보다 작게: 더 줄이면 사각형이 뒤집혀 판정이 틀어진다.
+const _maxOut = 10;
+
+/// 칩 자리: 가운데 + 둘레 타원 육각형(고정 모양, 칩을 밀어내지 않는다). 반지름은 대뇌 폭 비율([AppBrain.hexRadius])
+/// 안에서 고르고, 칩 사이는 [AppBrain.chipSpacing] 이상. 글자를 덜 줄인 배율부터([AppBrain.chipShrinks]) 그 배율에서
+/// 뇌 윤곽 여백이 가장 큰 반지름을 고르고(최대 [AppBrain.chipBrainMargin]), 여백이 [AppBrain.chipBrainMinMargin] 이상이면
+/// 거기서 멈춘다. 끝까지 못 지키면(큰 글자·작은 화면) 캔버스 안까지 허용, 그래도 안 되면 뒤 순위 칩부터 지도에서 뺀다
+/// (목록에는 그대로 있다). 순위 순서로 돌려준다.
 List<BrainChip> layoutChips(
   List<BrainNode> nodes,
   Size size,
@@ -698,105 +743,102 @@ List<BrainChip> layoutChips(
 ) {
   if (nodes.isEmpty || size.isEmpty) return const [];
   final frame = BrainFrame.end(size);
-  final canvasBox = Offset.zero & size;
-  final brainBox = chipBrainBounds(size);
-  final rects = [
-    for (final n in nodes)
-      () {
-        final pad = n.rank == 0
-            ? AppBrain.chipTopPadding
-            : AppBrain.chipPadding;
-        final text = _chipText(n, size.width - pad.horizontal, scaler);
-        final s = Size(text.width + pad.horizontal, text.height + pad.vertical);
-        text.dispose();
-        return Rect.fromCenter(
-          center: frame.toCanvas(n.slot),
-          width: s.width,
-          height: s.height,
+  final center = brainHexCenter(size);
+  final span = _cerebrum.getBounds().width * frame.scale;
+  final canvas = (Offset.zero & size).inflate(_eps);
+  // 글자 배율별 칩 크기(순위 순서).
+  final sizes = {
+    for (final shrink in AppBrain.chipShrinks)
+      shrink: [
+        for (final n in nodes)
+          () {
+            final pad = n.rank == 0
+                ? AppBrain.chipTopPadding
+                : AppBrain.chipPadding;
+            final text = _chipText(
+              n,
+              size.width - pad.horizontal,
+              scaler,
+              shrink,
+            );
+            final s = Size(
+              text.width + pad.horizontal,
+              text.height + pad.vertical,
+            );
+            text.dispose();
+            return s;
+          }(),
+      ],
+  };
+  // 글자 배율·반지름별 후보(칩 사이 간격을 지키고 캔버스 안인 것만), 글자 덜 줄인 것 → 반지름 작은 것 순.
+  Iterable<(double, List<Rect>)> candidates(List<BrainNode> nodes) sync* {
+    for (final shrink in AppBrain.chipShrinks) {
+      for (
+        var k = AppBrain.hexRadius.$1;
+        k <= AppBrain.hexRadius.$2 + _eps;
+        k += 0.01
+      ) {
+        final rects = [
+          for (final (i, node) in nodes.indexed)
+            Rect.fromCenter(
+              center:
+                  center +
+                  (node.seat < 0 ? Offset.zero : hexSeat(node.seat, k * span)),
+              width: sizes[shrink]![i].width,
+              height: sizes[shrink]![i].height,
+            ),
+        ];
+        final inCanvas = rects.every(
+          (r) => canvas.contains(r.topLeft) && canvas.contains(r.bottomRight),
         );
-      }(),
-  ];
-  // ① 뇌 윤곽 안(여백 포함) → ② 뇌 상자 안(아주 긴 키워드는 둥근 윤곽에 다 못 들어간다) → ③ 캔버스 전체.
-  // 그래도 안 되면(아주 작은 화면·큰 글자) 뒤 순위 칩부터 지도에서 뺀다(목록에는 그대로 있다).
-  final toward = frame.toCanvas(_cerebrum.getBounds().center);
-  bool outline(Rect r) => chipFitsBrain(size, r);
-  for (var n = rects.length; n > 0; n--) {
-    for (final (bounds, fits) in [
-      (brainBox, outline),
-      (brainBox, null),
-      (canvasBox, null),
-    ]) {
-      final tried = [for (final r in rects.take(n)) r];
-      if (_relax(tried, bounds, fits: fits, toward: toward)) {
-        return [for (final (i, r) in tried.indexed) BrainChip(nodes[i], r)];
+        if (inCanvas && _spaced(rects)) yield (shrink, rects);
       }
     }
+  }
+
+  List<BrainChip> chips(List<BrainNode> nodes, (double, List<Rect>) c) => [
+    for (final (i, r) in c.$2.indexed) BrainChip(nodes[i], r, c.$1),
+  ];
+
+  const enough = AppBrain.chipBrainMinMargin;
+  for (var n = nodes.length; n > 0; n--) {
+    // 칩을 뺐으면 남은 칩으로 자리를 다시 배정한다(빈자리가 생기면 긴 칩이 한 줄에 혼자 앉을 수 있다).
+    final seats = n == nodes.length
+        ? [for (final x in nodes.skip(1)) x.seat]
+        : _assignSeats([for (final x in nodes.skip(1).take(n - 1)) x.interest]);
+    final kept = [
+      for (final (i, x) in nodes.take(n).indexed)
+        BrainNode(x.interest, i == 0 ? -1 : seats[i - 1], x.rank),
+    ];
+    (double, List<Rect>)? best;
+    var bestRoom = double.negativeInfinity;
+    // 글자를 덜 줄인 배율부터: 그 배율에서 윤곽 여백이 가장 큰 반지름. 최소 여백을 지키면 더 줄이지 않는다.
+    // 끝까지 못 지키면(큰 글자·작은 화면) 윤곽에 가장 덜 걸리는 것(캔버스 안).
+    for (final c in candidates(kept)) {
+      if (best != null && c.$1 != best.$1 && bestRoom >= enough) break;
+      final room = _brainRoom(size, c.$2);
+      if (room > bestRoom) {
+        best = c;
+        bestRoom = room;
+      }
+    }
+    if (best != null) return chips(kept, best);
   }
   return const [];
 }
 
-/// 겹친 칩을 덜 겹친 축으로 반씩 밀고 [bounds] 안에 가둔다. 다 풀리면 true.
-/// [fits]가 있으면 그것도 만족해야 하고, 못 맞춘 칩은 [toward] 쪽으로 조금씩 당긴다(뇌 윤곽 안쪽으로).
-/// ponytail: 칩 7개 × 수백 번이라 단순 반복으로 충분. 칩이 수십 개가 되면 격자 배치로 바꾼다.
-bool _relax(
-  List<Rect> rects,
-  Rect bounds, {
-  bool Function(Rect)? fits,
-  Offset toward = Offset.zero,
-}) {
-  const gap = AppBrain.chipSpacing;
-  for (var iter = 0; iter < 400; iter++) {
-    var clean = true;
-    for (var i = 0; i < rects.length; i++) {
-      for (var j = i + 1; j < rects.length; j++) {
-        final a = rects[i];
-        final b = rects[j];
-        final dx = math.min(a.right, b.right) - math.max(a.left, b.left) + gap;
-        final dy = math.min(a.bottom, b.bottom) - math.max(a.top, b.top) + gap;
-        if (dx <= _eps || dy <= _eps) continue; // 딱 간격만큼 떨어진 것은 겹침 아님(부동소수 오차)
-        clean = false;
-        final d = b.center - a.center;
-        // 순위가 높은(앞) 칩은 덜 움직인다.
-        const share = 0.35;
-        // 나란히 놓을 폭이 없으면(두 칩 폭 합 > 영역 폭) 가로로 밀어 봐야 벽에 막힌다 → 세로로.
-        final sideBySide = a.width + b.width + gap <= bounds.width;
-        final move = dx < dy && sideBySide
-            ? Offset(d.dx >= 0 ? dx + _eps : -dx - _eps, 0)
-            : Offset(0, d.dy >= 0 ? dy + _eps : -dy - _eps);
-        rects[i] = a.shift(-move * share);
-        rects[j] = b.shift(move * (1 - share));
-      }
-    }
-    for (var i = 0; i < rects.length; i++) {
-      var r = _clampInto(rects[i], bounds);
-      if (fits != null && !fits(r)) {
-        clean = false;
-        final d = toward - r.center;
-        if (d.distance > 1) r = _clampInto(r.shift(d / d.distance * 2), bounds);
-      }
-      rects[i] = r;
-    }
-    if (clean) {
-      // 칩 하나가 영역보다 크면 가둘 수 없다.
-      return rects.every(
-        (r) => r.width <= bounds.width && r.height <= bounds.height,
-      );
+/// 칩 테두리끼리 [AppBrain.chipSpacing] 이상 떨어져 있는지.
+bool _spaced(List<Rect> rects) {
+  const half = AppBrain.chipSpacing / 2 - _eps;
+  for (var i = 0; i < rects.length; i++) {
+    for (var j = i + 1; j < rects.length; j++) {
+      if (rects[i].inflate(half).overlaps(rects[j].inflate(half))) return false;
     }
   }
-  return false;
+  return true;
 }
 
 const _eps = 0.01;
-
-Rect _clampInto(Rect r, Rect b) {
-  double fit(double lo, double hi, double len, double at) =>
-      len >= hi - lo ? (lo + hi - len) / 2 : at.clamp(lo, hi - len);
-  return Offset(
-        fit(b.left, b.right, r.width, r.left),
-        fit(b.top, b.bottom, r.height, r.top),
-      ) &
-      r.size;
-}
 
 /// [ms](지도 시작 기준)에 맞춰 그린다. [intro]가 false면 얼굴·확대·빛 없이 마지막 크기에서 뇌부터.
 class BrainPainter extends CustomPainter {
@@ -979,6 +1021,7 @@ class BrainPainter extends CustomPainter {
         c.node,
         rect.width - c.padding.horizontal,
         textScaler,
+        c.shrink,
       );
       canvas.saveLayer(
         rect.inflate(2),

@@ -153,7 +153,17 @@ abstract final class AppBrain {
     offset: Offset(0, 4),
     blurRadius: 12,
   );
-  static const double chipSpacing = 6; // 칩 사이 최소 간격
+  static const double chipSpacing = 10; // 칩 테두리 사이 최소 간격
+
+  /// 칩 자리: 가운데 + 둘레 타원 육각형(60도 간격). 가운데는 대뇌 상자 안 비율, 가로 반지름은 대뇌 폭 비율 범위 안에서 고르고,
+  /// 세로 반지름은 가로의 [hexAspect]배(위·아래가 납작). 0.65면 이웃 칩 중심 거리 최대/최소가 약 1.33.
+  static const hexCenter = Offset(0.5, 0.5);
+  static const hexRadius = (0.18, 0.42);
+  static const double hexAspect = 0.65;
+
+  /// 자리가 모자라면 칩 글자를 이 배율까지 차례로 줄인다(최소 85%).
+  static const chipShrinks = [1.0, 0.95, 0.9, 0.85];
+
   /// 같은 카테고리(실선): 그 카테고리 색([AppCategoryColors], 홈 서랍 점과 같은 색)을 흰색 쪽으로 30% 섞고 95%.
   /// 뇌 주름(청록) 위에서도 보이게. 모든 카테고리 같은 보정.
   static const double linkStroke = 1.8;
@@ -169,12 +179,14 @@ abstract final class AppBrain {
   static const linkDashColor = Color(0x8CFFFFFF);
   static const double linkDashStroke = 1.5;
 
-  /// 외톨이 칩(실선·점선 없음)을 가장 가까운 칩에 잇는 아주 연한 선: 흰색 22%, 실선.
-  static const linkFaintColor = Color(0x38FFFFFF);
-  static const double linkFaintStroke = 1;
+  /// 외톨이 칩(실선·점선 없음)을 가장 가까운 칩에 잇는 연한 선: 흰색 45%, 두께는 실선과 같다.
+  static const linkFaintColor = Color(0x73FFFFFF);
+  static const double linkFaintStroke = linkStroke;
 
-  /// 칩과 뇌 윤곽 사이 최소 여백(캔버스 px).
-  static const double chipBrainMargin = 4;
+  /// 칩 바깥 끝과 뇌 윤곽 사이 여백(캔버스 px): 이만큼을 목표로 가능한 한 크게, 최소 [chipBrainMinMargin].
+  /// 실데이터 7개 기준 360×800 글자 1.0배에서 16px는 글자 70%까지 줄여야 나와서 최소를 8px로 둔다.
+  static const double chipBrainMargin = 16;
+  static const double chipBrainMinMargin = 8;
   static const double linkDash = 4;
   static const double linkDashGap = 4;
 }
