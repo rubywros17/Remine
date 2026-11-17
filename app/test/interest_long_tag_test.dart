@@ -115,30 +115,37 @@ void main() {
     });
   });
 
-  // 실측(Pretendard, 폭 360): ×1.0 스티커 약 123px / 글자 영역 약 139px → 한 줄.
-  // ×1.3은 두 줄로 접힌다(넘침 오류는 없음, interest_card_test 매트릭스에서 확인).
-  testWidgets('360×800: 홈 "잊고 있었던 관심사" 스티커가 한 줄, 글자 영역 안, SHOTS와 안 겹침', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      _card(
-        _interest('뜨개질', dormantDays: 52),
-        variant: InterestCardVariant.home,
-      ),
-    );
-    final label = find.text('잊고 있었던 관심사');
-    expect(
-      tester.renderObject<RenderParagraph>(label).didExceedMaxLines,
-      isFalse,
-    );
-    expect(tester.getSize(label).height, lessThan(13 * 1.6), reason: '한 줄');
-    final sticker = tester.getRect(find.byType(Sticker));
-    final card = tester.getRect(find.byType(InterestCard));
-    final shots = tester.getRect(find.byKey(const ValueKey('shots-sticker')));
-    expect(sticker.overlaps(shots), isFalse);
-    expect(
-      sticker.right,
-      lessThanOrEqualTo(card.right - card.width * 0.36 - 16),
-    );
-  });
+  // 폭 360(360×800)에서 홈 상태 스티커가 글자 1.0·1.3배 모두 한 줄로 글자 영역(콜라주 앞) 안에 들어간다.
+  for (final scale in const [1.0, 1.3]) {
+    testWidgets('360×800 ×$scale: 홈 "잊었던 관심사" 스티커가 한 줄, 글자 영역 안, SHOTS와 안 겹침', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _card(
+          _interest('뜨개질', dormantDays: 52),
+          scale: scale,
+          variant: InterestCardVariant.home,
+        ),
+      );
+      final label = find.text('잊었던 관심사');
+      expect(
+        tester.renderObject<RenderParagraph>(label).didExceedMaxLines,
+        isFalse,
+      );
+      expect(
+        tester.getSize(label).height,
+        lessThan(13 * scale * 1.6),
+        reason: '한 줄',
+      );
+      final sticker = tester.getRect(find.byType(Sticker));
+      final card = tester.getRect(find.byType(InterestCard));
+      final shots = tester.getRect(find.byKey(const ValueKey('shots-sticker')));
+      expect(sticker.overlaps(shots), isFalse);
+      expect(
+        sticker.right,
+        lessThanOrEqualTo(card.right - card.width * 0.36 - 16),
+        reason: '콜라주 앞',
+      );
+    });
+  }
 }

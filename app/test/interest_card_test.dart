@@ -208,7 +208,7 @@ void main() {
         expect(find.text(text), findsOneWidget, reason: '$days일');
         expect(_stickerColor(tester, '요즘 빠진 것'), AppColors.celadon);
         expect(_shotsColor(tester), AppColors.celadon);
-        expect(find.text('잊고 있었던 관심사'), findsNothing);
+        expect(find.text('잊었던 관심사'), findsNothing);
         expect(find.textContaining('잠자는 중'), findsNothing);
         expect(find.textContaining('캡처했어요'), findsNothing);
       }
@@ -216,7 +216,7 @@ void main() {
 
     testWidgets('잊고 있었던 관심사(서버 status): 레몬 스티커 + "N일째 잠자는 중"', (tester) async {
       await tester.pumpWidget(home(_interest(dormantDays: 9, forgotten: true)));
-      expect(_stickerColor(tester, '잊고 있었던 관심사'), AppColors.lemon);
+      expect(_stickerColor(tester, '잊었던 관심사'), AppColors.lemon);
       expect(_shotsColor(tester), AppColors.lemon);
       expect(find.text('9일째 잠자는 중'), findsOneWidget);
     });

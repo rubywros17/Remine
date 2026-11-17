@@ -285,9 +285,8 @@ class InterestCard extends StatelessWidget {
 
   static const _hideCollageBelow = 280.0;
 
-  /// 홈 상태 스티커 문구. 잊은 쪽은 관심사 탭 섹션 이름과 같다.
-  static String homeStatus(Interest i) =>
-      i.forgotten ? '잊고 있었던 관심사' : '요즘 빠진 것';
+  /// 홈 상태 스티커 문구. 잊은 쪽은 360×800 글자 1.3배에서도 한 줄에 들어가게 짧게(섹션 이름은 "잊고 있었던 관심사").
+  static String homeStatus(Interest i) => i.forgotten ? '잊었던 관심사' : '요즘 빠진 것';
 
   /// 홈 게이지에서 셀라돈으로 채울 칸 수. 잊은 관심사는 레몬 1칸이라 이 값을 쓰지 않는다.
   static int gaugeFilled(int captureCount) =>
