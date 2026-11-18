@@ -1,6 +1,7 @@
 package com.remine.server.classifier;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -86,6 +87,17 @@ public record RemineProperties(
             /* analyze 요청 하나에 담을 수 있는 최대 캡처 수. 초과하면 400. */
             @Min(1) @DefaultValue("20") int maxBatchSize,
             /* 요청 마감. 지나면 새 LLM 호출을 시작하지 않고 남은 캡처는 DEADLINE_EXCEEDED. 앱 타임아웃(5분)보다 짧게. */
-            @DefaultValue("4m") Duration deadline) {
+            @DefaultValue("4m") Duration deadline,
+            /* 예전 스크린샷(기기 등록 전에 찍힘) 기기당 하루 분석 장수(한국 시간 자정 초기화). 넘친 장은 DAILY_LIMIT_EXCEEDED. */
+            @Min(0) @DefaultValue("300") int dailyOlderLimit,
+            /* 서버 전체 하루 LLM 호출 예산(태평양 시간 자정 초기화). 기본 400 = Gemini 무료 등급 flash-lite RPD 500의 80%. */
+            @Min(0) @DefaultValue("400") int dailyLlmCallBudget,
+            /* 예산 중 예전 스크린샷이 쓸 수 있는 비율(%). 나머지는 새 스크린샷 몫으로 남긴다. */
+            @Min(0) @Max(100) @DefaultValue("70") int olderCallSharePercent) {
+
+        /** 예전 스크린샷이 하루에 쓸 수 있는 호출 수(예산 × 비율, 내림). */
+        public int olderCallCap() {
+            return dailyLlmCallBudget * olderCallSharePercent / 100;
+        }
     }
 }

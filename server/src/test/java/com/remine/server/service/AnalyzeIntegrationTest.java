@@ -10,6 +10,7 @@ import com.remine.server.domain.screenshot.Screenshot;
 import com.remine.server.domain.screenshot.ScreenshotRepository;
 import com.remine.server.domain.tag.Tag;
 import com.remine.server.domain.tag.TagRepository;
+import com.remine.server.domain.usage.DailyUsageRepository;
 import com.remine.server.dto.AnalyzeRequest;
 import com.remine.server.dto.AnalyzeRequest.Item;
 import com.remine.server.dto.AnalyzeResponse;
@@ -25,6 +26,8 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.time.Clock;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -78,6 +81,8 @@ class AnalyzeIntegrationTest {
     @Autowired DeviceRepository deviceRepository;
     @Autowired ScriptedClassifier classifier;
     @Autowired TagRepository tagRepository;
+    @Autowired DailyUsageRepository usage;
+    @Autowired Clock clock;
 
     private Long deviceId;
 
@@ -184,5 +189,41 @@ class AnalyzeIntegrationTest {
         assertThat(screenshotRepository.findByDeviceAndLocalAssetIds(deviceId, List.of("ok1", "bad", "ok2")))
                 .hasSize((int) rowsAfterFirst);
         assertThat(queryService.list(deviceId, null, null, 0, 30).totalElements()).isEqualTo(3);
+    }
+
+    @Test
+    void 예전_스크린샷은_기기_하루_한도를_넘으면_DAILY_LIMIT_EXCEEDED이고_저장하지_않는다() {
+        // 오늘 299장을 이미 보냈다(NOW는 기기 등록 전이라 예전 스크린샷)
+        usage.addDeviceOlderCount(deviceId, LocalDate.now(clock), 299);
+
+        AnalyzeResponse response = service.analyze(deviceId, request("old1:팁1", "old2:팁2"));
+
+        assertThat(response.analyzed()).extracting(AnalyzeResponse.Result::localAssetId).containsExactly("old1");
+        assertThat(response.failed()).containsExactly(
+                new AnalyzeResponse.Failure("old2", AnalyzeResponse.Reason.DAILY_LIMIT_EXCEEDED));
+        assertThat(response.olderRemainingToday()).isZero();
+        assertThat(screenshotRepository.findByDeviceAndLocalAssetIds(deviceId, List.of("old2"))).isEmpty();
+    }
+
+    @Test
+    void 새_스크린샷은_기기_한도를_다_써도_분석한다() {
+        usage.addDeviceOlderCount(deviceId, LocalDate.now(clock), 300);
+        LocalDateTime later = LocalDateTime.now(clock).plusMinutes(1); // 기기 등록 뒤에 찍음
+
+        AnalyzeResponse response = service.analyze(deviceId,
+                new AnalyzeRequest(List.of(new Item("fresh", later, "앱", "팁"))));
+
+        assertThat(response.analyzed()).hasSize(1);
+        assertThat(response.failed()).isEmpty();
+    }
+
+    @Test
+    void 실패한_예전_장은_기기_몫을_돌려준다() {
+        AnalyzeResponse response = service.analyze(deviceId, request("ok:팁", "bad:FAIL 입니다"));
+
+        assertThat(response.failed()).extracting(AnalyzeResponse.Failure::reason)
+                .containsExactly(AnalyzeResponse.Reason.LLM_CALL_FAILED);
+        assertThat(usage.deviceOlderCount(deviceId, LocalDate.now(clock))).isEqualTo(1);
+        assertThat(response.olderRemainingToday()).isEqualTo(299);
     }
 }

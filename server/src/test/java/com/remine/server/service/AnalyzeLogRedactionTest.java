@@ -32,6 +32,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -114,18 +115,18 @@ class AnalyzeLogRedactionTest {
         DeviceRepository deviceRepository = mock(DeviceRepository.class);
         ScreenshotRepository screenshotRepository = mock(ScreenshotRepository.class);
         ScreenshotPersister persister = mock(ScreenshotPersister.class);
-        when(deviceRepository.existsById(any())).thenReturn(true);
+        when(deviceRepository.findCreatedAtById(any())).thenReturn(Optional.of(LocalDateTime.of(2026, 10, 1, 0, 0)));
         when(screenshotRepository.findAnalyzedLocalAssetIds(any(), any())).thenReturn(Set.of());
         RemineProperties properties = new RemineProperties(RemineProperties.ClassifierType.GEMINI,
                 new RemineProperties.Llm(150, new RemineProperties.Gemini("m", 1.0, "http://localhost:1",
                         Duration.ofSeconds(1), Duration.ofSeconds(1), 0), new RemineProperties.Batch(10, 5)),
-                new RemineProperties.Analyze(20, Duration.ofMinutes(4)),
+                new RemineProperties.Analyze(20, Duration.ofMinutes(4), 300, 400, 70),
                 new RemineProperties.Image(1048576, 1024, 25_000_000L, 12582912, 5242880),
                 new RemineProperties.Tags(List.of()),
                 new RemineProperties.Interest(30, 3, 28, List.of()));
         HybridLlmClassifier classifier = hybridWithFakeProvider();
         ScreenshotService service = new ScreenshotService(deviceRepository, screenshotRepository, classifier, persister,
-                properties, new TagCleaner(properties), new UsageMeter());
+                properties, new TagCleaner(properties), new UsageMeter(), mock(OlderQuota.class));
         LocalDateTime now = LocalDateTime.of(2026, 10, 19, 12, 0);
 
         AnalyzeResponse response = service.analyze(1L, new AnalyzeRequest(List.of(
