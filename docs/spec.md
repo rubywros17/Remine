@@ -252,8 +252,8 @@
 | DELETE | `/api/devices/me/fcm-token` | 알림 끄기 → 토큰 삭제, 204(이미 없어도 204). 미등록 기기 404 |
 | GET / DELETE | `/api/dev/metrics` | **dev 프로필 전용**(그 외 404). 서버 기동(또는 DELETE) 이후 누적 측정값 `{requests, llmCalls, llmItems, inputTokens, outputTokens, costUsd, costPerItemUsd, serverElapsedMs, maxRequestMs, wallElapsedMs}`. 비용은 유료 단가 환산. DELETE는 0으로 초기화(204) |
 | POST | `/api/dev/push-test?delaySeconds=0~10` | **dev 프로필 전용**(그 외 404). 서버가 delaySeconds 기다렸다(10 초과 400) 이 기기에 관심사 알림 1건을 보낸다(FCM notification 제목·본문 + 안드로이드 채널 `interest_alerts`·우선순위 HIGH)(지금 1순위 관심사, 없으면 예시 "신발"). `interest_alert`는 건드리지 않는다. 200 `{result: SENT/INVALID_TOKEN/FAILED}`, 토큰 없음 409, 서버 푸시 꺼짐 503 |
-| GET | `/api/config` | 분석 설정 조회(헤더 불필요). `{imageThresholdChars:150, maxBatchSize:20, imageMaxBytes:1048576, imageMaxLongSide:1024, imageContentType:"image/jpeg", maxRequestBytes:12582912, classifyIntervalMs:0}` — 모두 서버 설정(`remine.*`)에서 읽는다. `classifyIntervalMs`는 장당 분류 최소 간격(gemini면 `min-interval-ms`, 가짜 분류기는 0)이며 앱이 남은 시간을 처음부터 예상하는 데 쓴다 |
-| POST | `/api/screenshots/analyze` | OCR 텍스트 배치(최대 20장, 초과 시 400) 전송 → 분류 결과 반환 `{analyzed, skipped, failed}`. 일부 분류가 실패해도 200이며 실패한 캡처는 `failed`(`localAssetId`, `reason`)에 담기고 미분석으로 남는다(같은 요청을 다시 보내면 재분석). 요청 형식은 둘 중 하나: ① `application/json` — 기존 본문(이미지 없음), ② `multipart/form-data` — 아래 |
+| GET | `/api/config` | 분석 설정 조회(헤더 불필요). `{imageThresholdChars:150, maxBatchSize:20, imageMaxBytes:1048576, imageMaxLongSide:1024, imageContentType:"image/jpeg", maxRequestBytes:12582912, classifyIntervalMs:0, dailyOlderLimit:300, olderRemainingToday:null, olderResetsAt:null}` — 정책값은 모두 서버 설정(`remine.*`)에서 읽는다. `classifyIntervalMs`는 장당 분류 최소 간격(gemini면 `min-interval-ms`, 가짜 분류기는 0)이며 앱이 남은 시간을 처음부터 예상하는 데 쓴다. `X-Device-Id`(선택)가 등록된 기기면 `olderRemainingToday`(오늘 더 보낼 수 있는 예전 스크린샷 장수)·`olderResetsAt`(다음 한국 자정, 예 `2026-11-19T00:00:00+09:00`)을 채우고, 없거나 모르는 기기면 `null`(404 아님) |
+| POST | `/api/screenshots/analyze` | OCR 텍스트 배치(최대 20장, 초과 시 400) 전송 → 분류 결과 반환 `{analyzed, skipped, failed, olderRemainingToday}`. 일부 분류가 실패해도 200이며 실패한 캡처는 `failed`(`localAssetId`, `reason`)에 담기고 미분석으로 남는다(같은 요청을 다시 보내면 재분석). 요청 형식은 둘 중 하나: ① `application/json` — 기존 본문(이미지 없음), ② `multipart/form-data` — 아래 |
 
 **analyze multipart 형식**: `request` 파트(텍스트, 위 JSON 본문과 같은 스키마) + 이미지 파트 `image.<localAssetId>`(JPEG, 캡처당 최대 1개, 이미지는 동의한 경우의 짧은 OCR 캡처에만). 이미지는 저장·로그하지 않는다.
 
@@ -273,6 +273,13 @@
 | `LLM_CALL_FAILED` / `LLM_INVALID_RESPONSE` | 같은 요청을 나중에 다시 전송 |
 | `IN_PROGRESS` | 같은 기기의 앞선 요청이 그 캡처를 분석 중(앱 타임아웃 뒤 재전송 등). 실패로 세지 않고 이번 실행에서 빼며, 다음 실행에서 다시 보낸다(그때 끝나 있으면 `skipped`) |
 | `DEADLINE_EXCEEDED` | 요청 마감(`remine.analyze.deadline`, 4분 — 앱 타임아웃 5분보다 짧게)이 지나 서버가 분류를 시작하지 않음. `IN_PROGRESS`와 같이 처리 |
+| `DAILY_LIMIT_EXCEEDED` | 예전 스크린샷 하루 한도를 넘어 분류·저장하지 않음(아래). 오늘은 예전 스크린샷을 그만 보내고 `olderResetsAt` 뒤에 다시 보낸다. 새 스크린샷은 이 이유로 실패하지 않는다 |
+
+**예전 스크린샷 하루 한도**: 촬영 시각(`takenAt`)이 기기 등록 시각보다 이른 캡처가 "예전 스크린샷"이다(서버가 판정, 앱 플래그 없음. 첫 실행의 최신 300장도 포함).
+- 기기당 하루 `remine.analyze.daily-older-limit`(300)장, **한국 시간** 자정 초기화(`device_daily_usage`).
+- 서버 전체 하루 LLM 호출 예산 `daily-llm-call-budget`(400 = gemini-3.5-flash-lite 무료 RPD 500의 80%) 중 예전 몫 `older-call-share-percent`(70% = 280회). Gemini 무료 한도에 맞춰 **태평양 시간** 자정 초기화(`llm_daily_usage`, 서머타임 반영). 새 스크린샷 호출은 막지 않고 기록만 한다(예전 몫이 남은 예산보다 크면 예전 몫이 줄어든다).
+- 분류 전에 원자적으로 예약하고(남은 만큼 앞에서부터, 넘친 장만 `DAILY_LIMIT_EXCEEDED`), 분류 뒤 실패한 장(429 포함)은 기기 몫에서 돌려주며 서버 예약은 실제 성공한 호출 수로 정산한다. 이미 분석돼 `skipped`인 장은 세지 않는다.
+- `olderRemainingToday` = min(기기 남은 장수, 서버 예전 몫 남은 호출 × 5(이미지 묶음 크기)).
 
 | PATCH | `/api/screenshots/{id}/category` | 사용자가 카테고리 수정. 본문 `{"category":"PLACE"}` → 200 `{id, category, autoCategory, categorySource}`. `category_source`가 USER로 바뀌고(같은 값이어도) 이후 재분석이 덮어쓰지 않음. 오류는 아래 표 |
 
