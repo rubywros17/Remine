@@ -302,6 +302,7 @@ class SyncRig {
     String olderRange = '',
     Future<bool> Function()? isWifi,
     Future<bool> Function()? isCharging,
+    bool verboseErrors = false,
   }) async {
     final reader = FakeGalleryReader(photos: photos, albums: albums);
     final ocr = MapOcrEngine(texts);
@@ -339,6 +340,7 @@ class SyncRig {
       autoSync: autoSync,
       trash: trashStore,
       olderRange: olderRange,
+      verboseErrors: verboseErrors,
       isWifi: isWifi,
       isCharging: isCharging,
     );

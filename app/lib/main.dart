@@ -55,6 +55,10 @@ const _autoSync = bool.fromEnvironment('AUTO_SYNC', defaultValue: true);
 /// 비어 있으면(기본·릴리스) 범위를 고르기 전까지 예전 스크린샷을 읽지 않는다.
 const _olderRange = String.fromEnvironment('OLDER_RANGE');
 
+/// 디버그 전용: 동기화가 멈춘 이유를 예외 메시지·스택까지 찍는다(`--dart-define=VERBOSE_ERRORS=true`).
+/// 메시지에 OCR 원문이 섞일 수 있어 원인을 찾을 때만 켠다. 릴리스에서는 무시한다(예외 종류만).
+const _verboseErrors = bool.fromEnvironment('VERBOSE_ERRORS');
+
 bool get _apiBaseAllowed =>
     _apiBase.isNotEmpty && (kDebugMode || _apiBase.startsWith('https://'));
 
@@ -187,6 +191,7 @@ RemoteServices _remote(
     log: log,
     trash: trash,
     olderRange: kDebugMode ? _olderRange : '',
+    verboseErrors: kDebugMode && _verboseErrors,
     isWifi: _isWifi,
     isCharging: () => _deviceFlag('isCharging'),
   );

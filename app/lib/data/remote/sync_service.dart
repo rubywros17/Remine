@@ -1,8 +1,6 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:flutter/foundation.dart' show kDebugMode;
-
 import '../../models/category.dart';
 import '../device/trash_store.dart';
 import '../device/device_capture_service.dart';
@@ -45,6 +43,7 @@ class SyncService {
     this.autoSync = true,
     this.trash,
     this.olderRange = '',
+    this.verboseErrors = false,
     Future<bool> Function()? isWifi,
     Future<bool> Function()? isCharging,
     DateTime Function()? now,
@@ -91,6 +90,10 @@ class SyncService {
   /// 디버그 전용 예전 스크린샷 범위(`--dart-define=OLDER_RANGE=1y`, [olderRangeFromDefine]). 범위를 아직 안 골랐을 때만 쓴다.
   /// 비어 있으면(릴리스·기본) 범위를 고르기 전까지 예전 스크린샷을 읽지 않는다.
   final String olderRange;
+
+  /// 동기화가 멈췄을 때 로그에 예외 메시지·스택까지 남길지. 메시지에 OCR 원문이 섞일 수 있어 기본은 꺼짐이고,
+  /// 디버그 빌드에서 `--dart-define=VERBOSE_ERRORS=true`일 때만 켠다(main.dart).
+  final bool verboseErrors;
 
   /// Wi-Fi 연결·충전 중인지(예전 스크린샷 조건). 크롬·테스트는 늘 true.
   final Future<bool> Function() _isWifi;
@@ -270,7 +273,7 @@ class SyncService {
       );
     } catch (e, st) {
       // 어떤 예외든 앱이 죽지 않게 한다. 서버 문제가 아니라 앱 안의 오류로 따로 분류한다.
-      log?.call('[sync] 중단: ${describeError(e, st)}');
+      log?.call('[sync] 중단: ${describeError(e, st, verbose: verboseErrors)}');
       status.finish(
         issue: SyncIssue.internal,
         failedCount: await _safeFailedCount(),
@@ -288,10 +291,15 @@ class SyncService {
     return oldest;
   }
 
-  /// 디버그 로그용 예외 설명. 릴리스는 종류만(메시지에 OCR 원문이 섞일 수 있다), 디버그 빌드는 메시지와
-  /// 스택 앞 [stackLines]줄까지(실기기에서 원인을 찾으려고). [log]는 디버그 빌드에서만 주어진다(main.dart).
-  static String describeError(Object e, StackTrace st, {int stackLines = 10}) {
-    if (!kDebugMode) return '${e.runtimeType}';
+  /// 로그용 예외 설명. 기본은 **예외 종류만**(릴리스·디버그 모두) — 메시지에 OCR 원문이 섞일 수 있다.
+  /// [verbose]면 메시지와 스택 앞 [stackLines]줄까지(실기기에서 원인을 찾을 때만, [verboseErrors]).
+  static String describeError(
+    Object e,
+    StackTrace st, {
+    bool verbose = false,
+    int stackLines = 10,
+  }) {
+    if (!verbose) return '${e.runtimeType}';
     final stack = st.toString().trimRight().split('\n').take(stackLines);
     return '${e.runtimeType}: $e\n${stack.join('\n')}';
   }
@@ -315,7 +323,7 @@ class SyncService {
     } on ApiException catch (e) {
       log?.call('[older] 중단: $e');
     } catch (e, st) {
-      log?.call('[older] 중단: ${describeError(e, st)}');
+      log?.call('[older] 중단: ${describeError(e, st, verbose: verboseErrors)}');
     }
   }
 

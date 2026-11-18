@@ -245,10 +245,11 @@ void main() {
     expect(rig.status.issue, SyncIssue.none);
     expect(await rig.state.firstSyncDone(), isTrue);
     expect(lines.where((l) => l.startsWith('[sync] 중단')), isEmpty);
-    final older = lines.singleWhere((l) => l.startsWith('[older] 중단'));
-    // 디버그 빌드(테스트)는 메시지와 스택 앞부분까지 찍는다
-    expect(older, contains('StateError: Bad state: 예전 단계 고장'));
-    expect(older.split('\n').length, inInclusiveRange(2, 11));
+    // 기본은 예외 종류만(메시지에 OCR 원문이 섞일 수 있다)
+    expect(
+      lines.singleWhere((l) => l.startsWith('[older] 중단')),
+      '[older] 중단: StateError',
+    );
   });
 
   /// 기기 등록 뒤에 새로 찍은 사진 한 장을 갤러리 맨 앞에 넣는다.
@@ -334,13 +335,36 @@ void main() {
     expect(rig.batches.length - before, 2);
   });
 
-  test('새 스크린샷 단계의 예외는 디버그 로그에 메시지와 스택 앞 10줄', () {
+  test('예외 메시지·스택은 VERBOSE_ERRORS일 때만 남는다', () {
     final st = StackTrace.fromString(
       List.generate(30, (i) => '#$i frame$i').join('\n'),
     );
-    final text = SyncService.describeError(StateError('없음'), st);
-    expect(text.split('\n').first, 'StateError: Bad state: 없음');
-    expect(text.split('\n'), hasLength(11));
+    final secret = StateError('OCR 원문 비밀');
+    expect(SyncService.describeError(secret, st), 'StateError');
+    final verbose = SyncService.describeError(secret, st, verbose: true);
+    expect(verbose.split('\n').first, 'StateError: Bad state: OCR 원문 비밀');
+    expect(verbose.split('\n'), hasLength(11), reason: '메시지 + 스택 앞 10줄');
+  });
+
+  test('VERBOSE_ERRORS로 켠 동기화만 [older] 중단 로그에 메시지를 남긴다', () async {
+    final lines = <String>[];
+    final photos = [for (var i = 0; i < _recent + 2; i++) _photo(i)];
+    final rig = await SyncRig.create(
+      photos: photos,
+      texts: {for (final p in photos) p.id: '글자 ${p.id}'},
+      consent: false,
+      log: lines.add,
+      verboseErrors: true,
+    );
+    await _sync(rig);
+    rig.settings.olderRange = olderRangeAll;
+    rig.client.olderRemaining = 10;
+    rig.reader.olderError = StateError('예전 단계 고장');
+
+    await _sync(rig);
+
+    final older = lines.singleWhere((l) => l.startsWith('[older] 중단'));
+    expect(older, startsWith('[older] 중단: StateError: Bad state: 예전 단계 고장\n'));
   });
 
   test('남은 몫이 0이면 그날은 읽지도 보내지도 않는다', () async {
