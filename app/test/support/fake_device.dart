@@ -87,6 +87,40 @@ class FakeGalleryReader implements GalleryReader {
     return photos.take(limit).toList();
   }
 
+  /// [since]로 물어본 시작 시각.
+  final List<DateTime> sinceAsked = [];
+
+  @override
+  Future<List<GalleryPhoto>> since(String albumId, DateTime from) async {
+    sinceAsked.add(from);
+    return _newestFirst().where((p) => !p.createdAt.isBefore(from)).toList();
+  }
+
+  /// [olderThan] 호출 (커서, 범위 시작, 장수).
+  final List<(PhotoPosition?, DateTime?, int)> olderAsked = [];
+
+  @override
+  Future<List<GalleryPhoto>> olderThan(
+    String albumId,
+    PhotoPosition? before, {
+    DateTime? notBefore,
+    required int limit,
+  }) async {
+    olderAsked.add((before, notBefore, limit));
+    return _newestFirst()
+        .where((p) => before == null || p.position.isOlderThan(before))
+        .where((p) => notBefore == null || !p.createdAt.isBefore(notBefore))
+        .take(limit)
+        .toList();
+  }
+
+  List<GalleryPhoto> _newestFirst() => [...photos]
+    ..sort(
+      (a, b) => b.position.isOlderThan(a.position)
+          ? -1
+          : (a.position == b.position ? 0 : 1),
+    );
+
   @override
   Future<Uint8List?> thumbnail(
     String photoId, {

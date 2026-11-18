@@ -41,6 +41,7 @@ class DeviceCaptureService {
       (await recentSplit(albumId)).mine;
 
   /// [recent]와 같은 범위를 (분류할 것, Remine 자기 캡처)로 나눈다. 판정은 [OwnCaptureRule].
+  /// [since]가 있으면 그 뒤에 생긴 사진은 300장을 넘어도 모두 더한다(기기 등록 뒤의 새 스크린샷 — 한도 없이 항상 분석).
   /// [ownBy]는 자기 캡처로 본 이유별 장수(디버그 로그용).
   Future<
     ({
@@ -49,11 +50,32 @@ class DeviceCaptureService {
       Map<OwnReason, int> ownBy,
     })
   >
-  recentSplit(String albumId) async {
-    final rule = await foreground?.rule() ?? const OwnCaptureRule();
+  recentSplit(String albumId, {DateTime? since}) async {
+    final photos = [...await reader.recent(albumId, limit: maxPhotos)];
+    if (since != null) {
+      final seen = {for (final p in photos) p.id};
+      final extra = [
+        for (final p in await reader.since(albumId, since))
+          if (seen.add(p.id)) p,
+      ];
+      if (extra.isNotEmpty) {
+        photos.addAll(extra);
+        sortNewestFirst(photos);
+      }
+    }
+    return split(photos, await ownRule());
+  }
+
+  /// 자기 캡처 판정 규칙(앱이 앞에 있던 구간 포함). 없으면(테스트) 파일명 규칙만.
+  Future<OwnCaptureRule> ownRule() async =>
+      await foreground?.rule() ?? const OwnCaptureRule();
+
+  /// [photos]를 순서 그대로 (분류할 것, 자기 캡처)로 나눈다.
+  ({List<GalleryPhoto> mine, List<GalleryPhoto> own, Map<OwnReason, int> ownBy})
+  split(List<GalleryPhoto> photos, OwnCaptureRule rule) {
     final mine = <GalleryPhoto>[], own = <GalleryPhoto>[];
     final ownBy = {for (final r in OwnReason.values) r: 0};
-    for (final p in await reader.recent(albumId, limit: maxPhotos)) {
+    for (final p in photos) {
       final reason = rule.reasonOf(p);
       if (reason == null) {
         mine.add(p);

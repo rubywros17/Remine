@@ -37,6 +37,11 @@ abstract interface class RemoteStateStore {
   Future<int?> deviceId();
   Future<void> setDeviceId(int id);
 
+  /// 이 기기를 서버에 처음 등록한(또는 이 기능이 생긴 뒤 처음 동기화한) 시각. 이 뒤에 찍은 캡처가 "새 스크린샷"이라
+  /// 개수 제한 없이 읽는다. 아직이면 null. 서버가 기기를 잊어도([clear]) 그대로 둔다.
+  Future<DateTime?> registeredAt();
+  Future<void> setRegisteredAt(DateTime at);
+
   /// 첫 분석 화면을 이미 거쳤는지.
   Future<bool> firstSyncDone();
   Future<void> setFirstSyncDone();
@@ -90,6 +95,16 @@ class SqfliteRemoteStateStore implements RemoteStateStore {
 
   @override
   Future<void> setDeviceId(int id) => _putSetting('device_id', '$id');
+
+  @override
+  Future<DateTime?> registeredAt() async {
+    final v = await _setting('registered_at');
+    return v == null ? null : DateTime.tryParse(v);
+  }
+
+  @override
+  Future<void> setRegisteredAt(DateTime at) =>
+      _putSetting('registered_at', at.toIso8601String());
 
   @override
   Future<bool> firstSyncDone() async =>
@@ -189,6 +204,14 @@ class SqfliteRemoteStateStore implements RemoteStateStore {
 
 class InMemoryRemoteStateStore implements RemoteStateStore {
   int? _deviceId;
+  DateTime? registered;
+
+  @override
+  Future<DateTime?> registeredAt() async => registered;
+
+  @override
+  Future<void> setRegisteredAt(DateTime at) async => registered = at;
+
   bool _first = false;
   final Map<String, SyncEntry> _entries = {};
   final Map<String, String> _cache = {};

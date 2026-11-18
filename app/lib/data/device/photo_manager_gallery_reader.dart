@@ -55,16 +55,64 @@ class PhotoManagerGalleryReader implements GalleryReader {
 
   @override
   Future<List<GalleryPhoto>> recent(String albumId, {int limit = 300}) async {
-    final path = await AssetPathEntity.fromId(
-      albumId,
-      type: RequestType.image,
-      filterOption: FilterOptionGroup(
-        orders: [
-          const OrderOption(type: OrderOptionType.createDate, asc: false),
-        ],
-      ),
+    final path = await _album(albumId);
+    return _photos(await path.getAssetListRange(start: 0, end: limit));
+  }
+
+  @override
+  Future<List<GalleryPhoto>> since(String albumId, DateTime from) async {
+    final path = await _album(albumId, min: from);
+    return _photos(
+      await path.getAssetListRange(start: 0, end: await path.assetCountAsync),
     );
-    final assets = await path.getAssetListRange(start: 0, end: limit);
+  }
+
+  @override
+  Future<List<GalleryPhoto>> olderThan(
+    String albumId,
+    PhotoPosition? before, {
+    DateTime? notBefore,
+    required int limit,
+  }) async {
+    // 갤러리 조건은 초 단위라 커서와 같은 초의 사진도 함께 온다 → 여유분을 더 읽고 여기서 정확히 거른다.
+    // ponytail: 같은 초에 _sameSecondSlack장 넘게 찍힌 경우는 다음 실행에서 이어진다(드묾).
+    final path = await _album(
+      albumId,
+      min: notBefore,
+      max: before?.time.add(const Duration(seconds: 1)),
+    );
+    final photos = await _photos(
+      await path.getAssetListRange(start: 0, end: limit + _sameSecondSlack),
+    );
+    sortNewestFirst(photos);
+    return photos
+        .where((p) => before == null || p.position.isOlderThan(before))
+        .take(limit)
+        .toList();
+  }
+
+  static const _sameSecondSlack = 20;
+
+  /// 최신순(생성 시각 내림차순) 앨범. [min]·[max]가 있으면 그 생성 시각 사이만.
+  Future<AssetPathEntity> _album(
+    String albumId, {
+    DateTime? min,
+    DateTime? max,
+  }) => AssetPathEntity.fromId(
+    albumId,
+    type: RequestType.image,
+    filterOption: FilterOptionGroup(
+      orders: [const OrderOption(type: OrderOptionType.createDate, asc: false)],
+      createTimeCond: min == null && max == null
+          ? DateTimeCond.def()
+          : DateTimeCond(
+              min: min ?? DateTime.fromMillisecondsSinceEpoch(0),
+              max: max ?? DateTime(2100),
+            ),
+    ),
+  );
+
+  Future<List<GalleryPhoto>> _photos(List<AssetEntity> assets) async {
     final photos = <GalleryPhoto>[];
     for (final a in assets) {
       final fileName = await a.titleAsync;
@@ -79,6 +127,7 @@ class PhotoManagerGalleryReader implements GalleryReader {
             modifiedAtSeconds: modified,
           ),
           modifiedAt: modified,
+          created: a.createDateTime,
         ),
       );
     }
