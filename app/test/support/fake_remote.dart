@@ -76,6 +76,11 @@ class RecordingClient extends http.BaseClient {
   /// 한 번만 예외를 던질 요청 횟수(0이면 안 던짐). 네트워크 오류 시뮬레이션.
   Object? throwOnSend;
 
+  /// 오늘 남은 예전 스크린샷 몫(서버 흉내). null이면 옛 서버처럼 응답에 싣지 않는다.
+  /// 주면 기기 id를 실은 `/api/config`와 analyze 응답에 싣고, analyze가 분석한 장수만큼 줄이며 0이 되면 나머지는
+  /// `DAILY_LIMIT_EXCEEDED`로 돌려준다(예전/새 구분 없이 — 테스트가 예전 스크린샷 단계에서만 켠다).
+  int? olderRemaining;
+
   Iterable<SentRequest> get analyzeCalls =>
       sent.where((r) => r.path == '/api/screenshots/analyze');
 
@@ -116,16 +121,34 @@ class RecordingClient extends http.BaseClient {
           'imageMaxLongSide': 1024,
           'imageContentType': 'image/jpeg',
           'maxRequestBytes': 12582912,
+          if (olderRemaining != null) 'dailyOlderLimit': 300,
+          if (olderRemaining != null && r.deviceId != null) ...{
+            'olderRemainingToday': olderRemaining,
+            'olderResetsAt': '2026-10-22T00:00:00+09:00',
+          },
         });
       case 'POST /api/screenshots/analyze':
         final ids = RegExp(r'"localAssetId":"([^"]+)"')
             .allMatches(r.text)
             .map((m) => m.group(1)!)
             .toList();
+        final fail = {
+          for (final id in ids)
+            if (failWith.containsKey(id)) id: failWith[id]!,
+        };
+        if (olderRemaining != null) {
+          for (final id in ids.where((id) => !fail.containsKey(id))) {
+            if (olderRemaining! > 0) {
+              olderRemaining = olderRemaining! - 1;
+            } else {
+              fail[id] = 'DAILY_LIMIT_EXCEEDED';
+            }
+          }
+        }
         return jsonResponse({
           'analyzed': [
             for (final id in ids)
-              if (!failWith.containsKey(id))
+              if (!fail.containsKey(id))
                 {
                   'localAssetId': id,
                   'category': 'INFO',
@@ -136,9 +159,10 @@ class RecordingClient extends http.BaseClient {
           'skipped': <String>[],
           'failed': [
             for (final id in ids)
-              if (failWith.containsKey(id))
-                {'localAssetId': id, 'reason': failWith[id]},
+              if (fail.containsKey(id))
+                {'localAssetId': id, 'reason': fail[id]},
           ],
+          if (olderRemaining != null) 'olderRemainingToday': olderRemaining,
         });
       default:
         return jsonResponse({}, 404);
@@ -275,6 +299,10 @@ class SyncRig {
     ForegroundLog? foreground,
     bool autoSync = true,
     TrashStore? trash,
+    String olderRange = '',
+    Future<bool> Function()? isWifi,
+    Future<bool> Function()? isCharging,
+    bool verboseErrors = false,
   }) async {
     final reader = FakeGalleryReader(photos: photos, albums: albums);
     final ocr = MapOcrEngine(texts);
@@ -311,6 +339,10 @@ class SyncRig {
       log: log,
       autoSync: autoSync,
       trash: trashStore,
+      olderRange: olderRange,
+      verboseErrors: verboseErrors,
+      isWifi: isWifi,
+      isCharging: isCharging,
     );
     final repository = RemoteRepository(api, state, status, trash: trashStore)
       ..onTrashChanged = sync.flushTrash;

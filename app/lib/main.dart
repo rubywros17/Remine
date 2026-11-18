@@ -51,6 +51,14 @@ const _syncBatchSize = int.fromEnvironment('SYNC_BATCH_SIZE');
 /// 디버그 화면의 [지금 동기화]로 수동 실행한다. 릴리스에서는 무시하고 항상 켠다.
 const _autoSync = bool.fromEnvironment('AUTO_SYNC', defaultValue: true);
 
+/// 디버그 전용: 예전 스크린샷 범위를 고르는 화면 없이 확인할 때(`--dart-define=OLDER_RANGE=1y`, `6m`·`30d`·`all`).
+/// 비어 있으면(기본·릴리스) 범위를 고르기 전까지 예전 스크린샷을 읽지 않는다.
+const _olderRange = String.fromEnvironment('OLDER_RANGE');
+
+/// 디버그 전용: 동기화가 멈춘 이유를 예외 메시지·스택까지 찍는다(`--dart-define=VERBOSE_ERRORS=true`).
+/// 메시지에 OCR 원문이 섞일 수 있어 원인을 찾을 때만 켠다. 릴리스에서는 무시한다(예외 종류만).
+const _verboseErrors = bool.fromEnvironment('VERBOSE_ERRORS');
+
 bool get _apiBaseAllowed =>
     _apiBase.isNotEmpty && (kDebugMode || _apiBase.startsWith('https://'));
 
@@ -182,6 +190,10 @@ RemoteServices _remote(
     push: push,
     log: log,
     trash: trash,
+    olderRange: kDebugMode ? _olderRange : '',
+    verboseErrors: kDebugMode && _verboseErrors,
+    isWifi: _isWifi,
+    isCharging: () => _deviceFlag('isCharging'),
   );
   repository.onTrashChanged = sync.flushTrash;
   return RemoteServices(
@@ -191,4 +203,35 @@ RemoteServices _remote(
     state: state,
     push: push,
   );
+}
+
+/// Wi-Fi인지. 디버그 빌드는 판단 근거(지금 네트워크의 전송 방식)를 한 줄 남긴다.
+Future<bool> _isWifi() async {
+  final wifi = await _deviceFlag('isWifi');
+  if (kDebugMode) {
+    try {
+      final info = await const MethodChannel('remine/settings')
+          .invokeMethod<String>('networkInfo');
+      debugPrint('[older] 네트워크 $info');
+    } catch (e) {
+      debugPrint('[older] 네트워크 정보 못 읽음: ${e.runtimeType}');
+    }
+  }
+  return wifi;
+}
+
+/// 기기 상태(Wi-Fi·충전)를 MainActivity에 묻는다. 못 읽으면 false(모바일 데이터·배터리를 쓰지 않는 쪽).
+/// 디버그 빌드는 못 읽은 이유를 남긴다(네이티브 코드가 빌드에 안 들어간 채 핫 리스타트하면 MissingPluginException).
+Future<bool> _deviceFlag(String method) async {
+  try {
+    return await const MethodChannel('remine/settings')
+            .invokeMethod<bool>(method) ==
+        true;
+  } on PlatformException catch (e) {
+    if (kDebugMode) debugPrint('[older] $method 실패: ${e.code}');
+    return false;
+  } on MissingPluginException catch (_) {
+    if (kDebugMode) debugPrint('[older] $method 없음(앱을 다시 빌드해야 함)');
+    return false;
+  }
 }

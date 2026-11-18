@@ -1,6 +1,6 @@
 import 'local_db.dart';
 
-/// 기기에 두는 사용자 설정: 이미지 분석 동의, 관심사 알림 받기, 한 번만 보는 안내.
+/// 기기에 두는 사용자 설정: 이미지 분석 동의, 관심사 알림 받기, 한 번만 보는 안내, 예전 스크린샷 정리.
 abstract interface class SettingsStore {
   /// 이미지 분석 동의. 아직 묻지 않았으면 null, 거부면 false.
   Future<bool?> imageConsent();
@@ -28,12 +28,75 @@ abstract interface class SettingsStore {
 
   /// [디버그] 첫 실행 선택(이미지 동의·알림)만 지워 첫 실행 안내를 다시 보게 한다. 분석·전송 기록은 그대로다.
   Future<void> clearFirstRunChoices();
+
+  /// 예전 스크린샷(최신 300장보다 오래된 것) 분석 범위: `all`(전부) 또는 시작 날짜 `yyyy-MM-dd`([olderRangeStart]).
+  /// 아직 고르지 않았으면 null이고, 그동안은 예전 스크린샷을 읽지 않는다.
+  Future<String?> olderRangeFrom();
+
+  Future<void> setOlderRangeFrom(String value);
+
+  /// 예전 스크린샷을 어디까지 봤는지([PhotoPosition.encode]). 처음이면 null(맨 앞부터).
+  Future<String?> olderCursor();
+
+  /// null이면 지운다(처음부터 다시).
+  Future<void> setOlderCursor(String? value);
+
+  /// 예전 스크린샷 이어서 정리하기(기본 켜짐).
+  Future<bool> olderEnabled();
+
+  Future<void> setOlderEnabled(bool value);
+
+  /// Wi-Fi에서만 예전 스크린샷 정리(기본 켜짐).
+  Future<bool> olderWifiOnly();
+
+  Future<void> setOlderWifiOnly(bool value);
+
+  /// 충전 중일 때만 예전 스크린샷 정리(기본 꺼짐).
+  Future<bool> olderChargingOnly();
+
+  Future<void> setOlderChargingOnly(bool value);
+
+  /// 마지막으로 서버에서 받은 오늘 남은 예전 스크린샷 몫(표시용, 기준은 늘 서버 값). 받은 적 없으면 null.
+  Future<({int remaining, DateTime? resetsAt})?> olderQuota();
+
+  Future<void> setOlderQuota(int remaining, DateTime? resetsAt);
+}
+
+/// [SettingsStore.olderRangeFrom] 값을 해석한다: 꺼짐(null) / 전부(from null) / 그 날짜부터.
+({bool enabled, DateTime? from}) olderRangeStart(String? value) {
+  if (value == null || value.isEmpty) return (enabled: false, from: null);
+  if (value == olderRangeAll) return (enabled: true, from: null);
+  final d = DateTime.tryParse(value);
+  return d == null ? (enabled: false, from: null) : (enabled: true, from: d);
+}
+
+const olderRangeAll = 'all';
+
+/// [디버그] `--dart-define=OLDER_RANGE=1y`(또는 `6m`·`30d`·`all`)을 [now] 기준 범위 값으로 바꾼다. 틀린 값이면 null.
+String? olderRangeFromDefine(String define, DateTime now) {
+  if (define == olderRangeAll) return olderRangeAll;
+  final m = RegExp(r'^(\d+)([dmy])$').firstMatch(define);
+  if (m == null) return null;
+  final n = int.parse(m.group(1)!);
+  final from = switch (m.group(2)) {
+    'd' => DateTime(now.year, now.month, now.day - n),
+    'm' => DateTime(now.year, now.month - n, now.day),
+    _ => DateTime(now.year - n, now.month, now.day),
+  };
+  return '${from.year.toString().padLeft(4, '0')}-'
+      '${from.month.toString().padLeft(2, '0')}-${from.day.toString().padLeft(2, '0')}';
 }
 
 const _imageConsentKey = 'image_consent';
 const _notificationsKey = 'notifications_enabled';
 const _ownCaptureLogKey = 'own_capture_log';
 const _swipeTutorialKey = 'swipe_tutorial_seen';
+const _olderRangeKey = 'older_range_from';
+const _olderCursorKey = 'older_cursor';
+const _olderEnabledKey = 'older_enabled';
+const _olderWifiKey = 'older_wifi_only';
+const _olderChargingKey = 'older_charging_only';
+const _olderQuotaKey = 'older_quota';
 
 class SqfliteSettingsStore implements SettingsStore {
   SqfliteSettingsStore(this._local);
@@ -79,6 +142,54 @@ class SqfliteSettingsStore implements SettingsStore {
   @override
   Future<void> clearFirstRunChoices() =>
       _delete([_imageConsentKey, _notificationsKey]);
+
+  @override
+  Future<String?> olderRangeFrom() => _get(_olderRangeKey);
+
+  @override
+  Future<void> setOlderRangeFrom(String value) => _put(_olderRangeKey, value);
+
+  @override
+  Future<String?> olderCursor() => _get(_olderCursorKey);
+
+  @override
+  Future<void> setOlderCursor(String? value) =>
+      value == null ? _delete([_olderCursorKey]) : _put(_olderCursorKey, value);
+
+  @override
+  Future<bool> olderEnabled() async => await _get(_olderEnabledKey) != '0';
+
+  @override
+  Future<void> setOlderEnabled(bool value) =>
+      _put(_olderEnabledKey, value ? '1' : '0');
+
+  @override
+  Future<bool> olderWifiOnly() async => await _get(_olderWifiKey) != '0';
+
+  @override
+  Future<void> setOlderWifiOnly(bool value) =>
+      _put(_olderWifiKey, value ? '1' : '0');
+
+  @override
+  Future<bool> olderChargingOnly() async =>
+      await _get(_olderChargingKey) == '1';
+
+  @override
+  Future<void> setOlderChargingOnly(bool value) =>
+      _put(_olderChargingKey, value ? '1' : '0');
+
+  @override
+  Future<({int remaining, DateTime? resetsAt})?> olderQuota() async {
+    final v = await _get(_olderQuotaKey);
+    final bar = v?.indexOf('|') ?? -1;
+    final n = bar < 0 ? null : int.tryParse(v!.substring(0, bar));
+    if (n == null) return null;
+    return (remaining: n, resetsAt: DateTime.tryParse(v!.substring(bar + 1)));
+  }
+
+  @override
+  Future<void> setOlderQuota(int remaining, DateTime? resetsAt) =>
+      _put(_olderQuotaKey, '$remaining|${resetsAt?.toIso8601String() ?? ''}');
 
   Future<void> _delete(List<String> keys) async {
     final db = await _local.db;
@@ -150,4 +261,48 @@ class InMemorySettingsStore implements SettingsStore {
     _consent = null;
     _notifications = null;
   }
+
+  String? olderRange;
+  String? cursor;
+  bool enabled = true;
+  bool wifiOnly = true;
+  bool chargingOnly = false;
+  ({int remaining, DateTime? resetsAt})? quota;
+
+  @override
+  Future<String?> olderRangeFrom() async => olderRange;
+
+  @override
+  Future<void> setOlderRangeFrom(String value) async => olderRange = value;
+
+  @override
+  Future<String?> olderCursor() async => cursor;
+
+  @override
+  Future<void> setOlderCursor(String? value) async => cursor = value;
+
+  @override
+  Future<bool> olderEnabled() async => enabled;
+
+  @override
+  Future<void> setOlderEnabled(bool value) async => enabled = value;
+
+  @override
+  Future<bool> olderWifiOnly() async => wifiOnly;
+
+  @override
+  Future<void> setOlderWifiOnly(bool value) async => wifiOnly = value;
+
+  @override
+  Future<bool> olderChargingOnly() async => chargingOnly;
+
+  @override
+  Future<void> setOlderChargingOnly(bool value) async => chargingOnly = value;
+
+  @override
+  Future<({int remaining, DateTime? resetsAt})?> olderQuota() async => quota;
+
+  @override
+  Future<void> setOlderQuota(int remaining, DateTime? resetsAt) async =>
+      quota = (remaining: remaining, resetsAt: resetsAt);
 }

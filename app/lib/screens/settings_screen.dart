@@ -1,25 +1,16 @@
 import 'package:flutter/material.dart';
 
-import '../core/helpers.dart';
 import '../core/tokens.dart';
-import '../data/device/device_trash.dart';
 import '../data/device/settings_store.dart';
 import '../data/remote/remote_services.dart';
 import '../widgets/small_widgets.dart';
-import 'trash_screen.dart';
 
-/// 설정: 이미지 분석 동의, 관심사 알림 받기(서버 연동 + 푸시가 있을 때만), 휴지통.
+/// 설정: 이미지 분석 동의, 관심사 알림 받기(서버 연동 + 푸시가 있을 때만). 휴지통은 정리 탭에 있다.
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({
-    super.key,
-    required this.settings,
-    this.remote,
-    this.trash,
-  });
+  const SettingsScreen({super.key, required this.settings, this.remote});
 
   final SettingsStore settings;
   final RemoteServices? remote;
-  final DeviceTrash? trash;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -134,7 +125,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               body:
                   '글자가 적은 캡처는 작게 줄인 사진을 함께 보내요.\n'
                   '서버에 저장하지 않고, 민감한 정보나 전화번호가 보이는 캡처는 사진을 보내지 않아요.\n'
-                  '끄면 글자만 보내요.',
+                  '해제 시 글자만 보내요.',
               value: _consent,
               onChanged: _set,
             ),
@@ -149,30 +140,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onChanged: _setNotify,
               ),
             ],
-            if (widget.trash != null) ...[
-              const SizedBox(height: AppSpacing.s4),
-              _TrashRow(trash: widget.trash!),
-            ],
           ],
         ),
       ),
-    );
-  }
-}
-
-class _TrashRow extends StatelessWidget {
-  const _TrashRow({required this.trash});
-
-  final DeviceTrash trash;
-
-  @override
-  Widget build(BuildContext context) {
-    return _SettingsRow(
-      title: '휴지통',
-      body: '버린 캡처를 되살리거나 갤러리에서 지워요.',
-      onTap: () =>
-          Navigator.of(context)
-              .push(appRoute(context, (_) => TrashScreen(trash: trash))),
     );
   }
 }

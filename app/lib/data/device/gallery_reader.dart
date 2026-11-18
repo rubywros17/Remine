@@ -66,6 +66,7 @@ class GalleryPhoto {
     required this.fileName,
     required this.takenAt,
     required this.modifiedAt,
+    this.created,
   });
 
   final String id;
@@ -74,7 +75,69 @@ class GalleryPhoto {
 
   /// 사진이 바뀌었는지 보는 값(epoch 초). OCR 캐시 키의 일부.
   final int modifiedAt;
+
+  /// 갤러리(MediaStore) 생성 시각. 모르면 null.
+  final DateTime? created;
+
+  /// 갤러리가 정렬·기간 조회에 쓰는 시각(MediaStore 생성 시각). [takenAt]은 파일명을 믿을 때가 있어 다를 수 있다
+  /// (`adb push`로 옮긴 사진). 예전 스크린샷 커서는 갤러리 조회와 같은 이 값으로 센다. 없으면 [takenAt].
+  DateTime get createdAt => created ?? takenAt;
+
+  /// 갤러리 안의 위치(최신순 정렬 키).
+  PhotoPosition get position => PhotoPosition(createdAt, id);
 }
+
+/// 최신순 갤러리에서 한 장의 자리: 생성 시각, 같은 초면 id. 예전 스크린샷을 어디까지 봤는지(커서)를 이것으로 둔다.
+class PhotoPosition {
+  const PhotoPosition(this.time, this.id);
+
+  final DateTime time;
+  final String id;
+
+  /// 최신순으로 [other]보다 뒤(더 오래됨)인지. 같은 초면 id가 작은 쪽이 뒤다(안드로이드 id는 숫자, 나중에 만든 게 크다).
+  bool isOlderThan(PhotoPosition other) {
+    final byTime = time.compareTo(other.time);
+    if (byTime != 0) return byTime < 0;
+    return _compareIds(id, other.id) < 0;
+  }
+
+  /// 저장용 문자열 `epoch밀리초|id`.
+  String encode() => '${time.millisecondsSinceEpoch}|$id';
+
+  /// [encode]의 반대. 형식이 틀리면 null(처음부터 다시 본다).
+  static PhotoPosition? decode(String? v) {
+    final bar = v?.indexOf('|') ?? -1;
+    if (v == null || bar < 0) return null;
+    final ms = int.tryParse(v.substring(0, bar));
+    if (ms == null) return null;
+    return PhotoPosition(
+      DateTime.fromMillisecondsSinceEpoch(ms),
+      v.substring(bar + 1),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is PhotoPosition && other.time == time && other.id == id;
+
+  @override
+  int get hashCode => Object.hash(time, id);
+
+  @override
+  String toString() => 'PhotoPosition(${encode()})';
+}
+
+int _compareIds(String a, String b) {
+  final x = int.tryParse(a), y = int.tryParse(b);
+  return x != null && y != null ? x.compareTo(y) : a.compareTo(b);
+}
+
+/// 최신순(생성 시각 내림차순, 같은 초면 id 내림차순)으로 정렬한다. [GalleryReader.olderThan]의 순서.
+void sortNewestFirst(List<GalleryPhoto> photos) => photos.sort(
+  (a, b) => b.position.isOlderThan(a.position)
+      ? -1
+      : (a.position == b.position ? 0 : 1),
+);
 
 final _fileNameDate = RegExp(r'(\d{4})(\d{2})(\d{2})[_-](\d{2})(\d{2})(\d{2})');
 
@@ -128,6 +191,18 @@ abstract interface class GalleryReader {
 
   /// 최신순 최대 [limit]장.
   Future<List<GalleryPhoto>> recent(String albumId, {int limit = 300});
+
+  /// [from] 이후(포함)에 생긴 사진 전부, 최신순. 기기 등록 뒤의 새 스크린샷을 개수 제한 없이 읽는다.
+  Future<List<GalleryPhoto>> since(String albumId, DateTime from);
+
+  /// [before]보다 오래된 사진을 최신순으로 최대 [limit]장([sortNewestFirst] 순서). [before]가 null이면 맨 앞(최신)부터.
+  /// [notBefore]가 있으면 그 시각(포함) 이후 것만(분석 범위의 시작).
+  Future<List<GalleryPhoto>> olderThan(
+    String albumId,
+    PhotoPosition? before, {
+    DateTime? notBefore,
+    required int limit,
+  });
 
   /// 썸네일. [height]를 주면 [size] × [height]로(사진 비율에 맞춰) 요청한다 — 정사각으로 요청하면 가운데만 잘려 나온다.
   Future<Uint8List?> thumbnail(String photoId, {int size = 220, int? height});

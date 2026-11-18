@@ -150,7 +150,6 @@ class _HomeScreenState extends State<HomeScreen> {
                           SettingsScreen(
                             settings: device.settings,
                             remote: device.remote,
-                            trash: device.trash,
                           ),
                         ),
                       ),

@@ -3,6 +3,9 @@ package com.remine.remine
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -47,8 +50,48 @@ class MainActivity : FlutterActivity() {
                         }
                         result.success(null)
                     }
+                    // 예전 스크린샷 정리 조건(lib/data/remote/sync_service.dart). Wi-Fi는 ACCESS_NETWORK_STATE(일반 권한, 묻지 않음).
+                    "isWifi" -> result.success(isOnWifi())
+                    // 디버그 로그용: 지금 네트워크의 전송 방식 목록(예: "active=WIFI,VPN · wifi=true").
+                    "networkInfo" -> result.success(networkInfo())
+                    // 충전 중인지. 권한이 필요 없다.
+                    "isCharging" ->
+                        result.success(getSystemService(BatteryManager::class.java)?.isCharging == true)
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    /**
+     * 데이터가 Wi-Fi로 나가는지. 기본 네트워크(activeNetwork)가 Wi-Fi면 true.
+     * VPN이 켜져 있으면 기본 네트워크는 VPN이라 TRANSPORT_WIFI가 없을 수 있다 → 그때는 인터넷이 되는 기반 네트워크 중
+     * Wi-Fi가 있는지 본다. 모바일 데이터뿐이면 false.
+     */
+    private fun isOnWifi(): Boolean {
+        val cm = getSystemService(ConnectivityManager::class.java) ?: return false
+        val active = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+        if (active.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) return true
+        if (!active.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return false
+        @Suppress("DEPRECATION") // 기반 네트워크를 고르는 다른 공개 API가 없다(API 31의 콜백 방식은 비동기)
+        return cm.allNetworks.any { n ->
+            val c = cm.getNetworkCapabilities(n)
+            c != null &&
+                c.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
+                c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+        }
+    }
+
+    private fun networkInfo(): String {
+        val cm = getSystemService(ConnectivityManager::class.java) ?: return "no ConnectivityManager"
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return "active=none · wifi=false"
+        val names = mapOf(
+            NetworkCapabilities.TRANSPORT_WIFI to "WIFI",
+            NetworkCapabilities.TRANSPORT_CELLULAR to "CELLULAR",
+            NetworkCapabilities.TRANSPORT_VPN to "VPN",
+            NetworkCapabilities.TRANSPORT_ETHERNET to "ETHERNET",
+            NetworkCapabilities.TRANSPORT_BLUETOOTH to "BLUETOOTH",
+        )
+        val transports = names.filterKeys { caps.hasTransport(it) }.values.joinToString(",")
+        return "active=${transports.ifEmpty { "?" }} · wifi=${isOnWifi()}"
     }
 }

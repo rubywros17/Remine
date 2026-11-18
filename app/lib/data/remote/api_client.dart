@@ -43,6 +43,9 @@ class ApiConfig {
     required this.imageMaxLongSide,
     required this.maxRequestBytes,
     this.classifyIntervalMs = 0,
+    this.dailyOlderLimit = 0,
+    this.olderRemainingToday,
+    this.olderResetsAt,
   });
 
   final int imageThresholdChars;
@@ -54,6 +57,15 @@ class ApiConfig {
   /// 서버가 캡처 한 장을 분류하는 데 드는 최소 간격(ms). 남은 시간을 처음부터 예상하는 데 쓴다. 옛 서버에는 없어 0.
   final int classifyIntervalMs;
 
+  /// 예전 스크린샷(기기 등록 전에 찍힌 캡처) 기기당 하루 분석 장수. 옛 서버에는 없어 0.
+  final int dailyOlderLimit;
+
+  /// 오늘 이 기기가 더 보낼 수 있는 예전 스크린샷 장수. 기기 id를 실어 물었을 때만 오고, 아니면 null.
+  final int? olderRemainingToday;
+
+  /// 예전 스크린샷 몫이 다시 차는 때(다음 한국 자정). [olderRemainingToday]와 같이 온다.
+  final DateTime? olderResetsAt;
+
   factory ApiConfig.fromJson(Map<String, dynamic> j) => ApiConfig(
     imageThresholdChars: (j['imageThresholdChars'] as num).toInt(),
     maxBatchSize: (j['maxBatchSize'] as num).toInt(),
@@ -61,6 +73,11 @@ class ApiConfig {
     imageMaxLongSide: (j['imageMaxLongSide'] as num).toInt(),
     maxRequestBytes: (j['maxRequestBytes'] as num).toInt(),
     classifyIntervalMs: (j['classifyIntervalMs'] as num?)?.toInt() ?? 0,
+    dailyOlderLimit: (j['dailyOlderLimit'] as num?)?.toInt() ?? 0,
+    olderRemainingToday: (j['olderRemainingToday'] as num?)?.toInt(),
+    olderResetsAt: j['olderResetsAt'] == null
+        ? null
+        : DateTime.tryParse(j['olderResetsAt'] as String),
   );
 }
 
@@ -94,6 +111,9 @@ enum FailReason {
   llmInvalidResponse('LLM_INVALID_RESPONSE'),
   inProgress('IN_PROGRESS'),
   deadlineExceeded('DEADLINE_EXCEEDED'),
+
+  /// 예전 스크린샷 하루 한도를 넘어 서버가 분류·저장하지 않았다. 오늘은 예전 스크린샷을 그만 보낸다.
+  dailyLimitExceeded('DAILY_LIMIT_EXCEEDED'),
   other('');
 
   const FailReason(this.code);
@@ -115,11 +135,15 @@ class AnalyzeResult {
     required this.analyzed,
     required this.skipped,
     required this.failed,
+    this.olderRemainingToday,
   });
 
   final List<AnalyzedShot> analyzed;
   final List<String> skipped;
   final List<AnalyzeFailure> failed;
+
+  /// 이 요청 뒤 오늘 더 보낼 수 있는 예전 스크린샷 장수. 옛 서버에는 없어 null.
+  final int? olderRemainingToday;
 }
 
 /// 서버 REST 호출. [http.Client]를 주입받아 테스트에서 가짜로 바꾼다.
@@ -327,8 +351,9 @@ class RemineApi {
     return result;
   }
 
-  Future<ApiConfig> config() async =>
-      ApiConfig.fromJson(await _getJson('/api/config', null));
+  /// [deviceId]를 주면 그 기기의 오늘 남은 예전 스크린샷 몫도 받는다([ApiConfig.olderRemainingToday]).
+  Future<ApiConfig> config({int? deviceId}) async =>
+      ApiConfig.fromJson(await _getJson('/api/config', deviceId));
 
   /// POST /api/screenshots/analyze. 이미지가 하나라도 있으면 multipart, 없으면 JSON.
   Future<AnalyzeResult> analyze(int deviceId, List<AnalyzeItem> items) async {
@@ -381,6 +406,7 @@ class RemineApi {
             FailReason.parse(f['reason'] as String),
           ),
       ],
+      olderRemainingToday: (json['olderRemainingToday'] as num?)?.toInt(),
     );
   }
 

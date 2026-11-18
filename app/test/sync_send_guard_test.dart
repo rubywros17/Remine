@@ -123,6 +123,53 @@ void main() {
         });
       }
     });
+
+    test('예전 스크린샷 경로도 planFor만 거친다: 메신저·민감·자기 캡처는 안 가고 전화번호는 가려서 간다', () async {
+      // 최신 300장 뒤(예전 스크린샷)에 보내면 안 되는 캡처를 둔다.
+      final names = {
+        for (var i = 0; i < 300; i++) 'f$i': 'Screenshot_$i.png',
+        'chat1': 'Screenshot_20261019_070000_KakaoTalk.jpg',
+        'own1': 'Screenshot_20261019_070001_Remine.jpg',
+        'card1': 'Screenshot_20261019_070002_Chrome.jpg',
+        'tel1': 'Screenshot_20261019_070003_Instagram.jpg',
+        'ok1': 'Screenshot_20261019_070004_Chrome.jpg',
+      };
+      rig = await build(names, {
+        for (var i = 0; i < 300; i++) 'f$i': _longText,
+        'chat1': '대화 내용 비밀',
+        'own1': '리마인 화면',
+        'card1': '결제 카드 $_card 유효기간',
+        'tel1': '맛집 전화 $_phone',
+        'ok1': _longText,
+      });
+      await rig.sync.run(); // 최신 300장
+      rig.client.sent.clear();
+      rig.settings.olderRange = 'all';
+      rig.client.olderRemaining = 10;
+
+      await rig.sync.run();
+      await rig.sync.olderIdle; // 예전 단계는 새 단계 뒤에 따로 돈다
+
+      final body = allBodies();
+      expect(body, contains('ok1'), reason: '예전 단계가 실제로 돌았다');
+      for (final banned in [
+        'chat1',
+        '대화 내용 비밀',
+        'own1',
+        '리마인 화면',
+        'card1',
+        '4111',
+        '1234',
+        'Screenshot_',
+        'KakaoTalk',
+        'Instagram',
+      ]) {
+        expect(body, isNot(contains(banned)));
+      }
+      expect(body, contains('[전화번호]'));
+      expect(rig.ocr.recognized, isNot(contains('chat1')));
+      expect(rig.ocr.recognized, isNot(contains('own1')));
+    });
   });
 
   group('이미지를 붙이는 조건', () {

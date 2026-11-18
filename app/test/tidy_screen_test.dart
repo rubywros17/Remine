@@ -89,12 +89,11 @@ void main() {
     );
   });
 
-  testWidgets('설정은 홈 오른쪽 위 톱니에서 열리고, 설정 > 휴지통도 그대로 있다', (tester) async {
+  testWidgets('설정은 홈 오른쪽 위 톱니에서 열리고, 휴지통 줄은 없다(정리 탭에 있다)', (tester) async {
     await _pumpApp(tester, store);
     await _tap(tester, find.byIcon(LucideIcons.settings));
 
     expect(find.byType(SettingsScreen), findsOneWidget);
-    await _tap(tester, find.text('휴지통'));
-    expect(find.byType(TrashScreen), findsOneWidget);
+    expect(find.text('휴지통'), findsNothing);
   });
 }
