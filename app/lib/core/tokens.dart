@@ -155,11 +155,22 @@ abstract final class AppBrain {
   );
   static const double chipSpacing = 10; // 칩 테두리 사이 최소 간격
 
-  /// 칩 자리: 가운데 + 둘레 타원 육각형(60도 간격). 가운데는 대뇌 상자 안 비율, 가로 반지름은 대뇌 폭 비율 범위 안에서 고르고,
-  /// 세로 반지름은 가로의 [hexAspect]배(위·아래가 납작). 0.65면 이웃 칩 중심 거리 최대/최소가 약 1.33.
-  static const hexCenter = Offset(0.5, 0.5);
-  static const hexRadius = (0.18, 0.42);
-  static const double hexAspect = 0.65;
+  /// 칩 자리: 1등은 대뇌 상자 안 [seatCenter] 비율(대뇌 가운데 = 소뇌·뇌간까지 합친 뇌 전체로는 정가운데보다 위).
+  /// 둘레 6자리는 거기서 [seatAngles]
+  /// 방향(도, 0 = 오른쪽, 시계 방향)으로 칩 바깥 끝이 뇌 윤곽에서 [seatMargins] 떨어질 때까지 나간 곳 = 윤곽을 안쪽으로
+  /// 줄인 곡선 위. 순서(원형으로 이웃): 오른 · 오른아래 · 왼아래 · 왼 · 왼위(앞쪽, 조금 낮게) · 오른위(뒤쪽, 조금 높게).
+  static const seatCenter = Offset(0.5, 0.5);
+  static const seatAngles = [0.0, 55.0, 125.0, 180.0, 235.0, 298.0];
+
+  /// 자리별 윤곽 여백(12~20px). 뇌가 가로로 길어 좌우는 조금 안쪽(20), 위는 조금 바깥쪽(12)이어야 이웃 거리가 고르다.
+  static const seatMargins = [20.0, 14.0, 14.0, 20.0, 12.0, 12.0];
+
+  /// 이웃 칩 중심 거리(1등-둘레, 둘레끼리) 최대/최소가 이보다 크면 넘친 것으로 보고 넓은 칩부터 글자를 줄인다.
+  static const double seatEvenness = 1.5;
+
+  /// 칩이 겹치면 그 칩만 곡선을 따라 이만큼씩(도) 옆으로, 최대 [seatSlideMax]도.
+  static const double seatSlideStep = 3;
+  static const double seatSlideMax = 24;
 
   /// 자리가 모자라면 먼저 넘치는 칩만 따로(가장 넓은 칩부터 [chipEachShrinkStep]씩) 줄인다.
   /// 둘레 칩은 [chipEachMinShrink], 1등(가운데)은 [chipTopEachMinShrink]까지, 글자는 [chipMinFont] 아래로 안 내려간다.
@@ -194,6 +205,9 @@ abstract final class AppBrain {
   /// 실데이터 7개 기준 360×800 글자 1.0배에서 16px는 글자 70%까지 줄여야 나와서 최소를 8px로 둔다.
   static const double chipBrainMargin = 16;
   static const double chipBrainMinMargin = 8;
+
+  /// 최소 여백(8)을 못 지킬 때(글자 1.3배 등) 칩을 빼기 전에 먼저 허용하는 여백. 이것도 안 되면 0(캔버스 안)까지.
+  static const double chipBrainLooseMargin = 4;
   static const double linkDash = 4;
   static const double linkDashGap = 4;
 }

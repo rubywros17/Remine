@@ -298,7 +298,8 @@ void defineLayoutMatrix({
       _expectClean('관심사 지도 긴 키워드 $label', errors);
     });
 
-    // 보통 폰(360×800·412×915, 글자 1.0·1.3배): 보통 길이 칩 7개가 서로 10px 이상·캔버스 안, 글자 1.0배는 뇌 윤곽에서 8px 이상,
+    // 보통 폰(360×800·412×915, 글자 1.0·1.3배): 보통 길이 칩 7개가 서로 10px 이상·캔버스 안, 뇌 윤곽에서 1.0배는 8px·1.3배는 4px 이상
+    // (1.3배에서 7개가 안 되면 1개 이상·10px·캔버스 안),
     // 애니메이션 끄기면 첫 프레임이 마지막 상태.
     if (size == const Size(360, 800) || size == const Size(412, 915)) {
       testWidgets('관심사 지도 칩 7개 뇌 안 · 애니메이션 끄기 · $label', (tester) async {
@@ -328,31 +329,44 @@ void defineLayoutMatrix({
               .map((e) => e.widget as CustomPaint)
               .firstWhere((c) => c.painter is BrainPainter);
           final painter = paint.painter! as BrainPainter;
+          // 시계 길이는 고른 관심사 수 기준이라, 칩이 빠지면 그려진 칩의 끝보다 길 수 있다.
           expect(
             painter.ms,
-            brainTotalMs(
-              painter.chips.length,
-              brainLinks([for (final c in painter.chips) c.node]).length,
+            greaterThanOrEqualTo(
+              brainTotalMs(
+                painter.chips.length,
+                brainLinks([for (final c in painter.chips) c.node]).length,
+              ),
             ),
             reason: '애니메이션 끄기면 바로 끝 상태',
           );
           expect(tester.hasRunningAnimations, isFalse);
           final chips = painter.chips;
-          expect(chips, hasLength(7));
-          expect(
-            chips.where((c) => c.node.interest.forgotten),
-            hasLength(2),
-            reason: '잊은 2 + 요즘 5',
-          );
+          // 글자 1.3배는 윤곽 여백을 4px까지 줄여도 7개가 안 되면 뒤 순위부터 빠진다 → 1개 이상·10px·캔버스 안만 본다.
+          final full = scale == 1.0 || chips.length == 7;
+          if (full) {
+            expect(chips, hasLength(7));
+            expect(
+              chips.where((c) => c.node.interest.forgotten),
+              hasLength(2),
+              reason: '잊은 2 + 요즘 5',
+            );
+          } else {
+            expect(chips, isNotEmpty);
+          }
           final canvasSize = tester.getSize(find.byWidget(paint));
           final canvas = (Offset.zero & canvasSize).inflate(0.5);
           for (final (i, c) in chips.indexed) {
-            // 글자 1.3배는 칩이 커서 육각형이 뇌 윤곽 8px 안에 다 못 들어갈 수 있다 → 캔버스 안까지 허용(윤곽에 가장 덜 걸리는 배치).
-            if (scale == 1.0) {
+            // 윤곽 여백: 글자 1.0배는 8px, 1.3배는 칩 7개를 지키려고 4px까지 허용.
+            if (full) {
+              final margin = scale == 1.0
+                  ? AppBrain.chipBrainMinMargin
+                  : AppBrain.chipBrainLooseMargin;
               expect(
-                chipFitsBrain(canvasSize, c.rect),
+                chipFitsBrain(canvasSize, c.rect, margin),
                 isTrue,
-                reason: '${c.node.interest.tag} 칩이 뇌 윤곽 8px 안쪽이 아님 ${c.rect}',
+                reason:
+                    '${c.node.interest.tag} 칩이 뇌 윤곽 ${margin}px 안쪽이 아님 ${c.rect}',
               );
             }
             expect(

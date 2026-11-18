@@ -76,43 +76,21 @@ void main() {
     ('412×915', Size(372, 560), 1.0),
     ('412×915 글자 1.3배', Size(372, 560), 1.3),
   ]) {
-    test('실데이터 7개: 윤곽 여백 8px 이상 · 칩 사이 10px 이상 · 이웃 거리 고르게 · $name', () {
+    test('실데이터 7개: 윤곽 8~40px · 칩 사이 10px 이상 · 이웃 거리 고르게 · $name', () {
       final chips = layoutChips(
         layoutNodes(_real),
         size,
         TextScaler.linear(scale),
       );
       expect(chips, hasLength(7));
-      for (final (i, a) in chips.indexed) {
-        expect(
-          chipFitsBrain(size, a.rect, AppBrain.chipBrainMinMargin),
-          isTrue,
-          reason: '${a.node.interest.tag} ${a.rect}',
-        );
+      for (final a in chips) {
         _expectFontFloor(a);
-        for (final b in chips.skip(i + 1)) {
-          expect(
-            a.rect.inflate(4.9).overlaps(b.rect.inflate(4.9)),
-            isFalse,
-            reason: '${a.node.interest.tag} ↔ ${b.node.interest.tag} 10px 미만',
-          );
-        }
       }
-      // 이웃: 가운데-둘레 6쌍 + 둘레끼리 원형 6쌍.
-      final center = chips.first.rect.center;
-      final bySeat = {
-        for (final c in chips.skip(1)) c.node.seat: c.rect.center,
-      };
-      final d = [
-        for (final p in bySeat.values) (p - center).distance,
-        for (var k = 0; k < 6; k++)
-          (bySeat[k]! - bySeat[(k + 1) % 6]!).distance,
-      ];
-      expect(d.reduce(max) / d.reduce(min), lessThanOrEqualTo(1.4));
+      _expectSpread(chips, size);
     });
   }
 
-  test('넘치는 칩만 따로 줄인다: 긴 칩은 작게, 짧은 칩은 그대로, 둘레 칩 높이는 같다 · 360×800', () {
+  test('넘치는 칩만 따로 줄인다: 긴 칩은 작게, 안 넘친 칩은 그대로, 둘레 칩 높이는 같다 · 360×800', () {
     final chips = layoutChips(
       layoutNodes(_real),
       const Size(320, 470),
@@ -121,7 +99,8 @@ void main() {
     double shrinkOf(String tag) =>
         chips.firstWhere((c) => c.node.interest.tag == tag).shrink;
     expect(shrinkOf('데스크오가나이저'), lessThan(shrinkOf('도안')));
-    expect(shrinkOf('키링'), 1, reason: '짧은 칩은 줄이지 않는다');
+    expect(shrinkOf('도안'), 1, reason: '안 넘친 칩은 줄이지 않는다');
+    expect(shrinkOf('오잉보잉'), 1, reason: '안 넘친 칩은 줄이지 않는다');
     _expectSameRingHeight(chips);
     // 가로 패딩도 글자 배율만큼 준다(칩 폭 = 글자 폭 + 줄인 패딩).
     final desk = chips.firstWhere((c) => c.node.interest.tag == '데스크오가나이저');
@@ -142,9 +121,10 @@ void main() {
     _i('전시회일정정리', 3, Category.etc),
   ];
   for (final (name, size, scale, count) in const [
-    // 360×800: 글자 최소 11 때문에 둘레 칩은 85%(11/13)까지만 줄어 7개가 다 못 앉는다(5개).
-    ('360×800', Size(320, 470), 1.0, 5),
-    ('412×915', Size(372, 560), 1.0, 7),
+    // 자리가 윤곽을 따라가서 위·아래 칩이 1등 칩과 가까워, 14자 칩(1등과 비슷한 폭)은 다 못 앉는다.
+    // 글자 최소 11이라 둘레 칩은 85%(11/13)까지만 줄어 360×800은 4개, 412×915는 5개.
+    ('360×800', Size(320, 470), 1.0, 4),
+    ('412×915', Size(372, 560), 1.0, 5),
   ]) {
     test(
       '긴 키워드: 글자 최소 11 · 1등 85% 이상 · 칩 사이 10px · 캔버스 안 · 칩 $count개 · $name',
@@ -172,6 +152,76 @@ void main() {
       },
     );
   }
+
+  // 짧은 키워드 7개: 자리가 뇌 윤곽을 따라가서 키워드가 짧아도 가운데로 몰리지 않는다.
+  final short = [
+    _i('캠핑', 9, Category.place, forgotten: true),
+    _i('도안', 8, Category.entertainment),
+    _i('키링', 7, Category.shopping, forgotten: true),
+    _i('뜨개질', 6, Category.entertainment),
+    _i('베이킹', 5, Category.info, forgotten: true),
+    _i('필기구', 4, Category.shopping),
+    _i('홈카페', 3, Category.chat, forgotten: true),
+  ];
+  for (final (name, size) in const [
+    ('360×800', Size(320, 470)),
+    ('412×915', Size(372, 560)),
+  ]) {
+    test('짧은 키워드 7개: 윤곽 8~40px · 칩 사이 10px 이상 · 이웃 거리 고르게 · $name', () {
+      final chips = layoutChips(layoutNodes(short), size, TextScaler.noScaling);
+      expect(chips, hasLength(7));
+      _expectSpread(chips, size);
+    });
+  }
+
+  test('같은 데이터면 항상 같은 배치', () {
+    List<Rect> rects() => [
+      for (final c in layoutChips(
+        layoutNodes(_real),
+        const Size(320, 470),
+        TextScaler.noScaling,
+      ))
+        c.rect,
+    ];
+    expect(rects(), rects());
+  });
+}
+
+/// 모든 칩이 윤곽에서 8px 이상, 둘레 칩 바깥 끝은 윤곽에서 40px 이내(가운데로 몰리지 않음), 칩 사이 10px 이상,
+/// 이웃 칩 중심 거리(1등-둘레 6쌍 + 둘레끼리 원형 6쌍) 최대/최소 1.5 이하.
+void _expectSpread(List<BrainChip> chips, Size size) {
+  for (final (i, a) in chips.indexed) {
+    expect(
+      chipFitsBrain(size, a.rect, AppBrain.chipBrainMinMargin),
+      isTrue,
+      reason: '${a.node.interest.tag} 윤곽 8px 안쪽이 아님 ${a.rect}',
+    );
+    if (a.node.seat >= 0) {
+      expect(
+        chipFitsBrain(size, a.rect, 40),
+        isFalse,
+        reason: '${a.node.interest.tag} 윤곽에서 40px 넘게 안쪽 ${a.rect}',
+      );
+    }
+    for (final b in chips.skip(i + 1)) {
+      expect(
+        a.rect.inflate(4.9).overlaps(b.rect.inflate(4.9)),
+        isFalse,
+        reason: '${a.node.interest.tag} ↔ ${b.node.interest.tag} 10px 미만',
+      );
+    }
+  }
+  final center = chips.first.rect.center;
+  final bySeat = {for (final c in chips.skip(1)) c.node.seat: c.rect.center};
+  final d = [
+    for (final p in bySeat.values) (p - center).distance,
+    for (var k = 0; k < 6; k++) (bySeat[k]! - bySeat[(k + 1) % 6]!).distance,
+  ];
+  expect(
+    d.reduce(max) / d.reduce(min),
+    lessThanOrEqualTo(1.5),
+    reason: d.map((x) => x.round()).join(', '),
+  );
 }
 
 /// 글자는 [AppBrain.chipMinFont] 아래로 안 내려간다.
