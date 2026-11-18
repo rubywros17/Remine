@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:sqflite/sqflite.dart';
 
 import '../device/local_db.dart';
@@ -41,6 +43,13 @@ abstract interface class RemoteStateStore {
   /// 개수 제한 없이 읽는다. 아직이면 null. 서버가 기기를 잊어도([clear]) 그대로 둔다.
   Future<DateTime?> registeredAt();
   Future<void> setRegisteredAt(DateTime at);
+
+  /// 예전 스크린샷 경로에서 이 캡처가 실패한 횟수(실행마다 한 번, 하루 한도 초과는 세지 않음). 없으면 0.
+  /// 여러 번 실패한 캡처는 건너뛰고 커서를 넘긴다(계속 실패하는 한 장에서 영원히 멈추지 않게).
+  Future<int> olderFailures(String assetId);
+
+  /// 0이면 기록을 지운다.
+  Future<void> setOlderFailures(String assetId, int count);
 
   /// 첫 분석 화면을 이미 거쳤는지.
   Future<bool> firstSyncDone();
@@ -105,6 +114,37 @@ class SqfliteRemoteStateStore implements RemoteStateStore {
   @override
   Future<void> setRegisteredAt(DateTime at) =>
       _putSetting('registered_at', at.toIso8601String());
+
+  // 실패한 캡처는 드물어 작은 JSON 하나로 둔다(asset id → 횟수). 성공하거나 건너뛰면 지워 커지지 않는다.
+  static const _olderFailuresKey = 'older_failures';
+
+  Future<Map<String, int>> _olderFailureMap() async {
+    final v = await _setting(_olderFailuresKey);
+    if (v == null) return {};
+    try {
+      return (jsonDecode(v) as Map<String, dynamic>).map(
+        (k, n) => MapEntry(k, (n as num).toInt()),
+      );
+    } catch (_) {
+      return {}; // 망가진 값이면 처음부터 센다
+    }
+  }
+
+  @override
+  Future<int> olderFailures(String assetId) async =>
+      (await _olderFailureMap())[assetId] ?? 0;
+
+  @override
+  Future<void> setOlderFailures(String assetId, int count) async {
+    final map = await _olderFailureMap();
+    if (count <= 0 && !map.containsKey(assetId)) return;
+    if (count <= 0) {
+      map.remove(assetId);
+    } else {
+      map[assetId] = count;
+    }
+    await _putSetting(_olderFailuresKey, jsonEncode(map));
+  }
 
   @override
   Future<bool> firstSyncDone() async =>
@@ -198,7 +238,11 @@ class SqfliteRemoteStateStore implements RemoteStateStore {
     final db = await _db;
     await db.delete('server_map');
     await db.delete('server_cache');
-    await db.delete('setting', where: 'key = ?', whereArgs: ['device_id']);
+    await db.delete(
+      'setting',
+      where: 'key IN (?, ?)',
+      whereArgs: ['device_id', _olderFailuresKey],
+    );
   }
 }
 
@@ -211,6 +255,17 @@ class InMemoryRemoteStateStore implements RemoteStateStore {
 
   @override
   Future<void> setRegisteredAt(DateTime at) async => registered = at;
+
+  final Map<String, int> olderFailureCounts = {};
+
+  @override
+  Future<int> olderFailures(String assetId) async =>
+      olderFailureCounts[assetId] ?? 0;
+
+  @override
+  Future<void> setOlderFailures(String assetId, int count) async => count <= 0
+      ? olderFailureCounts.remove(assetId)
+      : olderFailureCounts[assetId] = count;
 
   bool _first = false;
   final Map<String, SyncEntry> _entries = {};
@@ -273,5 +328,6 @@ class InMemoryRemoteStateStore implements RemoteStateStore {
     _deviceId = null;
     _entries.clear();
     _cache.clear();
+    olderFailureCounts.clear();
   }
 }

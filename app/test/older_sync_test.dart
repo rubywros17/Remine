@@ -131,6 +131,66 @@ void main() {
     expect((await rig.state.entry('p301'))?.status, SyncStatusCode.failed);
   });
 
+  /// 하루 몫을 채워 한 번 더 동기화한다(다음 날·다음 실행).
+  Future<void> runAgain(SyncRig rig, {int remaining = 10}) async {
+    rig.client.sent.clear();
+    rig.client.olderRemaining = remaining;
+    await rig.sync.run();
+  }
+
+  test('같은 장이 2번 실패할 때까지는 커서가 멈추고, 3번째 실패하면 건너뛰고 지나간다', () async {
+    final rig = await _rig(3);
+    rig.settings.olderRange = olderRangeAll;
+    rig.client.failWith['p301'] = 'LLM_CALL_FAILED';
+
+    await runAgain(rig);
+    expect(_cursorId(rig.settings), 'p300');
+    expect(await rig.state.olderFailures('p301'), 1);
+
+    await runAgain(rig);
+    expect(_sentIds(rig), ['p301'], reason: '실패한 장만 다시 보낸다');
+    expect(_cursorId(rig.settings), 'p300', reason: '2번까지는 멈춘다');
+    expect(await rig.state.olderFailures('p301'), 2);
+
+    await runAgain(rig);
+    expect(_cursorId(rig.settings), 'p302', reason: '3번째 실패로 건너뛴다');
+    expect(rig.state.olderFailureCounts, isEmpty, reason: '지나가면 기록을 지운다');
+
+    await runAgain(rig);
+    expect(_sentIds(rig), isEmpty, reason: '건너뛴 장을 다시 보내지 않는다');
+  });
+
+  test('하루 한도 초과는 실패 횟수에 세지 않는다', () async {
+    final rig = await _rig(3);
+    rig.settings.olderRange = olderRangeAll;
+    rig.client.failWith['p301'] = 'DAILY_LIMIT_EXCEEDED';
+
+    for (var i = 0; i < 3; i++) {
+      await runAgain(rig);
+    }
+    expect(await rig.state.olderFailures('p301'), 0);
+    expect(_cursorId(rig.settings), 'p300', reason: '한도에 걸린 장에서 계속 멈춘다');
+
+    rig.client.failWith.clear();
+    await runAgain(rig);
+    expect(_sentIds(rig), ['p301']);
+    expect(_cursorId(rig.settings), 'p302');
+  });
+
+  test('실패했다가 성공하면 실패 기록을 지운다', () async {
+    final rig = await _rig(2);
+    rig.settings.olderRange = olderRangeAll;
+    rig.client.failWith['p301'] = 'LLM_INVALID_RESPONSE';
+    await runAgain(rig);
+    expect(await rig.state.olderFailures('p301'), 1);
+
+    rig.client.failWith.clear();
+    await runAgain(rig);
+
+    expect(await rig.state.olderFailures('p301'), 0);
+    expect(_cursorId(rig.settings), 'p301');
+  });
+
   test('남은 몫이 0이면 그날은 읽지도 보내지도 않는다', () async {
     final rig = await _rig(5);
     rig.settings.olderRange = olderRangeAll;

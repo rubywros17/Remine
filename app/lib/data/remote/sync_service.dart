@@ -95,6 +95,9 @@ class SyncService {
   final Future<bool> Function() _isCharging;
   static Future<bool> _yes() async => true;
 
+  /// 예전 스크린샷 경로에서 같은 캡처가 이만큼(서로 다른 실행) 실패하면 건너뛰고 커서를 넘긴다.
+  static const olderMaxFailures = 3;
+
   Future<void>? _inFlight;
   StreamSubscription<String>? _tokenSub;
   bool _again = false; // 재등록으로 전송 기록을 비웠다 → 이번 실행 뒤 한 번 더
@@ -265,6 +268,7 @@ class SyncService {
     var readFrom = cursor;
     var blocked = false; // 커서는 처리하지 못한 첫 장 앞에서 멈춘다
     var read = 0;
+    var skipped = 0;
     while (left > 0) {
       final page = await reader.olderThan(
         albumId,
@@ -276,8 +280,14 @@ class SyncService {
       read += page.length;
       final (:mine, :own, ownBy: _) = capture.split(page, rule);
       final waiting = <GalleryPhoto>[];
+      final givenUp = <String>{};
       for (final p in mine) {
-        if (!await _upToDate(p)) waiting.add(p);
+        if (await _upToDate(p)) continue;
+        if (await state.olderFailures(p.id) >= olderMaxFailures) {
+          givenUp.add(p.id); // 여러 번 실패한 장은 다시 보내지 않고 지나간다
+        } else {
+          waiting.add(p);
+        }
       }
       final chunk = waiting.take(left).toList();
       var limitHit = false;
@@ -292,6 +302,16 @@ class SyncService {
         );
         limitHit = r.limitHit;
         left = r.olderRemaining ?? left - (tally.sent - sentBefore);
+        for (final p in chunk) {
+          // 실행마다 한 번만 센다. 하루 한도로 돌아온 장은 실패가 아니라 기록이 없다.
+          if (r.failedIds.contains(p.id)) {
+            final n = await state.olderFailures(p.id) + 1;
+            await state.setOlderFailures(p.id, n);
+            if (n >= olderMaxFailures) givenUp.add(p.id);
+          } else if (await _upToDate(p)) {
+            await state.setOlderFailures(p.id, 0);
+          }
+        }
         onBatchDone?.call();
       }
       final ownIds = {for (final p in own) p.id};
@@ -299,6 +319,10 @@ class SyncService {
         if (blocked) break;
         if (ownIds.contains(p.id) || await _upToDate(p)) {
           cursor = p.position;
+        } else if (givenUp.contains(p.id)) {
+          cursor = p.position;
+          skipped++;
+          await state.setOlderFailures(p.id, 0); // 지나갔으니 기록은 지운다(커서가 다시 오지 않는다)
         } else {
           blocked = true;
         }
@@ -311,7 +335,8 @@ class SyncService {
     await settings.setOlderQuota(left < 0 ? 0 : left, quota.olderResetsAt);
     log?.call(
       '[older] 읽음 $read · 보냄 ${tally.sent}'
-      ' · 기기에서 끝남 ${tally.deviceOnly + tally.noTextEtc} · 오늘 남은 몫 $left',
+      ' · 기기에서 끝남 ${tally.deviceOnly + tally.noTextEtc}'
+      ' · $olderMaxFailures번 실패해 건너뜀 $skipped · 오늘 남은 몫 $left',
     );
   }
 
@@ -504,7 +529,16 @@ class SyncService {
 
   /// [quiet]면 진행 화면([status])에 알리지 않는다(첫 분석이 끝난 뒤 조용히 도는 예전 스크린샷).
   /// [limitHit]: 서버가 예전 스크린샷 하루 한도로 돌려보낸 장이 있었다. [olderRemaining]: 마지막 응답의 남은 몫.
-  Future<({int deviceId, int failed, bool limitHit, int? olderRemaining})>
+  /// [failedIds]: 이번에 실패로 기록한 장(OCR 실패·호출 실패·응답 오류 등. 하루 한도·분석 중·마감은 기록하지 않아 빠진다).
+  Future<
+    ({
+      int deviceId,
+      int failed,
+      Set<String> failedIds,
+      bool limitHit,
+      int? olderRemaining,
+    })
+  >
   _batch(
     List<GalleryPhoto> chunk,
     ApiConfig config,
@@ -519,6 +553,7 @@ class SyncService {
     var failed = 0;
     var limitHit = false;
     int? olderRemaining;
+    final failedIds = <String>{};
     void count(Category c, {String? assetId}) {
       if (!quiet) status.count(c, assetId: assetId);
     }
@@ -541,6 +576,7 @@ class SyncService {
       }
       if (record == null && verdict?.route != LocalRoute.deviceOnly) {
         failed++; // OCR 실패 등 → 다음 실행에서 다시 시도
+        failedIds.add(photo.id);
         await state.putEntry(_entry(photo, SyncStatusCode.failed));
         continue;
       }
@@ -649,6 +685,7 @@ class SyncService {
           case FailReason.llmCallFailed:
           case FailReason.llmInvalidResponse:
           case FailReason.other:
+            failedIds.add(photo.id);
             await state.putEntry(_entry(photo, SyncStatusCode.failed));
             send.remove(f.assetId);
             failed++;
@@ -657,12 +694,14 @@ class SyncService {
     }
     // 끝까지 처리되지 않은 것은 다음 실행에서 다시 보낸다.
     for (final id in send.keys) {
+      failedIds.add(id);
       await state.putEntry(_entry(photoById[id]!, SyncStatusCode.failed));
       failed++;
     }
     return (
       deviceId: currentDevice,
       failed: failed,
+      failedIds: failedIds,
       limitHit: limitHit,
       olderRemaining: olderRemaining,
     );
