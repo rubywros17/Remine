@@ -205,6 +205,9 @@ abstract final class AppBrain {
   /// 실데이터 7개 기준 360×800 글자 1.0배에서 16px는 글자 70%까지 줄여야 나와서 최소를 8px로 둔다.
   static const double chipBrainMargin = 16;
   static const double chipBrainMinMargin = 8;
+
+  /// 최소 여백(8)을 못 지킬 때(글자 1.3배 등) 칩을 빼기 전에 먼저 허용하는 여백. 이것도 안 되면 0(캔버스 안)까지.
+  static const double chipBrainLooseMargin = 4;
   static const double linkDash = 4;
   static const double linkDashGap = 4;
 }

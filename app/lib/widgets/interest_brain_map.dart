@@ -724,7 +724,7 @@ final _seatCenter = () {
 /// ① 가장 넓은 칩부터 그 칩만 글자를 줄인다([AppBrain.chipEachShrinkStep]씩, 둘레 칩 최소
 ///    [AppBrain.chipEachMinShrink]·1등 최소 [AppBrain.chipTopEachMinShrink], 글자 [AppBrain.chipMinFont] 아래로는 안 내려감).
 /// ② 그래도 안 되면 전체 글자 배율([AppBrain.chipShrinks])을 낮추고 ①을 다시.
-/// ③ 그래도 안 되면 가장 줄인 상태에서 윤곽 여백을 0까지 낮춰(캔버스 안) 놓고, 그것도 안 되면 뒤 순위 칩부터
+/// ③ 그래도 안 되면 가장 줄인 상태에서 윤곽 여백을 [AppBrain.chipBrainLooseMargin], 다음 0까지 낮춰(캔버스 안) 놓고, 그것도 안 되면 뒤 순위 칩부터
 ///    지도에서 뺀다(목록에는 그대로 있다). 순위 순서로 돌려준다. 같은 데이터면 항상 같은 배치(랜덤 없음).
 List<BrainChip> layoutChips(
   List<BrainNode> nodes,
@@ -780,7 +780,7 @@ List<BrainChip> layoutChips(
 
   // 자리에 놓고, 겹치면 순위가 뒤인 둘레 칩을 곡선을 따라 상대에게서 멀어지게 민다.
   // 안 되면 rects는 null이고 [culprits]는 넘친 칩들(자리에 못 들어간 칩, 끝내 겹친 쌍).
-  // [loose]면 윤곽 여백을 0까지 낮춰 본다.
+  // [loose]면 윤곽 여백을 4, 다음 0까지 낮춰 본다.
   ({List<Rect>? rects, Set<int> culprits}) fit(
     List<BrainNode> kept,
     List<double> f,
@@ -789,12 +789,13 @@ List<BrainChip> layoutChips(
   }) {
     final sizes = [for (final (i, n) in kept.indexed) chipSize(n, f[i], g)];
     final shift = List.filled(kept.length, 0.0);
+    final flipped = <int>{}; // 한쪽 끝까지 미끄러져도 안 돼서 반대쪽으로 다시 시작한 칩
     Rect? put(int i) {
       final seat = kept[i].seat;
       for (final m in [
         if (seat >= 0) AppBrain.seatMargins[seat],
         AppBrain.chipBrainMinMargin,
-        if (loose) 0.0,
+        if (loose) ...[AppBrain.chipBrainLooseMargin, 0.0],
       ]) {
         final mid = Rect.fromCenter(
           center: center,
@@ -836,9 +837,10 @@ List<BrainChip> layoutChips(
       final other = mover == i ? j : i;
       final bool away;
       if (kept[other].seat < 0) {
-        // 1등(가로로 긴 칩)과 겹치면 옆쪽(좌우 끝)으로 미끄러진다.
+        // 1등(가로로 긴 칩)과 겹치면 옆쪽(좌우 끝)으로 미끄러진다. 이미 미끄러지는 중이면 같은 쪽으로 계속
+        // (좌우 자리는 세로 위치가 0 근처라 매번 다시 정하면 +3°↔0°를 오가며 끝나지 않는다).
         final v = rects[mover].center - center;
-        away = (v.dx >= 0) == (v.dy < 0);
+        away = shift[mover] != 0 ? shift[mover] > 0 : (v.dx >= 0) == (v.dy < 0);
       } else {
         // 둘레 칩끼리는 서로 멀어지는 쪽으로.
         var d =
@@ -850,7 +852,11 @@ List<BrainChip> layoutChips(
       }
       shift[mover] += away ? AppBrain.seatSlideStep : -AppBrain.seatSlideStep;
       if (shift[mover].abs() > AppBrain.seatSlideMax + _eps) {
-        return fail({mover, other});
+        // 한쪽 끝까지 가도 안 되면 반대쪽으로 한 번 더(뇌 앞쪽처럼 한쪽만 좁은 곳).
+        if (!flipped.add(mover)) return fail({mover, other});
+        shift[mover] = shift[mover] > 0
+            ? -AppBrain.seatSlideStep
+            : AppBrain.seatSlideStep;
       }
       final r = put(mover);
       if (r == null) return fail({mover, other});
@@ -908,7 +914,7 @@ List<BrainChip> layoutChips(
         );
       }
     }
-    // 끝까지 최소 여백을 못 지키면 가장 줄인 상태에서 윤곽 여백을 0까지 낮춰 본다(캔버스 안).
+    // 끝까지 최소 여백을 못 지키면 가장 줄인 상태에서 윤곽 여백을 4, 다음 0까지 낮춰 본다(캔버스 안).
     final rects = fit(kept, f, g, loose: true).rects;
     if (rects != null) {
       return [for (final (i, r) in rects.indexed) BrainChip(kept[i], r, f[i])];
