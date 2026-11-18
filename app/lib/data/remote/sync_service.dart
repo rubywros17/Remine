@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kDebugMode;
+
 import '../../models/category.dart';
 import '../device/trash_store.dart';
 import '../device/device_capture_service.dart';
@@ -143,6 +145,7 @@ class SyncService {
 
   Future<void> _run() async {
     var failed = 0;
+    ({String albumId, ApiConfig config})? older;
     try {
       final (:albumId, :all, :mine, :own, :ownBy) = await _photos();
       final config = await api.config();
@@ -192,23 +195,35 @@ class SyncService {
         issue: failed > 0 ? SyncIssue.partial : SyncIssue.none,
         failedCount: failed,
       );
-      if (albumId != null) await _olderQuietly(albumId, config);
+      if (albumId != null) older = (albumId: albumId, config: config);
     } on ApiException catch (e) {
       log?.call('[sync] 중단: $e'); // ApiException(실패 종류, 상태 코드)뿐
       status.finish(
         issue: SyncIssue.of(e.failure),
         failedCount: await _safeFailedCount(),
       );
-    } catch (e) {
+    } catch (e, st) {
       // 어떤 예외든 앱이 죽지 않게 한다. 서버 문제가 아니라 앱 안의 오류로 따로 분류한다.
-      // 내용(OCR 원문이 섞일 수 있음)은 남기지 않고 종류만.
-      log?.call('[sync] 중단: ${e.runtimeType}');
+      log?.call('[sync] 중단: ${describeError(e, st)}');
       status.finish(
         issue: SyncIssue.internal,
         failedCount: await _safeFailedCount(),
       );
     }
     onBatchDone?.call();
+    // 2단계: 새 스크린샷 단계가 끝난 뒤 따로 돈다. 여기서 무슨 일이 나도 위 결과(전송·안내 상태)는 그대로다.
+    if (older != null) {
+      await _olderQuietly(older.albumId, older.config);
+      onBatchDone?.call();
+    }
+  }
+
+  /// 디버그 로그용 예외 설명. 릴리스는 종류만(메시지에 OCR 원문이 섞일 수 있다), 디버그 빌드는 메시지와
+  /// 스택 앞 [stackLines]줄까지(실기기에서 원인을 찾으려고). [log]는 디버그 빌드에서만 주어진다(main.dart).
+  static String describeError(Object e, StackTrace st, {int stackLines = 10}) {
+    if (!kDebugMode) return '${e.runtimeType}';
+    final stack = st.toString().trimRight().split('\n').take(stackLines);
+    return '${e.runtimeType}: $e\n${stack.join('\n')}';
   }
 
   /// 이미 보냈거나 기기에서 끝난 캡처인지(바뀌면 다시 판정). 실패 기록은 다시 보낸다.
@@ -225,8 +240,8 @@ class SyncService {
       await _older(albumId, config);
     } on ApiException catch (e) {
       log?.call('[older] 중단: $e');
-    } catch (e) {
-      log?.call('[older] 중단: ${e.runtimeType}'); // 내용은 남기지 않는다
+    } catch (e, st) {
+      log?.call('[older] 중단: ${describeError(e, st)}');
     }
   }
 

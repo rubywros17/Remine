@@ -96,6 +96,9 @@ class FakeGalleryReader implements GalleryReader {
     return _newestFirst().where((p) => !p.createdAt.isBefore(from)).toList();
   }
 
+  /// 주면 [olderThan]이 이것을 던진다(예전 스크린샷 단계 오류 흉내).
+  Object? olderError;
+
   /// [olderThan] 호출 (커서, 범위 시작, 장수).
   final List<(PhotoPosition?, DateTime?, int)> olderAsked = [];
 
@@ -107,6 +110,8 @@ class FakeGalleryReader implements GalleryReader {
     required int limit,
   }) async {
     olderAsked.add((before, notBefore, limit));
+    final error = olderError;
+    if (error != null) throw error;
     return _newestFirst()
         .where((p) => before == null || p.position.isOlderThan(before))
         .where((p) => notBefore == null || !p.createdAt.isBefore(notBefore))

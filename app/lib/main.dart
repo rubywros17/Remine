@@ -187,7 +187,7 @@ RemoteServices _remote(
     log: log,
     trash: trash,
     olderRange: kDebugMode ? _olderRange : '',
-    isWifi: () => _deviceFlag('isWifi'),
+    isWifi: _isWifi,
     isCharging: () => _deviceFlag('isCharging'),
   );
   repository.onTrashChanged = sync.flushTrash;
@@ -200,15 +200,33 @@ RemoteServices _remote(
   );
 }
 
+/// Wi-Fi인지. 디버그 빌드는 판단 근거(지금 네트워크의 전송 방식)를 한 줄 남긴다.
+Future<bool> _isWifi() async {
+  final wifi = await _deviceFlag('isWifi');
+  if (kDebugMode) {
+    try {
+      final info = await const MethodChannel('remine/settings')
+          .invokeMethod<String>('networkInfo');
+      debugPrint('[older] 네트워크 $info');
+    } catch (e) {
+      debugPrint('[older] 네트워크 정보 못 읽음: ${e.runtimeType}');
+    }
+  }
+  return wifi;
+}
+
 /// 기기 상태(Wi-Fi·충전)를 MainActivity에 묻는다. 못 읽으면 false(모바일 데이터·배터리를 쓰지 않는 쪽).
+/// 디버그 빌드는 못 읽은 이유를 남긴다(네이티브 코드가 빌드에 안 들어간 채 핫 리스타트하면 MissingPluginException).
 Future<bool> _deviceFlag(String method) async {
   try {
     return await const MethodChannel('remine/settings')
             .invokeMethod<bool>(method) ==
         true;
-  } on PlatformException catch (_) {
+  } on PlatformException catch (e) {
+    if (kDebugMode) debugPrint('[older] $method 실패: ${e.code}');
     return false;
   } on MissingPluginException catch (_) {
+    if (kDebugMode) debugPrint('[older] $method 없음(앱을 다시 빌드해야 함)');
     return false;
   }
 }
