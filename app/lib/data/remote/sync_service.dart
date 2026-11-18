@@ -18,8 +18,9 @@ import 'sync_status.dart';
 
 /// 기기 판정을 통과한 캡처만 서버 analyze로 보내고, 결과를 로컬 상태에 반영한다.
 ///
-/// 흐름: 갤러리(최신 [DeviceCaptureService.maxPhotos]장) → 이미 보낸 것 제외(증분) → `maxBatchSize`장씩
-/// OCR·판정 → [planFor]가 정한 것만 전송 → 배치가 끝날 때마다 [onBatchDone](홈 갱신).
+/// 흐름: 갤러리(최신 [DeviceCaptureService.maxPhotos]장 + 기기 등록 뒤에 생긴 것 전부) → 이미 보낸 것 제외(증분) →
+/// `maxBatchSize`장씩 OCR·판정 → [planFor]가 정한 것만 전송 → 배치가 끝날 때마다 [onBatchDone](홈 갱신).
+/// 그다음 같은 실행 안에서 2단계로 예전 스크린샷을 오늘 남은 몫만큼 이어서 보낸다([_older]).
 /// 동기화는 한 번에 하나만 돈다([run]을 겹쳐 부르면 진행 중인 실행을 그대로 돌려준다).
 /// 서버가 기기를 잊으면(DB 초기화) [RemineApi]가 [_recoverDevice]를 불러 재등록하고, 전송 기록을 비운 뒤
 /// 이번 실행이 끝나면 한 번 더 돌아 전체를 다시 보낸다.
@@ -41,8 +42,13 @@ class SyncService {
     this.log,
     this.autoSync = true,
     this.trash,
+    this.olderRange = '',
+    Future<bool> Function()? isWifi,
+    Future<bool> Function()? isCharging,
     DateTime Function()? now,
-  }) : _now = now ?? DateTime.now {
+  }) : _now = now ?? DateTime.now,
+       _isWifi = isWifi ?? _yes,
+       _isCharging = isCharging ?? _yes {
     api.recoverDevice = _recoverDevice;
   }
 
@@ -80,6 +86,15 @@ class SyncService {
   /// 앱 휴지통. 서버에 아직 못 알린 일을 [flushTrash]가 보낸다.
   final TrashStore? trash;
 
+  /// 디버그 전용 예전 스크린샷 범위(`--dart-define=OLDER_RANGE=1y`, [olderRangeFromDefine]). 범위를 아직 안 골랐을 때만 쓴다.
+  /// 비어 있으면(릴리스·기본) 범위를 고르기 전까지 예전 스크린샷을 읽지 않는다.
+  final String olderRange;
+
+  /// Wi-Fi 연결·충전 중인지(예전 스크린샷 조건). 크롬·테스트는 늘 true.
+  final Future<bool> Function() _isWifi;
+  final Future<bool> Function() _isCharging;
+  static Future<bool> _yes() async => true;
+
   Future<void>? _inFlight;
   StreamSubscription<String>? _tokenSub;
   bool _again = false; // 재등록으로 전송 기록을 비웠다 → 이번 실행 뒤 한 번 더
@@ -109,6 +124,7 @@ class SyncService {
       final id = await api.registerDevice(await _tokenForRegister());
       await state.clear();
       await state.setDeviceId(id);
+      await settings.setOlderCursor(null); // 전송 기록을 비웠으니 예전 스크린샷도 처음부터 다시 본다
       await trash?.resendAll(); // 새 기기에는 휴지통 표시가 없다. 이번 실행의 재전송 뒤에 다시 알린다
       return id;
     }().whenComplete(() => _reregistering = null));
@@ -125,20 +141,18 @@ class SyncService {
   Future<void> _run() async {
     var failed = 0;
     try {
-      final (:all, :mine, :own, :ownBy) = await _photos();
+      final (:albumId, :all, :mine, :own, :ownBy) = await _photos();
       final config = await api.config();
       final deviceId = await _ensureDevice();
+      // 이 시각 뒤에 찍은 캡처는 다음부터 300장을 넘어도 모두 읽는다(이미 등록된 기기는 이 버전의 첫 동기화 시각).
+      if (await state.registeredAt() == null) {
+        await state.setRegisteredAt(_now());
+      }
       await _forgetOwn(deviceId, own);
       await flushTrash(); // 지난번에 못 알린 휴지통
       final waiting = <GalleryPhoto>[];
       for (final photo in mine) {
-        final e = await state.entry(photo.id);
-        // 기기에서 끝난 캡처도 다시 처리하지 않는다(바뀌면 다시 판정).
-        final upToDate =
-            e != null &&
-            e.status != SyncStatusCode.failed &&
-            e.modifiedAt == photo.modifiedAt;
-        if (!upToDate) waiting.add(photo);
+        if (!await _upToDate(photo)) waiting.add(photo);
       }
       // SYNC_LIMIT는 실제로 보낼 후보(자기 캡처·이미 보낸 것을 뺀 나머지)의 최신 N장에 건다.
       final pending = photoLimit > 0
@@ -175,6 +189,7 @@ class SyncService {
         issue: failed > 0 ? SyncIssue.partial : SyncIssue.none,
         failedCount: failed,
       );
+      if (albumId != null) await _olderQuietly(albumId, config);
     } on ApiException catch (e) {
       log?.call('[sync] 중단: $e'); // ApiException(실패 종류, 상태 코드)뿐
       status.finish(
@@ -193,6 +208,113 @@ class SyncService {
     onBatchDone?.call();
   }
 
+  /// 이미 보냈거나 기기에서 끝난 캡처인지(바뀌면 다시 판정). 실패 기록은 다시 보낸다.
+  Future<bool> _upToDate(GalleryPhoto photo) async {
+    final e = await state.entry(photo.id);
+    return e != null &&
+        e.status != SyncStatusCode.failed &&
+        e.modifiedAt == photo.modifiedAt;
+  }
+
+  /// [_older]의 실패는 이번 동기화 결과(이미 끝남)를 바꾸지 않는다. 다음 실행에 같은 자리부터 다시.
+  Future<void> _olderQuietly(String albumId, ApiConfig config) async {
+    try {
+      await _older(albumId, config);
+    } on ApiException catch (e) {
+      log?.call('[older] 중단: $e');
+    } catch (e) {
+      log?.call('[older] 중단: ${e.runtimeType}'); // 내용은 남기지 않는다
+    }
+  }
+
+  /// 예전 스크린샷(최신 300장보다 오래된 것)을 오늘 남은 몫만큼 최신 → 오래된 순으로 이어서 보낸다.
+  ///
+  /// 범위를 고르지 않았거나(기본) 꺼져 있거나 Wi-Fi·충전 조건이 안 맞으면 읽지 않는다. 남은 몫은 서버 값이 기준이다
+  /// ([ApiConfig.olderRemainingToday], 분석 응답마다 갱신). 커서([SettingsStore.olderCursor])는 서버가 처리한 장과
+  /// 제외된 장(자기 캡처·기기에서 끝난 민감·글자 없음)까지만 앞으로 간다. 한도에 걸리거나 실패한 장에서 멈추고,
+  /// 다음 날 그 장부터 다시 본다(그 뒤에 이미 보낸 장은 기록이 있어 건너뛴다).
+  Future<void> _older(String albumId, ApiConfig config) async {
+    final range = olderRangeStart(
+      await settings.olderRangeFrom() ??
+          olderRangeFromDefine(olderRange, _now()),
+    );
+    if (!range.enabled || !await settings.olderEnabled()) return;
+    if (await settings.olderWifiOnly() && !await _isWifi()) {
+      log?.call('[older] Wi-Fi 아님 → 건너뜀');
+      return;
+    }
+    if (await settings.olderChargingOnly() && !await _isCharging()) {
+      log?.call('[older] 충전 중 아님 → 건너뜀');
+      return;
+    }
+    final from = range.from;
+    var cursor = PhotoPosition.decode(await settings.olderCursor());
+    if (cursor != null && from != null && cursor.time.isBefore(from)) {
+      return; // 범위를 줄여 시작보다 오래된 곳까지 이미 봤다 → 완료
+    }
+    final quota = await api.config(deviceId: await _ensureDevice());
+    var left = quota.olderRemainingToday ?? 0;
+    await settings.setOlderQuota(left, quota.olderResetsAt);
+    if (left <= 0) return;
+
+    final rule = await capture.ownRule();
+    final size = batchSize < config.maxBatchSize
+        ? batchSize
+        : config.maxBatchSize;
+    final tally = _Tally();
+    var readFrom = cursor;
+    var blocked = false; // 커서는 처리하지 못한 첫 장 앞에서 멈춘다
+    var read = 0;
+    while (left > 0) {
+      final page = await reader.olderThan(
+        albumId,
+        readFrom,
+        notBefore: from,
+        limit: size,
+      );
+      if (page.isEmpty) break;
+      read += page.length;
+      final (:mine, :own, ownBy: _) = capture.split(page, rule);
+      final waiting = <GalleryPhoto>[];
+      for (final p in mine) {
+        if (!await _upToDate(p)) waiting.add(p);
+      }
+      final chunk = waiting.take(left).toList();
+      var limitHit = false;
+      if (chunk.isNotEmpty) {
+        final sentBefore = tally.sent;
+        final r = await _batch(
+          chunk,
+          config,
+          await _ensureDevice(),
+          tally,
+          quiet: true,
+        );
+        limitHit = r.limitHit;
+        left = r.olderRemaining ?? left - (tally.sent - sentBefore);
+        onBatchDone?.call();
+      }
+      final ownIds = {for (final p in own) p.id};
+      for (final p in page) {
+        if (blocked) break;
+        if (ownIds.contains(p.id) || await _upToDate(p)) {
+          cursor = p.position;
+        } else {
+          blocked = true;
+        }
+      }
+      if (cursor != null) await settings.setOlderCursor(cursor.encode());
+      if (limitHit) left = 0;
+      if (page.length < size || chunk.length < waiting.length) break;
+      readFrom = page.last.position;
+    }
+    await settings.setOlderQuota(left < 0 ? 0 : left, quota.olderResetsAt);
+    log?.call(
+      '[older] 읽음 $read · 보냄 ${tally.sent}'
+      ' · 기기에서 끝남 ${tally.deviceOnly + tally.noTextEtc} · 오늘 남은 몫 $left',
+    );
+  }
+
   Future<int> _safeFailedCount() async {
     try {
       return await state.failedCount();
@@ -201,9 +323,11 @@ class SyncService {
     }
   }
 
-  /// 갤러리 최신 [DeviceCaptureService.maxPhotos]장을 (분류할 것, 자기 캡처)로 나눈다. [all]은 읽은 장수.
+  /// 갤러리 최신 [DeviceCaptureService.maxPhotos]장 + 기기 등록 뒤에 생긴 것을 (분류할 것, 자기 캡처)로 나눈다.
+  /// [all]은 읽은 장수, [albumId]는 Screenshots 앨범(없으면 null).
   Future<
     ({
+      String? albumId,
       int all,
       List<GalleryPhoto> mine,
       List<GalleryPhoto> own,
@@ -215,14 +339,25 @@ class SyncService {
     final shots = albums.where((a) => a.isScreenshots).toList();
     if (shots.isEmpty) {
       return (
+        albumId: null,
         all: 0,
         mine: <GalleryPhoto>[],
         own: <GalleryPhoto>[],
         ownBy: <OwnReason, int>{for (final r in OwnReason.values) r: 0},
       );
     }
-    final (:mine, :own, :ownBy) = await capture.recentSplit(shots.first.id);
-    return (all: mine.length + own.length, mine: mine, own: own, ownBy: ownBy);
+    final albumId = shots.first.id;
+    final (:mine, :own, :ownBy) = await capture.recentSplit(
+      albumId,
+      since: await state.registeredAt(),
+    );
+    return (
+      albumId: albumId,
+      all: mine.length + own.length,
+      mine: mine,
+      own: own,
+      ownBy: ownBy,
+    );
   }
 
   /// 예전에 보냈던 캡처가 지금 보니 Remine 자기 캡처면(판정 규칙이 생기기 전에 보낸 것) 서버에서 지운다.
@@ -367,17 +502,26 @@ class SyncService {
     return id;
   }
 
-  Future<({int deviceId, int failed})> _batch(
+  /// [quiet]면 진행 화면([status])에 알리지 않는다(첫 분석이 끝난 뒤 조용히 도는 예전 스크린샷).
+  /// [limitHit]: 서버가 예전 스크린샷 하루 한도로 돌려보낸 장이 있었다. [olderRemaining]: 마지막 응답의 남은 몫.
+  Future<({int deviceId, int failed, bool limitHit, int? olderRemaining})>
+  _batch(
     List<GalleryPhoto> chunk,
     ApiConfig config,
     int deviceId,
-    _Tally tally,
-  ) async {
+    _Tally tally, {
+    bool quiet = false,
+  }) async {
     await capture.run(chunk); // OCR·판정(이미 한 것은 건너뛴다). 실패한 장은 기록이 없어 아래에서 걸러진다.
     final consent = await settings.imageConsent() == true;
     final photoById = {for (final p in chunk) p.id: p};
     final send = <String, _Outgoing>{};
     var failed = 0;
+    var limitHit = false;
+    int? olderRemaining;
+    void count(Category c, {String? assetId}) {
+      if (!quiet) status.count(c, assetId: assetId);
+    }
 
     for (final photo in chunk) {
       final verdict = await capture.verdicts.find(photo.id);
@@ -388,7 +532,7 @@ class SyncService {
       }
       if (verdict?.route == LocalRoute.deviceOnly &&
           verdict!.category != null) {
-        status.count(
+        count(
           verdict.category!,
           assetId: verdict.hidden
               ? null
@@ -416,7 +560,7 @@ class SyncService {
         case PlanAction.skip:
           if (verdict?.route != LocalRoute.deviceOnly) tally.skipped++;
         case PlanAction.deviceEtc:
-          await _classifyOnDevice(photo, Category.etc);
+          await _classifyOnDevice(photo, Category.etc, quiet: quiet);
           tally.noTextEtc++;
         case PlanAction.sendText:
           send[photo.id] = _Outgoing(entry);
@@ -431,7 +575,7 @@ class SyncService {
           } else if (entry.fallback == ImageFallback.sendText) {
             send[photo.id] = _Outgoing(entry);
           } else {
-            await _classifyOnDevice(photo, Category.etc);
+            await _classifyOnDevice(photo, Category.etc, quiet: quiet);
           }
       }
     }
@@ -444,21 +588,23 @@ class SyncService {
       final AnalyzeResult result;
       try {
         // 화면이 "분류하는 중"과 이 묶음의 썸네일을 보여 준다(기기 안 표시일 뿐, 보내는 내용과 무관).
-        status.setWaiting(send.length, assetIds: send.keys.toList());
+        if (!quiet) {
+          status.setWaiting(send.length, assetIds: send.keys.toList());
+        }
         result = await api.analyze(currentDevice, [
           for (final o in send.values) o.toItem(),
         ]);
-        status.setWaiting(0);
       } finally {
-        status.setWaiting(0);
+        if (!quiet) status.setWaiting(0);
       }
+      olderRemaining = result.olderRemainingToday ?? olderRemaining;
 
       for (final a in result.analyzed) {
         final photo = photoById[a.assetId];
         if (photo == null || !send.containsKey(a.assetId)) continue;
         await state.putEntry(_entry(photo, SyncStatusCode.synced));
         tally.sent++;
-        status.count(a.category, assetId: a.assetId);
+        count(a.category, assetId: a.assetId);
         send.remove(a.assetId);
       }
       for (final id in result.skipped) {
@@ -486,15 +632,20 @@ class SyncService {
             if (image != null) {
               send[f.assetId] = _Outgoing(out.entry, image: image, level: next);
             } else {
-              await _dropImage(photo, out, send);
+              await _dropImage(photo, out, send, quiet: quiet);
             }
           case FailReason.imageInvalid:
-            await _dropImage(photo, out, send); // 같은 이미지를 다시 보내지 않는다
+            // 같은 이미지를 다시 보내지 않는다
+            await _dropImage(photo, out, send, quiet: quiet);
           case FailReason.inProgress:
           case FailReason.deadlineExceeded:
             // 서버가 아직 분석 중이거나(IN_PROGRESS) 요청 마감이 지나 손대지 않았다(DEADLINE_EXCEEDED).
             // 실패가 아니니 기록하지 않고 이번엔 빼 둔다. 기록이 없으면 다음 실행에서 다시 보낸다.
             send.remove(f.assetId);
+          case FailReason.dailyLimitExceeded:
+            // 예전 스크린샷 하루 한도. 서버가 손대지 않았으니 기록하지 않고(다음 날 다시) 오늘은 그만 보낸다.
+            send.remove(f.assetId);
+            limitHit = true;
           case FailReason.llmCallFailed:
           case FailReason.llmInvalidResponse:
           case FailReason.other:
@@ -509,27 +660,38 @@ class SyncService {
       await state.putEntry(_entry(photoById[id]!, SyncStatusCode.failed));
       failed++;
     }
-    return (deviceId: currentDevice, failed: failed);
+    return (
+      deviceId: currentDevice,
+      failed: failed,
+      limitHit: limitHit,
+      olderRemaining: olderRemaining,
+    );
   }
 
   /// 이미지를 빼고 텍스트만으로 다시 보낸다(텍스트가 없으면 기기에서 ETC).
   Future<void> _dropImage(
     GalleryPhoto photo,
     _Outgoing out,
-    Map<String, _Outgoing> send,
-  ) async {
+    Map<String, _Outgoing> send, {
+    bool quiet = false,
+  }) async {
     if (out.entry.text.trim().isEmpty) {
       send.remove(photo.id);
       await _classifyOnDevice(
         photo,
         Category.etc,
+        quiet: quiet,
       ); // ponytail: 사유 로그에서는 세지 않는다(드묾)
     } else {
       send[photo.id] = _Outgoing(out.entry);
     }
   }
 
-  Future<void> _classifyOnDevice(GalleryPhoto photo, Category category) async {
+  Future<void> _classifyOnDevice(
+    GalleryPhoto photo,
+    Category category, {
+    bool quiet = false,
+  }) async {
     await capture.verdicts.save(
       StoredVerdict.of(
         LocalVerdict(
@@ -544,7 +706,7 @@ class SyncService {
       ),
     );
     await state.putEntry(_entry(photo, SyncStatusCode.deviceOnly));
-    status.count(category, assetId: photo.id);
+    if (!quiet) status.count(category, assetId: photo.id);
   }
 
   SyncEntry _entry(GalleryPhoto photo, SyncStatusCode code) =>

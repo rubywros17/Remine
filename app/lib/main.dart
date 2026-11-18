@@ -51,6 +51,10 @@ const _syncBatchSize = int.fromEnvironment('SYNC_BATCH_SIZE');
 /// 디버그 화면의 [지금 동기화]로 수동 실행한다. 릴리스에서는 무시하고 항상 켠다.
 const _autoSync = bool.fromEnvironment('AUTO_SYNC', defaultValue: true);
 
+/// 디버그 전용: 예전 스크린샷 범위를 고르는 화면 없이 확인할 때(`--dart-define=OLDER_RANGE=1y`, `6m`·`30d`·`all`).
+/// 비어 있으면(기본·릴리스) 범위를 고르기 전까지 예전 스크린샷을 읽지 않는다.
+const _olderRange = String.fromEnvironment('OLDER_RANGE');
+
 bool get _apiBaseAllowed =>
     _apiBase.isNotEmpty && (kDebugMode || _apiBase.startsWith('https://'));
 
@@ -182,6 +186,9 @@ RemoteServices _remote(
     push: push,
     log: log,
     trash: trash,
+    olderRange: kDebugMode ? _olderRange : '',
+    isWifi: () => _deviceFlag('isWifi'),
+    isCharging: () => _deviceFlag('isCharging'),
   );
   repository.onTrashChanged = sync.flushTrash;
   return RemoteServices(
@@ -191,4 +198,17 @@ RemoteServices _remote(
     state: state,
     push: push,
   );
+}
+
+/// 기기 상태(Wi-Fi·충전)를 MainActivity에 묻는다. 못 읽으면 false(모바일 데이터·배터리를 쓰지 않는 쪽).
+Future<bool> _deviceFlag(String method) async {
+  try {
+    return await const MethodChannel('remine/settings')
+            .invokeMethod<bool>(method) ==
+        true;
+  } on PlatformException catch (_) {
+    return false;
+  } on MissingPluginException catch (_) {
+    return false;
+  }
 }

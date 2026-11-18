@@ -3,6 +3,9 @@ package com.remine.remine
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -47,6 +50,15 @@ class MainActivity : FlutterActivity() {
                         }
                         result.success(null)
                     }
+                    // 예전 스크린샷 정리 조건(lib/data/remote/sync_service.dart). Wi-Fi는 ACCESS_NETWORK_STATE(일반 권한, 묻지 않음).
+                    "isWifi" -> {
+                        val cm = getSystemService(ConnectivityManager::class.java)
+                        val caps = cm?.getNetworkCapabilities(cm.activeNetwork)
+                        result.success(caps?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true)
+                    }
+                    // 충전 중인지. 권한이 필요 없다.
+                    "isCharging" ->
+                        result.success(getSystemService(BatteryManager::class.java)?.isCharging == true)
                     else -> result.notImplemented()
                 }
             }
