@@ -784,7 +784,10 @@ void defineLayoutMatrix({
           scale,
           device: fakeServices(FakeGalleryReader(), trash: store),
         );
-        await _tap(tester, find.byIcon(LucideIcons.settings));
+        // 휴지통은 정리 탭의 휴지통 타일에서 연다(설정에는 없다).
+        await tester.tap(find.byIcon(LucideIcons.broom));
+        await tester.runAsync(pumpEventQueue);
+        await tester.pumpAndSettle();
         await _tap(tester, find.text('휴지통'));
         await tester.runAsync(pumpEventQueue);
         await tester.pump();

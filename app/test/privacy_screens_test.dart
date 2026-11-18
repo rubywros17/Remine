@@ -67,6 +67,8 @@ void main() {
       expect(text, contains('저장하지 않아요'));
       expect(text, contains('전화번호'));
       expect(text, contains('설정에서 언제든 끌 수 있어요'));
+      expect(text, contains('해제 시 글자만 보내요.')); // 설정 화면과 같은 문구
+      expect(text, isNot(contains('끄면 글자만')));
       for (final sentence in [consentBody, ...consentPoints]) {
         expect(sentence, endsWith('요.'));
       }
@@ -119,17 +121,10 @@ void main() {
 
   testWidgets('설정 줄은 눌림 피드백(셀라돈 톤)이 있고, 줄을 눌러도 스위치가 바뀐다', (tester) async {
     final s = InMemorySettingsStore(false);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: SettingsScreen(
-          settings: s,
-          trash: fakeServices(FakeGalleryReader()).trash,
-        ),
-      ),
-    );
+    await tester.pumpWidget(MaterialApp(home: SettingsScreen(settings: s)));
     await tester.pumpAndSettle();
     final rows = tester.widgetList<InkWell>(find.byType(InkWell)).toList();
-    expect(rows, hasLength(2), reason: '이미지 분석 · 휴지통');
+    expect(rows, hasLength(1), reason: '이미지 분석만(휴지통은 정리 탭에 있다)');
     for (final r in rows) {
       expect(r.highlightColor, AppColors.pressHighlight);
       expect(r.splashColor, AppColors.pressSplash);
@@ -137,14 +132,12 @@ void main() {
     // 안내 글은 문장마다 줄을 바꾼다.
     expect(find.textContaining('함께 보내요.\n서버에'), findsOneWidget);
 
+    expect(find.textContaining('\n해제 시 글자만 보내요.'), findsOneWidget);
+    expect(find.text('휴지통'), findsNothing);
+
     await tester.tap(find.text('이미지 분석'));
     await tester.pumpAndSettle();
     expect(await s.imageConsent(), isTrue);
-
-    await tester.tap(find.text('휴지통'));
-    await tester.pumpAndSettle();
-    expect(find.text('휴지통 0장'), findsOneWidget);
-    expect(find.text('삭제한 스크린샷이 없어요'), findsOneWidget);
   });
 
   testWidgets('분석 제외 화면은 숨긴 캡처를 사유 이름과 함께 보여 준다', (tester) async {
