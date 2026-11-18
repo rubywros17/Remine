@@ -2,7 +2,12 @@ package com.remine.server.dto;
 
 import com.remine.server.classifier.RemineProperties;
 
-/** 앱이 알아야 하는 서버 정책값. 모두 RemineProperties에서 읽는다. */
+import java.time.OffsetDateTime;
+
+/**
+ * 앱이 알아야 하는 서버 정책값. 정책값은 모두 RemineProperties에서 읽는다.
+ * olderRemainingToday·olderResetsAt은 기기별 값이라 X-Device-Id가 있을 때만 채우고, 없거나 모르는 기기면 null이다.
+ */
 public record ConfigResponse(
         int imageThresholdChars,
         int maxBatchSize,
@@ -10,12 +15,22 @@ public record ConfigResponse(
         int imageMaxLongSide,
         String imageContentType,
         long maxRequestBytes,
-        long classifyIntervalMs) {
+        long classifyIntervalMs,
+        /* 예전 스크린샷(기기 등록 전에 찍힘) 기기당 하루 분석 장수. */
+        int dailyOlderLimit,
+        /* 오늘 이 기기가 더 보낼 수 있는 예전 스크린샷 장수(서버 전체 예산이 모자라면 더 적다). */
+        Integer olderRemainingToday,
+        /* 기기 몫이 다시 차는 때(다음 한국 시간 자정). */
+        OffsetDateTime olderResetsAt) {
 
     public static ConfigResponse from(RemineProperties p) {
+        return from(p, null, null);
+    }
+
+    public static ConfigResponse from(RemineProperties p, Integer olderRemainingToday, OffsetDateTime olderResetsAt) {
         return new ConfigResponse(p.llm().imageThresholdChars(), p.analyze().maxBatchSize(),
                 p.image().maxBytes(), p.image().maxLongSide(), "image/jpeg", p.image().maxRequestBytes(),
-                classifyIntervalMs(p));
+                classifyIntervalMs(p), p.analyze().dailyOlderLimit(), olderRemainingToday, olderResetsAt);
     }
 
     /**
