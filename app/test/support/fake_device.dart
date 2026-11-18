@@ -96,6 +96,9 @@ class FakeGalleryReader implements GalleryReader {
     return _newestFirst().where((p) => !p.createdAt.isBefore(from)).toList();
   }
 
+  /// 주면 [olderThan]이 이것이 끝날 때까지 기다린다(예전 단계를 진행 중에 붙잡아 두기).
+  Future<void>? olderGate;
+
   /// 주면 [olderThan]이 이것을 던진다(예전 스크린샷 단계 오류 흉내).
   Object? olderError;
 
@@ -110,6 +113,8 @@ class FakeGalleryReader implements GalleryReader {
     required int limit,
   }) async {
     olderAsked.add((before, notBefore, limit));
+    final gate = olderGate;
+    if (gate != null) await gate;
     final error = olderError;
     if (error != null) throw error;
     return _newestFirst()

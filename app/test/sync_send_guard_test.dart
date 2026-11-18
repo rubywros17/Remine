@@ -148,6 +148,7 @@ void main() {
       rig.client.olderRemaining = 10;
 
       await rig.sync.run();
+      await rig.sync.olderIdle; // 예전 단계는 새 단계 뒤에 따로 돈다
 
       final body = allBodies();
       expect(body, contains('ok1'), reason: '예전 단계가 실제로 돌았다');

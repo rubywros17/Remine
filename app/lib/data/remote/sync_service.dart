@@ -105,9 +105,64 @@ class SyncService {
   bool _again = false; // 재등록으로 전송 기록을 비웠다 → 이번 실행 뒤 한 번 더
   Future<int>? _reregistering;
 
-  /// 동기화를 시작한다. 이미 돌고 있으면 새로 시작하지 않고 진행 중인 것을 기다린다.
-  Future<void> run() =>
-      _inFlight ??= _runUntilSettled().whenComplete(() => _inFlight = null);
+  /// 예전 스크린샷 단계(2단계). 새 스크린샷 단계([_inFlight])와 잠금이 따로라 앱 복귀 때의 새 동기화를 막지 않는다.
+  Future<void>? _olderInFlight;
+
+  /// 예전 단계에 멈추라는 신호. 새 동기화가 오거나([run]) 앱이 뒤로 가면([pauseOlder]) 켠다.
+  /// 예전 루프는 페이지를 읽기 전·배치를 보내기 전마다 보고, 처리한 곳까지 커서를 저장한 뒤 멈춘다.
+  bool _olderStop = false;
+  bool _olderPaused = false;
+
+  /// 새 단계가 끝나면 이어서 돌릴 예전 단계 재료(새 단계가 성공했을 때만). [start]는 새 단계가 읽은 최신 목록의
+  /// 가장 오래된 장 — 커서가 비었을 때 여기부터 읽는다(이미 본 최신 목록을 다시 훑지 않게).
+  ({String albumId, ApiConfig config, PhotoPosition? start})? _olderNext;
+
+  /// 새 스크린샷을 동기화한다. 이미 돌고 있으면 새로 시작하지 않고 진행 중인 것을 기다린다.
+  /// **새 스크린샷이 항상 먼저**: 예전 단계가 돌고 있으면 멈추게 하고, 새 단계가 끝나면 예전 단계를 다시 시작한다
+  /// (남은 몫·조건은 그때 다시 본다). 반환값은 새 단계만 기다린다 — 예전 단계는 [olderIdle].
+  Future<void> run() {
+    _olderStop = true;
+    return _inFlight ??= _runUntilSettled().whenComplete(() {
+      _inFlight = null;
+      _startOlder();
+    });
+  }
+
+  /// 예전 단계가 돌고 있으면 끝날 때까지(멈춤 포함). 테스트·디버그용.
+  Future<void> get olderIdle async {
+    while (_olderInFlight != null) {
+      await _olderInFlight;
+    }
+  }
+
+  bool get isOlderRunning => _olderInFlight != null;
+
+  /// 앱이 뒤로 갈 때(SyncGate). 예전 단계는 배치 사이에서 멈추고, 다시 앞으로 와서 [resumeOlder] 뒤 동기화가 돌면 이어간다.
+  void pauseOlder() {
+    _olderPaused = true;
+    _olderStop = true;
+  }
+
+  void resumeOlder() => _olderPaused = false;
+
+  void _startOlder() {
+    final next = _olderNext;
+    if (next == null || _olderPaused) return;
+    _olderNext = null;
+    final previous = _olderInFlight; // 멈추는 중인 이전 실행이 있으면 끝난 뒤에
+    late final Future<void> current;
+    current =
+        () async {
+          if (previous != null) await previous;
+          // 그 사이 새 동기화가 왔거나 앱이 뒤로 갔다 → 다음 동기화가 끝나면 다시
+          if (_inFlight != null || _olderPaused) return;
+          _olderStop = false;
+          await _olderQuietly(next.albumId, next.config, next.start);
+        }().whenComplete(() {
+          if (identical(_olderInFlight, current)) _olderInFlight = null;
+        });
+    _olderInFlight = current;
+  }
 
   /// 저절로 도는 자리(앱 시작·복귀)에서 부른다. [autoSync]가 꺼져 있으면 아무것도 하지 않는다.
   Future<void> runAuto() => autoSync ? run() : Future.value();
@@ -141,13 +196,16 @@ class SyncService {
     return id;
   }
 
+  /// 새 스크린샷 단계가 도는 중인지(예전 단계는 [isOlderRunning]).
   bool get isRunning => _inFlight != null;
 
   Future<void> _run() async {
     var failed = 0;
-    ({String albumId, ApiConfig config})? older;
+    final total = Stopwatch()..start();
     try {
+      final gallery = Stopwatch()..start();
       final (:albumId, :all, :mine, :own, :ownBy) = await _photos();
+      gallery.stop();
       final config = await api.config();
       final deviceId = await _ensureDevice();
       // 이 시각 뒤에 찍은 캡처는 다음부터 300장을 넘어도 모두 읽는다(이미 등록된 기기는 이 버전의 첫 동기화 시각).
@@ -186,7 +244,9 @@ class SyncService {
       }
       log?.call(
         '[sync] 결과 보냄 ${tally.sent} · 기기에서 끝남(앱·민감) ${tally.deviceOnly}'
-        ' · 글자 없음 ETC ${tally.noTextEtc} · 건너뜀(판정 없음 등) ${tally.skipped} · 실패 $failed',
+        ' · 글자 없음 ETC ${tally.noTextEtc} · 건너뜀(판정 없음 등) ${tally.skipped} · 실패 $failed'
+        ' · 시간 갤러리 ${gallery.elapsedMilliseconds}ms · OCR ${tally.ocrMs}ms'
+        ' · 전송 ${tally.sendMs}ms · 전체 ${total.elapsedMilliseconds}ms',
       );
       await state.setFirstSyncDone();
       await flushTrash(); // 재등록으로 다시 보낸 캡처까지 표시되도록 끝에서 한 번 더
@@ -195,7 +255,13 @@ class SyncService {
         issue: failed > 0 ? SyncIssue.partial : SyncIssue.none,
         failedCount: failed,
       );
-      if (albumId != null) older = (albumId: albumId, config: config);
+      if (albumId != null) {
+        _olderNext = (
+          albumId: albumId,
+          config: config,
+          start: _oldestOf([...mine, ...own]),
+        );
+      }
     } on ApiException catch (e) {
       log?.call('[sync] 중단: $e'); // ApiException(실패 종류, 상태 코드)뿐
       status.finish(
@@ -211,11 +277,15 @@ class SyncService {
       );
     }
     onBatchDone?.call();
-    // 2단계: 새 스크린샷 단계가 끝난 뒤 따로 돈다. 여기서 무슨 일이 나도 위 결과(전송·안내 상태)는 그대로다.
-    if (older != null) {
-      await _olderQuietly(older.albumId, older.config);
-      onBatchDone?.call();
+    // 2단계(예전 스크린샷)는 [run]이 새 단계를 끝낸 뒤 따로 시작한다([_startOlder]).
+  }
+
+  static PhotoPosition? _oldestOf(List<GalleryPhoto> photos) {
+    PhotoPosition? oldest;
+    for (final p in photos) {
+      if (oldest == null || p.position.isOlderThan(oldest)) oldest = p.position;
     }
+    return oldest;
   }
 
   /// 디버그 로그용 예외 설명. 릴리스는 종류만(메시지에 OCR 원문이 섞일 수 있다), 디버그 빌드는 메시지와
@@ -235,9 +305,13 @@ class SyncService {
   }
 
   /// [_older]의 실패는 이번 동기화 결과(이미 끝남)를 바꾸지 않는다. 다음 실행에 같은 자리부터 다시.
-  Future<void> _olderQuietly(String albumId, ApiConfig config) async {
+  Future<void> _olderQuietly(
+    String albumId,
+    ApiConfig config,
+    PhotoPosition? start,
+  ) async {
     try {
-      await _older(albumId, config);
+      await _older(albumId, config, start);
     } on ApiException catch (e) {
       log?.call('[older] 중단: $e');
     } catch (e, st) {
@@ -251,7 +325,15 @@ class SyncService {
   /// ([ApiConfig.olderRemainingToday], 분석 응답마다 갱신). 커서([SettingsStore.olderCursor])는 서버가 처리한 장과
   /// 제외된 장(자기 캡처·기기에서 끝난 민감·글자 없음)까지만 앞으로 간다. 한도에 걸리거나 실패한 장에서 멈추고,
   /// 다음 날 그 장부터 다시 본다(그 뒤에 이미 보낸 장은 기록이 있어 건너뛴다).
-  Future<void> _older(String albumId, ApiConfig config) async {
+  ///
+  /// 새 동기화가 오거나 앱이 뒤로 가면([_olderStop]) 페이지를 읽기 전·배치를 보내기 전에 멈춘다.
+  /// 홈 갱신([onBatchDone])은 [_olderNotifyEvery]장마다와 끝날 때 한 번만.
+  Future<void> _older(
+    String albumId,
+    ApiConfig config,
+    PhotoPosition? start,
+  ) async {
+    final total = Stopwatch()..start();
     final range = olderRangeStart(
       await settings.olderRangeFrom() ??
           olderRangeFromDefine(olderRange, _now()),
@@ -280,18 +362,32 @@ class SyncService {
         ? batchSize
         : config.maxBatchSize;
     final tally = _Tally();
-    var readFrom = cursor;
+    // 커서가 비었으면 새 단계가 이미 본 최신 목록의 끝부터(갤러리 맨 앞을 다시 훑지 않는다).
+    var readFrom = cursor ?? start;
     var blocked = false; // 커서는 처리하지 못한 첫 장 앞에서 멈춘다
     var read = 0;
     var skipped = 0;
+    var stopped = false;
+    var notifiedAt = 0;
+    final gallery = Stopwatch();
     while (left > 0) {
+      if (_olderStop) {
+        stopped = true;
+        break;
+      }
+      gallery.start();
       final page = await reader.olderThan(
         albumId,
         readFrom,
         notBefore: from,
         limit: size,
       );
+      gallery.stop();
       if (page.isEmpty) break;
+      if (_olderStop) {
+        stopped = true; // 읽기만 하고 보내기 전에 멈춘다(이 쪽 커서는 그대로)
+        break;
+      }
       read += page.length;
       final (:mine, :own, ownBy: _) = capture.split(page, rule);
       final waiting = <GalleryPhoto>[];
@@ -327,7 +423,10 @@ class SyncService {
             await state.setOlderFailures(p.id, 0);
           }
         }
-        onBatchDone?.call();
+        if (tally.sent - notifiedAt >= _olderNotifyEvery) {
+          notifiedAt = tally.sent;
+          onBatchDone?.call();
+        }
       }
       final ownIds = {for (final p in own) p.id};
       for (final p in page) {
@@ -348,12 +447,18 @@ class SyncService {
       readFrom = page.last.position;
     }
     await settings.setOlderQuota(left < 0 ? 0 : left, quota.olderResetsAt);
+    if (read > 0) onBatchDone?.call(); // 홈 갱신은 끝에서 한 번
     log?.call(
-      '[older] 읽음 $read · 보냄 ${tally.sent}'
+      '[older] ${stopped ? '멈춤(새 동기화·앱 뒤로)' : '끝'} 읽음 $read · 보냄 ${tally.sent}'
       ' · 기기에서 끝남 ${tally.deviceOnly + tally.noTextEtc}'
-      ' · $olderMaxFailures번 실패해 건너뜀 $skipped · 오늘 남은 몫 $left',
+      ' · $olderMaxFailures번 실패해 건너뜀 $skipped · 오늘 남은 몫 $left'
+      ' · 시간 갤러리 ${gallery.elapsedMilliseconds}ms · OCR ${tally.ocrMs}ms'
+      ' · 전송 ${tally.sendMs}ms · 전체 ${total.elapsedMilliseconds}ms',
     );
   }
+
+  /// 예전 단계가 홈을 새로 불러오게 하는 간격(보낸 장수). 끝날 때도 한 번 부른다.
+  static const _olderNotifyEvery = 50;
 
   Future<int> _safeFailedCount() async {
     try {
@@ -561,7 +666,9 @@ class SyncService {
     _Tally tally, {
     bool quiet = false,
   }) async {
+    final ocr = Stopwatch()..start();
     await capture.run(chunk); // OCR·판정(이미 한 것은 건너뛴다). 실패한 장은 기록이 없어 아래에서 걸러진다.
+    tally.ocrMs += ocr.elapsedMilliseconds;
     final consent = await settings.imageConsent() == true;
     final photoById = {for (final p in chunk) p.id: p};
     final send = <String, _Outgoing>{};
@@ -642,9 +749,11 @@ class SyncService {
         if (!quiet) {
           status.setWaiting(send.length, assetIds: send.keys.toList());
         }
+        final sending = Stopwatch()..start();
         result = await api.analyze(currentDevice, [
           for (final o in send.values) o.toItem(),
         ]);
+        tally.sendMs += sending.elapsedMilliseconds;
       } finally {
         if (!quiet) status.setWaiting(0);
       }
@@ -770,6 +879,8 @@ class SyncService {
 /// 한 번의 실행에서 캡처가 어디로 갔는지 센다(디버그 로그에 숫자만).
 class _Tally {
   int sent = 0;
+  int ocrMs = 0;
+  int sendMs = 0;
   int deviceOnly = 0;
   int noTextEtc = 0;
   int skipped = 0;

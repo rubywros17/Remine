@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:remine/data/device/device_capture_service.dart';
 import 'package:remine/data/device/gallery_reader.dart';
@@ -40,9 +42,15 @@ Future<SyncRig> _rig(
     isCharging: isCharging,
   );
   // 첫 동기화: 최신 300장을 보낸다. 옛 서버처럼 남은 몫을 주지 않으니 예전 단계는 돌지 않는다.
-  await rig.sync.run();
+  await _sync(rig);
   rig.client.sent.clear();
   return rig;
+}
+
+/// 새 스크린샷 단계와, 그 뒤 따로 도는 예전 단계까지 끝날 때까지.
+Future<void> _sync(SyncRig rig) async {
+  await rig.sync.run();
+  await rig.sync.olderIdle;
 }
 
 List<String> _sentIds(SyncRig rig) => [
@@ -62,7 +70,7 @@ void main() {
       texts: {for (var i = 0; i < _recent + 3; i++) 'p$i': '글자 $i'},
       consent: false,
     );
-    await rig.sync.run();
+    await _sync(rig);
     final ids = _sentIds(rig);
     expect(ids, hasLength(_recent));
     expect(ids, isNot(contains('p300')));
@@ -72,7 +80,7 @@ void main() {
     final rig = await _rig(5);
     rig.client.olderRemaining = 100;
 
-    await rig.sync.run();
+    await _sync(rig);
 
     expect(rig.reader.olderAsked, isEmpty);
     expect(_sentIds(rig), isEmpty);
@@ -84,17 +92,21 @@ void main() {
     rig.settings.olderRange = olderRangeAll;
     rig.client.olderRemaining = 3;
 
-    await rig.sync.run();
+    await _sync(rig);
 
     expect(_sentIds(rig), ['p300', 'p301', 'p302']);
     expect(_cursorId(rig.settings), 'p302');
     expect(rig.settings.quota?.remaining, 0);
-    expect(rig.reader.olderAsked.first.$1, isNull, reason: '처음엔 맨 앞부터');
+    expect(
+      rig.reader.olderAsked.single.$1?.id,
+      'p299',
+      reason: '커서가 비었으면 새 단계가 본 최신 목록의 가장 오래된 장부터(맨 앞 재확인 없음)',
+    );
 
     // 다음 날: 몫이 다시 찼다
     rig.client.sent.clear();
     rig.client.olderRemaining = 3;
-    await rig.sync.run();
+    await _sync(rig);
 
     expect(_sentIds(rig), ['p303', 'p304']);
     expect(_cursorId(rig.settings), 'p304');
@@ -107,7 +119,7 @@ void main() {
     rig.client.olderRemaining = 5;
     rig.client.failWith['p302'] = 'DAILY_LIMIT_EXCEEDED';
 
-    await rig.sync.run();
+    await _sync(rig);
 
     expect(_cursorId(rig.settings), 'p301', reason: 'p302에서 멈춘다');
     expect(await rig.state.entry('p302'), isNull, reason: '한도 장은 기록하지 않는다');
@@ -115,7 +127,7 @@ void main() {
     rig.client.sent.clear();
     rig.client.failWith.clear();
     rig.client.olderRemaining = 5;
-    await rig.sync.run();
+    await _sync(rig);
 
     expect(_sentIds(rig), ['p302'], reason: '이미 보낸 p303·p304는 건너뛴다');
     expect(_cursorId(rig.settings), 'p304');
@@ -127,7 +139,7 @@ void main() {
     rig.client.olderRemaining = 10;
     rig.client.failWith['p301'] = 'LLM_CALL_FAILED';
 
-    await rig.sync.run();
+    await _sync(rig);
 
     expect(_cursorId(rig.settings), 'p300');
     expect((await rig.state.entry('p301'))?.status, SyncStatusCode.failed);
@@ -137,7 +149,7 @@ void main() {
   Future<void> runAgain(SyncRig rig, {int remaining = 10}) async {
     rig.client.sent.clear();
     rig.client.olderRemaining = remaining;
-    await rig.sync.run();
+    await _sync(rig);
   }
 
   test('같은 장이 2번 실패할 때까지는 커서가 멈추고, 3번째 실패하면 건너뛰고 지나간다', () async {
@@ -202,7 +214,7 @@ void main() {
       consent: false,
       log: lines.add,
     );
-    await rig.sync.run(); // 첫 동기화(최신 300장)
+    await _sync(rig); // 첫 동기화(최신 300장)
     // 그 뒤 새로 2장을 찍었고, 예전 단계는 고장 났다
     final registered = (await rig.state.registeredAt())!;
     for (final id in ['n0', 'n1']) {
@@ -223,7 +235,7 @@ void main() {
     rig.client.olderRemaining = 10;
     rig.reader.olderError = StateError('예전 단계 고장');
 
-    await rig.sync.run();
+    await _sync(rig);
 
     expect(
       _sentIds(rig),
@@ -237,6 +249,89 @@ void main() {
     // 디버그 빌드(테스트)는 메시지와 스택 앞부분까지 찍는다
     expect(older, contains('StateError: Bad state: 예전 단계 고장'));
     expect(older.split('\n').length, inInclusiveRange(2, 11));
+  });
+
+  /// 기기 등록 뒤에 새로 찍은 사진 한 장을 갤러리 맨 앞에 넣는다.
+  Future<void> addFresh(SyncRig rig, String id) async {
+    final registered = (await rig.state.registeredAt())!;
+    rig.reader.photos.insert(
+      0,
+      GalleryPhoto(
+        id: id,
+        fileName: 'Screenshot_$id.png',
+        takenAt: registered.add(const Duration(minutes: 5)),
+        modifiedAt: 9000,
+      ),
+    );
+    rig.ocr.textByAsset[id] = '새 글자 $id';
+  }
+
+  test(
+    '예전 단계 진행 중에 새 동기화가 오면 예전은 멈추고 새 스크린샷이 먼저 끝나며, 그 뒤 예전이 커서부터 이어간다',
+    () async {
+      final rig = await _rig(45);
+      rig.settings.olderRange = olderRangeAll;
+      rig.client.olderRemaining = 41; // 가짜 서버는 새 사진 n0도 몫에서 뺀다 → 예전 40장
+      final gate = Completer<void>();
+      rig.reader.olderGate = gate.future; // 예전 단계가 첫 쪽을 읽는 중에 붙잡힌다
+
+      await rig.sync.run(); // 새 스크린샷 단계(보낼 것 없음)만 기다린다
+      expect(rig.sync.isRunning, isFalse, reason: 'run()은 새 단계만 끝나면 완료');
+      expect(rig.sync.isOlderRunning, isTrue, reason: '예전 단계는 따로 도는 중');
+
+      await addFresh(rig, 'n0');
+      await rig.sync.run(); // 예전 단계가 진행 중이어도 바로 새 동기화가 돈다
+      expect(rig.sync.isRunning, isFalse);
+      expect(_sentIds(rig), ['n0'], reason: '새 스크린샷이 먼저, 예전은 아직 하나도 안 갔다');
+
+      rig.reader.olderGate = null;
+      gate.complete(); // 붙잡힌 예전 단계: 읽은 쪽을 보내기 전에 멈춘다 → 새 단계 뒤에 다시 시작
+      await rig.sync.olderIdle;
+
+      final ids = _sentIds(rig);
+      expect(ids.first, 'n0');
+      expect(ids.skip(1), [for (var i = 300; i < 340; i++) 'p$i']);
+      expect(
+        ids.where((id) => id == 'p300'),
+        hasLength(1),
+        reason: '멈춘 쪽을 두 번 보내지 않는다',
+      );
+      expect(_cursorId(rig.settings), 'p339');
+    },
+  );
+
+  test('앱이 뒤로 가면 예전 단계는 배치 사이에서 멈추고, 다시 앞으로 와서 동기화하면 이어간다', () async {
+    final rig = await _rig(30);
+    rig.settings.olderRange = olderRangeAll;
+    rig.client.olderRemaining = 30;
+    final gate = Completer<void>();
+    rig.reader.olderGate = gate.future;
+
+    await rig.sync.run();
+    rig.sync.pauseOlder(); // 앱이 뒤로
+    rig.reader.olderGate = null;
+    gate.complete();
+    await rig.sync.olderIdle;
+    expect(_sentIds(rig), isEmpty);
+    expect(rig.settings.cursor, isNull, reason: '보내지 않은 쪽은 커서를 넘기지 않는다');
+
+    rig.sync.resumeOlder(); // 다시 앞으로
+    await _sync(rig);
+    expect(_sentIds(rig), hasLength(30));
+    expect(_cursorId(rig.settings), 'p329');
+  });
+
+  test('예전 단계는 홈 갱신을 배치마다가 아니라 끝날 때 한 번 부른다', () async {
+    final rig = await _rig(45);
+    rig.settings.olderRange = olderRangeAll;
+    rig.client.olderRemaining = 45; // 20 + 20 + 5장, 배치 세 번
+    final before = rig.batches.length;
+
+    await _sync(rig);
+
+    expect(_sentIds(rig), hasLength(45));
+    // 새 단계(보낼 것 없음)가 끝에서 한 번 + 예전 단계가 끝에서 한 번
+    expect(rig.batches.length - before, 2);
   });
 
   test('새 스크린샷 단계의 예외는 디버그 로그에 메시지와 스택 앞 10줄', () {
@@ -253,7 +348,7 @@ void main() {
     rig.settings.olderRange = olderRangeAll;
     rig.client.olderRemaining = 0;
 
-    await rig.sync.run();
+    await _sync(rig);
 
     expect(rig.reader.olderAsked, isEmpty);
     expect(_sentIds(rig), isEmpty);
@@ -265,12 +360,12 @@ void main() {
     rig.settings.olderRange = olderRangeAll;
     rig.client.olderRemaining = 25;
 
-    await rig.sync.run();
+    await _sync(rig);
 
     expect(_sentIds(rig), hasLength(25));
     expect(_cursorId(rig.settings), 'p324');
-    // 처음엔 맨 앞부터 이미 보낸 최신 300장을 기록만 보고 지나간 뒤(OCR·전송 없음), p320~p339 쪽에서 멈춘다.
-    expect(rig.reader.olderAsked.last.$1?.id, 'p319');
+    // 최신 목록 끝(p299)부터 두 쪽: p300~p319, p320~p339(5장만 보내고 멈춤)
+    expect(rig.reader.olderAsked.map((a) => a.$1?.id), ['p299', 'p319']);
   });
 
   test('Wi-Fi에서만(기본)이면 Wi-Fi가 아닐 때 건너뛰고, 끄면 보낸다', () async {
@@ -279,11 +374,11 @@ void main() {
     rig.settings.olderRange = olderRangeAll;
     rig.client.olderRemaining = 10;
 
-    await rig.sync.run();
+    await _sync(rig);
     expect(_sentIds(rig), isEmpty);
 
     rig.settings.wifiOnly = false;
-    await rig.sync.run();
+    await _sync(rig);
     expect(_sentIds(rig), ['p300', 'p301']);
   });
 
@@ -294,11 +389,11 @@ void main() {
     rig.settings.chargingOnly = true;
     rig.client.olderRemaining = 10;
 
-    await rig.sync.run();
+    await _sync(rig);
     expect(_sentIds(rig), isEmpty);
 
     charging = true;
-    await rig.sync.run();
+    await _sync(rig);
     expect(_sentIds(rig), ['p300', 'p301']);
   });
 
@@ -308,7 +403,7 @@ void main() {
     rig.settings.enabled = false;
     rig.client.olderRemaining = 10;
 
-    await rig.sync.run();
+    await _sync(rig);
 
     expect(rig.reader.olderAsked, isEmpty);
   });
@@ -322,7 +417,7 @@ void main() {
     rig.settings.olderRange = olderRangeAll;
     rig.client.olderRemaining = 10;
 
-    await rig.sync.run();
+    await _sync(rig);
 
     expect(_sentIds(rig), ['p303']);
     expect(_cursorId(rig.settings), 'p303');
@@ -338,7 +433,7 @@ void main() {
     ).encode();
     rig.client.olderRemaining = 10;
 
-    await rig.sync.run();
+    await _sync(rig);
 
     expect(rig.reader.olderAsked, isEmpty);
     expect(_sentIds(rig), isEmpty);
@@ -349,7 +444,7 @@ void main() {
     rig.settings.olderRange = '2026-10-19';
     rig.client.olderRemaining = 10;
 
-    await rig.sync.run();
+    await _sync(rig);
 
     expect(rig.reader.olderAsked.first.$2, DateTime(2026, 10, 19));
     expect(_sentIds(rig), ['p300', 'p301']);
@@ -359,7 +454,7 @@ void main() {
     final rig = await _rig(1, olderRange: '1y');
     rig.client.olderRemaining = 10;
 
-    await rig.sync.run();
+    await _sync(rig);
 
     expect(_sentIds(rig), ['p300']);
     expect(rig.settings.olderRange, isNull, reason: '설정에 저장하지 않는다');
@@ -383,7 +478,7 @@ void main() {
       rig.ocr.textByAsset[p.id] = '새 글자 ${p.id}';
     }
 
-    await rig.sync.run();
+    await _sync(rig);
 
     expect(_sentIds(rig), hasLength(302));
     expect(rig.reader.sinceAsked.last, registered);

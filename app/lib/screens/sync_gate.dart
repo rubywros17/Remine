@@ -113,8 +113,17 @@ class _SyncGateState extends State<SyncGate> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && _loaded) {
-      _runAuto(); // 진행 중이면 새로 시작하지 않는다
+    final sync = widget.remote.sync;
+    switch (state) {
+      case AppLifecycleState.resumed:
+        sync.resumeOlder();
+        if (_loaded) _runAuto(); // 진행 중이면 새로 시작하지 않는다. 끝나면 예전 단계가 이어진다
+      case AppLifecycleState.hidden ||
+          AppLifecycleState.paused ||
+          AppLifecycleState.detached:
+        sync.pauseOlder(); // 예전 스크린샷은 앱이 앞에 있을 때만(배치 사이에서 멈춘다)
+      case AppLifecycleState.inactive:
+        break; // 알림창 등이 잠깐 덮었을 뿐 앱은 아직 앞에 있다
     }
   }
 
