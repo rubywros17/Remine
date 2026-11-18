@@ -91,6 +91,12 @@ public class HybridLlmClassifier implements Classifier {
      */
     @Override
     public List<Classified> classifyAll(List<Input> inputs, BooleanSupplier expired) {
+        return classifyAllCounted(inputs, expired).results();
+    }
+
+    /** 성공한 HTTP 호출(배치 1번 + 단건 재시도)만 센다. 429·5xx로 끝내 실패한 호출은 사용량이 {@link LlmUsage#NONE}이라 빠진다. */
+    @Override
+    public Counted classifyAllCounted(List<Input> inputs, BooleanSupplier expired) {
         List<Integer> textIdx = new ArrayList<>();
         List<Integer> imageIdx = new ArrayList<>();
         for (int i = 0; i < inputs.size(); i++) {
@@ -99,13 +105,15 @@ public class HybridLlmClassifier implements Classifier {
             (hasImage && imageDecision(input.ocrText()) == ImageDecision.USE ? imageIdx : textIdx).add(i);
         }
         Classified[] results = new Classified[inputs.size()];
-        runBatches(inputs, textIdx, textBatchSize, false, results, expired);
-        runBatches(inputs, imageIdx, imageBatchSize, true, results, expired);
-        return Arrays.asList(results);
+        int calls = runBatches(inputs, textIdx, textBatchSize, false, results, expired)
+                + runBatches(inputs, imageIdx, imageBatchSize, true, results, expired);
+        return new Counted(Arrays.asList(results), calls);
     }
 
-    private void runBatches(List<Input> inputs, List<Integer> indexes, int size, boolean useImage,
+    /** @return 성공한 호출 수 */
+    private int runBatches(List<Input> inputs, List<Integer> indexes, int size, boolean useImage,
                             Classified[] results, BooleanSupplier expired) {
+        int succeeded = 0;
         for (int from = 0; from < indexes.size(); from += size) {
             List<Integer> chunk = indexes.subList(from, Math.min(from + size, indexes.size()));
             if (expired.getAsBoolean()) {
@@ -118,6 +126,7 @@ public class HybridLlmClassifier implements Classifier {
                     .toList();
             LlmClassifier.BatchOutcome batch = llm.classifyBatch(items);
             batch.calls().forEach(call -> meter.recordCall(call.items(), call.usage()));
+            succeeded += (int) batch.calls().stream().filter(call -> call.usage() != LlmUsage.NONE).count();
 
             int failed = 0;
             for (int k = 0; k < chunk.size(); k++) {
@@ -133,6 +142,7 @@ public class HybridLlmClassifier implements Classifier {
             log.info("배치 분류 items={} image={} calls={} failed={} tokens={}/{} latencyMs={}", chunk.size(), useImage,
                     batch.calls().size(), failed, first.inputTokens(), first.outputTokens(), first.latencyMs());
         }
+        return succeeded;
     }
 
     private static ClassificationException toException(LlmOutcome outcome) {

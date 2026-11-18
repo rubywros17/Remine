@@ -170,6 +170,25 @@ class LlmBatchTest {
         assertThat(results.get(1).result()).isEqualTo(new ClassificationResult(Category.PLACE, List.of("카페"), "s"));
         assertThat(meter.snapshot().llmCalls()).isEqualTo(3);
         assertThat(meter.snapshot().llmItems()).isEqualTo(5);
+        assertThat(hybrid.classifyAllCounted(inputs, () -> false).calls()).isEqualTo(3);
+    }
+
+    @Test
+    void 쿼터_초과_429로_끝내_실패한_호출은_호출_수에_넣지_않는다() {
+        FakeProvider provider = new FakeProvider(parts -> {
+            throw HttpClientErrorException.create(HttpStatus.TOO_MANY_REQUESTS, "Too Many Requests",
+                    HttpHeaders.EMPTY, "{}".getBytes(StandardCharsets.UTF_8), StandardCharsets.UTF_8);
+        });
+        HybridLlmClassifier hybrid = new HybridLlmClassifier(llm(provider), 150, 2, 2, new UsageMeter());
+        String longText = "가".repeat(150);
+
+        Classifier.Counted counted = hybrid.classifyAllCounted(
+                List.of(new Classifier.Input(longText, null), new Classifier.Input(longText, null)), () -> false);
+
+        assertThat(provider.batchCalls).hasSize(LlmClassifier.MAX_ATTEMPTS); // 재시도는 했지만
+        assertThat(counted.calls()).isZero();                                 // 성공한 호출은 없다
+        assertThat(counted.results()).allMatch(r -> r.error() != null
+                && r.error().reason() == ClassificationException.Reason.CALL_FAILED);
     }
 
     @Test

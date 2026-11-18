@@ -47,6 +47,18 @@ public interface Classifier {
         return classifyAll(inputs, () -> false);
     }
 
+    /** 여러 장의 결과와, 그 결과를 얻는 데 쓴 성공한 LLM 호출 수(실패·쿼터 초과로 거절된 호출은 세지 않는다). */
+    record Counted(List<Classified> results, int calls) {
+    }
+
+    /**
+     * {@link #classifyAll(List, BooleanSupplier)}에 실제 LLM 호출 수를 더해 돌려준다(서버 하루 호출 예산 정산용).
+     * 기본은 외부 호출이 없는 구현(가짜 분류기)이라 0이고, LLM 구현체가 센다.
+     */
+    default Counted classifyAllCounted(List<Input> inputs, BooleanSupplier expired) {
+        return new Counted(classifyAll(inputs, expired), 0);
+    }
+
     /**
      * {@link #classifyAll(List)}에 마감을 더했다. 새 호출을 시작하기 전에 expired를 보고, 지났으면 남은 장은
      * 호출하지 않고 {@link ClassificationException.Reason#DEADLINE_EXCEEDED}로 돌려준다(이미 시작한 호출은 끝까지 기다린다).

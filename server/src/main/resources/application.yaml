@@ -55,6 +55,13 @@ remine:
     # 요청 마감: 지나면 새 LLM 호출을 시작하지 않고 남은 캡처는 DEADLINE_EXCEEDED(앱이 다음 실행에 다시 보냄).
     # 앱 타임아웃(5분)보다 짧게 둔다. 이미 시작한 호출(read-timeout 60s·재시도)은 끝까지 기다린다.
     deadline: 4m
+    # 예전 스크린샷(기기 등록 전에 찍힌 캡처) 기기당 하루 분석 장수. 한국 시간 자정에 초기화. 새 스크린샷은 한도 없음.
+    daily-older-limit: 300
+    # 서버 전체 하루 LLM 호출 예산. 태평양 시간 자정에 초기화(Gemini 무료 한도 기준).
+    # 400 = gemini-3.5-flash-lite 무료 등급 RPD 500의 80%(experiment/SUMMARY.md, AI Studio 확인 2026-10-15). 유료 전환 시 올린다.
+    daily-llm-call-budget: 400
+    # 예산 중 예전 스크린샷 몫(%). 다 쓰면 예전만 DAILY_LIMIT_EXCEEDED, 나머지 30%는 새 스크린샷 몫.
+    older-call-share-percent: 70
   image:
     max-bytes: 1048576           # 장당 1MB 초과 → 그 캡처만 IMAGE_TOO_LARGE
     max-long-side: 1024          # 서버가 이보다 긴 변은 축소

@@ -68,6 +68,7 @@ cd server
 - 테스트는 키 파일(`REMINE_ENV_FILE`·`~/.remine.env`)·키·`REMINE_CLASSIFIER`를 읽지 않고(build.gradle에서 중립화) 실제 API를 부르지 않는다.
 - 관심사(`remine.interest.*`): 전체 기간 3회(넓은 태그 `broad-tags` 제외), 마지막 캡처 30일(`recent-days`) 넘으면 FORGOTTEN, 주간 집계 cron(`alert-cron`, 테스트에서는 build.gradle이 `-`로 끔), 쿨다운 28일. 태그 불용어는 `remine.tags.stopwords` 한 곳. "지금"은 `Clock` 빈에서만 읽는다(테스트는 고정 시계).
 - analyze는 요청당 최대 20장(`remine.analyze.max-batch-size`), 마감 4분(`deadline`, 지나면 새 LLM 호출 없이 `DEADLINE_EXCEEDED`. 앱 타임아웃 5분보다 짧게 유지). 같은 캡처 동시 요청은 `IN_PROGRESS`(메모리 선점, 서버 1대 전제). 설정은 `server/src/main/resources/application.yaml`의 `remine.*`.
+- 예전 스크린샷 하루 한도(`OlderQuota`): `takenAt < device.createdAt`이면 예전. 기기당 `daily-older-limit` 300장(한국 자정), 서버 전체 LLM 호출 `daily-llm-call-budget` 400(무료 RPD 500의 80%) 중 예전 70%(태평양 자정, 서머타임 반영). 분류 전 예약 → 실패·429는 환불, 넘친 장은 `DAILY_LIMIT_EXCEEDED`. 새 스크린샷은 막지 않음.
 - LLM 배치(`remine.llm.batch.text-size` 10 · `image-size` 5): 요청 안의 캡처를 묶어 한 번에 분류, 빠진 장만 단건 재시도. 1이면 장당 1요청. 운영 프롬프트는 v3(`PromptVersion`), v1은 스냅샷으로 고정된 실험 기준이라 고치지 말고 새 버전을 만든다.
 - 측정: dev 프로필의 `/api/dev/metrics`(토큰·비용·시간, 단가는 `GeminiPricing`). 배치 정확도 비교는 `--spring.profiles.active=experiment --experiment.prompt=v3 --experiment.batch=10,5`(결과는 `experiment/compare.local.*`, 커밋 안 됨).
 - 이미지 입력(`remine.image.*`): 장당 `max-bytes`(1MB), `max-long-side`(1024), `max-pixels`(25,000,000), 요청 `max-request-bytes`(12MB)·파트 `max-part-bytes`(5MB). multipart는 **메모리 전용**(`spring.servlet.multipart.file-size-threshold`를 낮추지 말 것 — 기본 0B는 이미지를 임시 파일로 씀). 앱은 `GET /api/config`로 값을 받는다. 형식은 `docs/spec.md` API 절.

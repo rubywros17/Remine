@@ -24,9 +24,11 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Duration;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -38,9 +40,13 @@ import java.util.stream.IntStream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.times;
@@ -53,11 +59,14 @@ import static org.mockito.Mockito.when;
 class ScreenshotServiceTest {
 
     private static final LocalDateTime NOW = LocalDateTime.of(2026, 10, 14, 12, 0);
+    /** 기기 등록 시각. 기존 테스트의 캡처(NOW)는 이보다 뒤라 새 스크린샷이다. */
+    private static final LocalDateTime REGISTERED = NOW.minusDays(1);
 
     @Mock DeviceRepository deviceRepository;
     @Mock ScreenshotRepository screenshotRepository;
     @Mock Classifier classifier;
     @Mock ScreenshotPersister persister;
+    @Mock OlderQuota olderQuota;
     @Captor ArgumentCaptor<List<Outcome>> outcomes;
 
     private ScreenshotService service;
@@ -70,7 +79,7 @@ class ScreenshotServiceTest {
         return new RemineProperties(RemineProperties.ClassifierType.FAKE,
                 new RemineProperties.Llm(150, new RemineProperties.Gemini("m", 1.0, "http://localhost:1",
                         Duration.ofSeconds(1), Duration.ofSeconds(1), 0), new RemineProperties.Batch(10, 5)),
-                new RemineProperties.Analyze(maxBatchSize, deadline),
+                new RemineProperties.Analyze(maxBatchSize, deadline, 300, 400, 70),
                 new RemineProperties.Image(1048576, 1024, 25_000_000L, 12582912, 5242880),
                 new RemineProperties.Tags(List.of("장바구니", "쇼핑")),
                 new RemineProperties.Interest(30, 3, 28, List.of()));
@@ -78,20 +87,21 @@ class ScreenshotServiceTest {
 
     private static ScreenshotService service(RemineProperties properties, DeviceRepository devices,
                                              ScreenshotRepository screenshots, Classifier classifier,
-                                             ScreenshotPersister persister) {
+                                             ScreenshotPersister persister, OlderQuota olderQuota) {
         return new ScreenshotService(devices, screenshots, classifier, persister, properties, new TagCleaner(properties),
-                new UsageMeter());
+                new UsageMeter(), olderQuota);
     }
 
     @BeforeEach
     void setUp() {
-        service = service(properties(20), deviceRepository, screenshotRepository, classifier, persister);
+        service = service(properties(20), deviceRepository, screenshotRepository, classifier, persister, olderQuota);
         // 서비스는 classifyAll로 넘긴다. 기본 구현(한 장씩 classify)을 그대로 타게 해서 classify 스텁으로 검증한다.
         lenient().when(classifier.classifyAll(any(), any())).thenCallRealMethod();
+        lenient().when(classifier.classifyAllCounted(any(), any())).thenCallRealMethod();
     }
 
     private void givenDevice() {
-        when(deviceRepository.existsById(1L)).thenReturn(true);
+        when(deviceRepository.findCreatedAtById(1L)).thenReturn(Optional.of(REGISTERED));
     }
 
     private AnalyzeRequest request(Item... items) {
@@ -171,7 +181,7 @@ class ScreenshotServiceTest {
 
     @Test
     void 등록되지_않은_기기면_예외이고_아무것도_하지_않는다() {
-        when(deviceRepository.existsById(99L)).thenReturn(false);
+        when(deviceRepository.findCreatedAtById(99L)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.analyze(99L, request(new Item("a1", NOW, null, "x"))))
                 .isInstanceOf(DeviceNotFoundException.class);
@@ -232,7 +242,8 @@ class ScreenshotServiceTest {
 
     @Test
     void 최대_항목_수는_설정값을_따른다() {
-        ScreenshotService small = service(properties(2), deviceRepository, screenshotRepository, classifier, persister);
+        ScreenshotService small = service(properties(2), deviceRepository, screenshotRepository, classifier, persister,
+                olderQuota);
         List<Item> items = List.of(new Item("a", NOW, null, "x"), new Item("b", NOW, null, "x"),
                 new Item("c", NOW, null, "x"));
 
@@ -410,7 +421,7 @@ class ScreenshotServiceTest {
 
     @Test
     void 다른_기기의_같은_localAssetId는_막지_않는다() throws Exception {
-        when(deviceRepository.existsById(any())).thenReturn(true);
+        when(deviceRepository.findCreatedAtById(any())).thenReturn(Optional.of(REGISTERED));
         when(screenshotRepository.findAnalyzedLocalAssetIds(any(), any())).thenReturn(Set.of());
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
@@ -439,7 +450,8 @@ class ScreenshotServiceTest {
     @Test
     void 요청_마감이_지나면_새_호출을_시작하지_않고_남은_캡처는_DEADLINE_EXCEEDED다() {
         // 마감 0 → 첫 호출 전에 이미 지났다. 이미 분석된 것·글자 없는 것은 LLM이 필요 없어 그대로 처리한다.
-        service = service(properties(20, Duration.ZERO), deviceRepository, screenshotRepository, classifier, persister);
+        service = service(properties(20, Duration.ZERO), deviceRepository, screenshotRepository, classifier, persister,
+                olderQuota);
         givenDevice();
         when(screenshotRepository.findAnalyzedLocalAssetIds(any(), any())).thenReturn(Set.of("done"));
 
@@ -463,5 +475,166 @@ class ScreenshotServiceTest {
         } catch (java.io.IOException e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    // ---- 예전 스크린샷(기기 등록 전에 찍힘) 하루 한도 ----
+
+    private static final LocalDateTime OLD = REGISTERED.minusDays(30);
+    private static final LocalDate DAY = LocalDate.of(2026, 10, 14);
+
+    private void givenNothingAnalyzed() {
+        givenDevice();
+        when(screenshotRepository.findAnalyzedLocalAssetIds(any(), any())).thenReturn(Set.of());
+    }
+
+    @Test
+    void 예전_스크린샷은_예약한_만큼만_분류하고_넘친_장은_LLM_없이_DAILY_LIMIT_EXCEEDED() {
+        givenNothingAnalyzed();
+        OlderQuota.Reservation reservation = new OlderQuota.Reservation(DAY, DAY.minusDays(1), 2, 1);
+        when(olderQuota.reserve(1L, List.of(false, false, false))).thenReturn(reservation);
+        when(classifier.classify(anyString(), isNull())).thenReturn(OK);
+
+        AnalyzeResponse response = service.analyze(1L, request(
+                new Item("o1", OLD, null, "예전1"), new Item("o2", OLD, null, "예전2"), new Item("o3", OLD, null, "예전3")));
+
+        assertThat(response.analyzed()).extracting(AnalyzeResponse.Result::localAssetId).containsExactly("o1", "o2");
+        assertThat(response.failed()).containsExactly(
+                new AnalyzeResponse.Failure("o3", AnalyzeResponse.Reason.DAILY_LIMIT_EXCEEDED));
+        verify(classifier, never()).classify(eq("예전3"), any());
+        // 넘친 장은 저장하지 않는다(미분석 행도 만들지 않음 → 앱이 내일 다시 보낸다)
+        verify(persister).saveAll(eq(1L), outcomes.capture());
+        assertThat(outcomes.getValue()).extracting(o -> o.item().localAssetId()).containsExactly("o1", "o2");
+        verify(olderQuota).settle(1L, reservation, 0, 0);
+    }
+
+    @Test
+    void 새_스크린샷은_예약하지_않고_한도와_무관하게_분류한다() {
+        givenNothingAnalyzed();
+        when(classifier.classify(anyString(), isNull())).thenReturn(OK);
+
+        AnalyzeResponse response = service.analyze(1L, request(
+                new Item("n1", REGISTERED.plusHours(1), null, "새1"), new Item("n2", NOW, null, "새2")));
+
+        assertThat(response.analyzed()).hasSize(2);
+        verify(olderQuota, never()).reserve(anyLong(), any());
+        verify(olderQuota, never()).settle(anyLong(), any(), anyInt(), anyInt());
+    }
+
+    @Test
+    void 등록_시각보다_먼저_찍힌_캡처만_예전이다() {
+        givenNothingAnalyzed();
+        when(olderQuota.reserve(eq(1L), any())).thenReturn(new OlderQuota.Reservation(DAY, DAY, 1, 1));
+        when(classifier.classify(anyString(), isNull())).thenReturn(OK);
+
+        service.analyze(1L, request(new Item("same", REGISTERED, null, "등록 순간"),
+                new Item("before", REGISTERED.minusSeconds(1), null, "1초 전")));
+
+        verify(olderQuota).reserve(1L, List.of(false)); // 1초 전 것만 예전
+    }
+
+    @Test
+    void 새_것과_예전_것은_따로_분류해_호출_수를_나눠_센다() {
+        givenNothingAnalyzed();
+        OlderQuota.Reservation reservation = new OlderQuota.Reservation(DAY, DAY, 1, 1);
+        when(olderQuota.reserve(1L, List.of(false))).thenReturn(reservation);
+        doAnswer(inv -> {
+            List<Classifier.Input> inputs = inv.getArgument(0);
+            return new Classifier.Counted(inputs.stream().map(i -> new Classifier.Classified(OK, null)).toList(),
+                    inputs.get(0).ocrText().startsWith("새") ? 2 : 1);
+        }).when(classifier).classifyAllCounted(any(), any());
+
+        AnalyzeResponse response = service.analyze(1L, request(new Item("o1", OLD, null, "예전"),
+                new Item("n1", NOW, null, "새")));
+
+        assertThat(response.analyzed()).extracting(AnalyzeResponse.Result::localAssetId).containsExactly("o1", "n1");
+        verify(classifier, times(2)).classifyAllCounted(any(), any());
+        verify(olderQuota).recordNewCalls(2);
+        verify(olderQuota).settle(1L, reservation, 0, 1);
+    }
+
+    @Test
+    void 예전_장_분류가_실패하면_그_장은_환불하고_서버_예약은_실제_호출_수로_정산한다() {
+        givenNothingAnalyzed();
+        OlderQuota.Reservation reservation = new OlderQuota.Reservation(DAY, DAY, 2, 1);
+        when(olderQuota.reserve(1L, List.of(false, false))).thenReturn(reservation);
+        doReturn(new Classifier.Counted(List.of(
+                new Classifier.Classified(OK, null),
+                new Classifier.Classified(null, new ClassificationException(Reason.INVALID_RESPONSE, "형식 오류"))), 2))
+                .when(classifier).classifyAllCounted(any(), any());
+
+        AnalyzeResponse response = service.analyze(1L, request(new Item("o1", OLD, null, "예전1"),
+                new Item("o2", OLD, null, "예전2")));
+
+        assertThat(response.failed()).containsExactly(
+                new AnalyzeResponse.Failure("o2", AnalyzeResponse.Reason.LLM_INVALID_RESPONSE));
+        verify(olderQuota).settle(1L, reservation, 1, 2); // 1장 환불, 서버는 실제 2번(빠진 장 단건 재시도 포함)
+    }
+
+    @Test
+    void 쿼터_초과_429로_호출이_실패하면_기기와_서버_예약을_모두_돌려준다() {
+        givenNothingAnalyzed();
+        OlderQuota.Reservation reservation = new OlderQuota.Reservation(DAY, DAY, 2, 1);
+        when(olderQuota.reserve(1L, List.of(false, false))).thenReturn(reservation);
+        ClassificationException quota = new ClassificationException(Reason.CALL_FAILED, "HTTP 429 RESOURCE_EXHAUSTED");
+        doReturn(new Classifier.Counted(List.of(
+                new Classifier.Classified(null, quota), new Classifier.Classified(null, quota)), 0))
+                .when(classifier).classifyAllCounted(any(), any());
+
+        AnalyzeResponse response = service.analyze(1L, request(new Item("o1", OLD, null, "예전1"),
+                new Item("o2", OLD, null, "예전2")));
+
+        assertThat(response.failed()).extracting(AnalyzeResponse.Failure::reason)
+                .containsOnly(AnalyzeResponse.Reason.LLM_CALL_FAILED);
+        verify(olderQuota).settle(1L, reservation, 2, 0); // 두 장 모두 환불, 성공한 호출 0번
+    }
+
+    @Test
+    void 분류가_예외로_끝나도_예전_예약은_전부_돌려준다() {
+        givenNothingAnalyzed();
+        OlderQuota.Reservation reservation = new OlderQuota.Reservation(DAY, DAY, 1, 1);
+        when(olderQuota.reserve(1L, List.of(false))).thenReturn(reservation);
+        doThrow(new IllegalStateException("예상 못 한 오류")).when(classifier).classifyAllCounted(any(), any());
+
+        assertThatThrownBy(() -> service.analyze(1L, request(new Item("o1", OLD, null, "예전"))))
+                .isInstanceOf(IllegalStateException.class);
+        verify(olderQuota).settle(1L, reservation, 1, 0);
+    }
+
+    @Test
+    void 서버_예전_예산이_다_차면_예전만_멈추고_새_스크린샷은_계속_분류한다() {
+        givenNothingAnalyzed();
+        when(olderQuota.reserve(1L, List.of(false))).thenReturn(new OlderQuota.Reservation(DAY, DAY, 0, 0));
+        when(classifier.classify(anyString(), isNull())).thenReturn(OK);
+
+        AnalyzeResponse response = service.analyze(1L, request(new Item("o1", OLD, null, "예전"),
+                new Item("n1", NOW, null, "새")));
+
+        assertThat(response.analyzed()).extracting(AnalyzeResponse.Result::localAssetId).containsExactly("n1");
+        assertThat(response.failed()).containsExactly(
+                new AnalyzeResponse.Failure("o1", AnalyzeResponse.Reason.DAILY_LIMIT_EXCEEDED));
+        verify(classifier, never()).classify(eq("예전"), any());
+        verify(olderQuota, never()).settle(anyLong(), any(), anyInt(), anyInt());
+    }
+
+    @Test
+    void 이미_분석된_예전_장은_예약하지_않는다() {
+        givenDevice();
+        when(screenshotRepository.findAnalyzedLocalAssetIds(any(), any())).thenReturn(Set.of("o1"));
+
+        AnalyzeResponse response = service.analyze(1L, request(new Item("o1", OLD, null, "예전")));
+
+        assertThat(response.skipped()).containsExactly("o1");
+        verify(olderQuota, never()).reserve(anyLong(), any());
+    }
+
+    @Test
+    void 응답에_오늘_남은_예전_스크린샷_몫을_싣는다() {
+        givenNothingAnalyzed();
+        when(classifier.classify(anyString(), isNull())).thenReturn(OK);
+        when(olderQuota.remainingToday(1L)).thenReturn(120);
+
+        AnalyzeResponse response = service.analyze(1L, request(new Item("n1", NOW, null, "새")));
+
+        assertThat(response.olderRemainingToday()).isEqualTo(120);
     }
 }

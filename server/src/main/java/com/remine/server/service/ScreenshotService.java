@@ -21,6 +21,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -28,6 +29,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.BooleanSupplier;
 
 /**
  * 스크린샷 분석. <b>트랜잭션을 걸지 않는다</b>: 분류(느린 외부 LLM 호출)를 모두 끝낸 뒤
@@ -49,6 +51,7 @@ public class ScreenshotService {
     private final RemineProperties properties;
     private final TagCleaner tagCleaner;
     private final UsageMeter meter;
+    private final OlderQuota olderQuota;
     private final Set<InProgressKey> inProgress = ConcurrentHashMap.newKeySet();
 
     private record InProgressKey(Long deviceId, String localAssetId) {
@@ -70,9 +73,8 @@ public class ScreenshotService {
         if (requested > max) {
             throw new BatchTooLargeException(requested, max);
         }
-        if (!deviceRepository.existsById(deviceId)) {
-            throw new DeviceNotFoundException(deviceId);
-        }
+        LocalDateTime registeredAt = deviceRepository.findCreatedAtById(deviceId)
+                .orElseThrow(() -> new DeviceNotFoundException(deviceId));
 
         List<String> assetIds = request.screenshots().stream().map(AnalyzeRequest.Item::localAssetId).toList();
         // 같은 캡처를 다른 요청이 분석 중이면(앱이 타임아웃 뒤 다시 보낸 경우) 중복 분석하지 않고 IN_PROGRESS로 돌려준다.
@@ -89,15 +91,16 @@ public class ScreenshotService {
                     busy.add(assetId);
                 }
             }
-            return analyzeClaimed(deviceId, request, images, assetIds, busy, startedNanos);
+            return analyzeClaimed(deviceId, registeredAt, request, images, assetIds, busy, startedNanos);
         } finally {
             claimed.forEach(inProgress::remove);
         }
     }
 
     /** 선점한 뒤의 본문. 분석 완료 여부는 선점 뒤에 조회해야 방금 끝난 요청과 겹쳐 다시 분석하지 않는다. */
-    private AnalyzeResponse analyzeClaimed(Long deviceId, AnalyzeRequest request, Map<String, byte[]> images,
-                                           List<String> assetIds, Set<String> busy, long startedNanos) {
+    private AnalyzeResponse analyzeClaimed(Long deviceId, LocalDateTime registeredAt, AnalyzeRequest request,
+                                           Map<String, byte[]> images, List<String> assetIds, Set<String> busy,
+                                           long startedNanos) {
         int requested = request.screenshots().size();
         // 분석이 끝난 것 + 같은 요청 안에서 중복으로 들어온 것은 건너뛴다. 분석에 실패해 남은 행은 다시 분석한다.
         Set<String> seen = new HashSet<>(screenshotRepository.findAnalyzedLocalAssetIds(deviceId, assetIds));
@@ -145,15 +148,45 @@ public class ScreenshotService {
             inputs.add(new Classifier.Input(blank ? "" : item.ocrText(), usable));
         }
 
-        // 2) 분류: 트랜잭션 밖에서 한 번에 넘긴다(LLM 분류기는 여러 장을 한 요청으로 묶는다). 한 건이 실패해도 나머지는 계속 진행한다.
-        //    태그는 여기서 정리해 응답과 저장이 같은 태그를 쓴다.
+        // 2) 예전 스크린샷(기기 등록 전에 찍힘) 하루 한도: 분류 전에 예약하고, 넘친 장은 LLM 없이 DAILY_LIMIT_EXCEEDED
+        //    (저장하지 않으니 앱이 내일 다시 보낸다). 새 스크린샷은 한도가 없다. 판정은 서버가 촬영 시각으로 한다(앱 플래그 없음).
+        List<Integer> newer = new ArrayList<>();
+        List<Integer> older = new ArrayList<>();
+        for (int i = 0; i < toClassify.size(); i++) {
+            (toClassify.get(i).takenAt().isBefore(registeredAt) ? older : newer).add(i);
+        }
+        OlderQuota.Reservation reservation = older.isEmpty() ? null
+                : olderQuota.reserve(deviceId, older.stream().map(i -> inputs.get(i).jpegImage() != null).toList());
+        int granted = reservation == null ? 0 : reservation.items();
+        Set<Integer> overLimit = new HashSet<>(older.subList(granted, older.size()));
+        List<Integer> olderGranted = older.subList(0, granted);
+
+        // 3) 분류: 트랜잭션 밖에서 넘긴다(LLM 분류기는 여러 장을 한 요청으로 묶는다). 한 건이 실패해도 나머지는 계속 진행한다.
+        //    새 → 예전 순으로 따로 넘겨 호출 수를 각각 센다(예전 몫 예산 정산). 태그는 여기서 정리해 응답과 저장이 같은 태그를 쓴다.
         //    마감(remine.analyze.deadline)이 지나면 새 호출을 시작하지 않는다. 앱 타임아웃보다 먼저 응답해 재전송 중복을 막는다.
         long deadlineNanos = startedNanos + properties.analyze().deadline().toNanos();
-        List<Classifier.Classified> classified = inputs.isEmpty() ? List.of()
-                : classifier.classifyAll(inputs, () -> System.nanoTime() - deadlineNanos >= 0);
+        BooleanSupplier expired = () -> System.nanoTime() - deadlineNanos >= 0;
+        Classifier.Classified[] classified = new Classifier.Classified[toClassify.size()];
+        int newCalls = classify(newer, inputs, expired, classified);
+        olderQuota.recordNewCalls(newCalls);
+        int olderCalls = 0;
+        try {
+            olderCalls = classify(olderGranted, inputs, expired, classified);
+        } finally {
+            // 분류가 예외로 끝나도 예약은 돌려준다(이때는 결과가 없는 장도 실패로 센다).
+            if (reservation != null && granted > 0) {
+                int olderFailed = (int) olderGranted.stream()
+                        .filter(i -> classified[i] == null || classified[i].error() != null).count();
+                olderQuota.settle(deviceId, reservation, olderFailed, olderCalls);
+            }
+        }
         for (int i = 0; i < toClassify.size(); i++) {
             AnalyzeRequest.Item item = toClassify.get(i);
-            Classifier.Classified c = classified.get(i);
+            if (overLimit.contains(i)) {
+                failed.add(new AnalyzeResponse.Failure(item.localAssetId(), AnalyzeResponse.Reason.DAILY_LIMIT_EXCEEDED));
+                continue;
+            }
+            Classifier.Classified c = classified[i];
             if (c.error() != null) {
                 outcomes.add(new Outcome(item, null));
                 failed.add(new AnalyzeResponse.Failure(item.localAssetId(), toReason(c.error())));
@@ -164,22 +197,39 @@ public class ScreenshotService {
             }
         }
 
-        // 3) 저장: 짧은 트랜잭션 하나 (저장할 것이 없으면 호출하지 않는다)
+        // 4) 저장: 짧은 트랜잭션 하나 (저장할 것이 없으면 호출하지 않는다)
         if (!outcomes.isEmpty()) {
             persister.saveAll(deviceId, outcomes);
         }
 
         long endedNanos = System.nanoTime();
         meter.recordRequest(startedNanos, endedNanos);
-        log.info("analyze deviceId={} requested={} analyzed={} skipped={} failed={} elapsedMs={}",
-                deviceId, requested, analyzed.size(), skipped.size(), failed.size(),
+        log.info("analyze deviceId={} requested={} analyzed={} skipped={} failed={} older={} olderOverLimit={} elapsedMs={}",
+                deviceId, requested, analyzed.size(), skipped.size(), failed.size(), older.size(), overLimit.size(),
                 (endedNanos - startedNanos) / 1_000_000);
         if (stats.received > 0) {
             // 이미지 관련 로그는 건수·바이트 수·사유 코드만. 이미지 내용은 남기지 않는다.
             log.info("analyze images received={} used={} rejected={} ignored={} bytesIn={} bytesUsed={}",
                     stats.received, stats.used, stats.rejected, stats.ignored, stats.bytesIn, stats.bytesUsed);
         }
-        return new AnalyzeResponse(analyzed, skipped, failed);
+        return new AnalyzeResponse(analyzed, skipped, failed, olderQuota.remainingToday(deviceId));
+    }
+
+    /**
+     * indexes에 해당하는 입력만 한 번에 분류해 classified의 같은 자리에 넣는다.
+     *
+     * @return 성공한 LLM 호출 수
+     */
+    private int classify(List<Integer> indexes, List<Classifier.Input> inputs, BooleanSupplier expired,
+                         Classifier.Classified[] classified) {
+        if (indexes.isEmpty()) {
+            return 0;
+        }
+        Classifier.Counted counted = classifier.classifyAllCounted(indexes.stream().map(inputs::get).toList(), expired);
+        for (int k = 0; k < indexes.size(); k++) {
+            classified[indexes.get(k)] = counted.results().get(k);
+        }
+        return counted.calls();
     }
 
     /**

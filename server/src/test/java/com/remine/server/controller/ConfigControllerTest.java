@@ -1,5 +1,8 @@
 package com.remine.server.controller;
 
+import com.remine.server.domain.device.Device;
+import com.remine.server.domain.device.DeviceRepository;
+import com.remine.server.domain.usage.DailyUsageRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -7,6 +10,11 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
 import org.junit.jupiter.api.BeforeEach;
+
+import java.time.Clock;
+import java.time.LocalDate;
+
+import static org.hamcrest.Matchers.nullValue;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -16,6 +24,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ConfigControllerTest {
 
     @Autowired WebApplicationContext context;
+    @Autowired DeviceRepository deviceRepository;
+    @Autowired DailyUsageRepository usage;
+    @Autowired Clock clock;
     MockMvc mockMvc;
 
     @BeforeEach
@@ -33,7 +44,30 @@ class ConfigControllerTest {
                 .andExpect(jsonPath("$.imageMaxLongSide").value(1024))
                 .andExpect(jsonPath("$.imageContentType").value("image/jpeg"))
                 .andExpect(jsonPath("$.maxRequestBytes").value(12582912))
-                .andExpect(jsonPath("$.classifyIntervalMs").value(0)); // 기본은 가짜 분류기라 대기가 없다
+                .andExpect(jsonPath("$.classifyIntervalMs").value(0)) // 기본은 가짜 분류기라 대기가 없다
+                .andExpect(jsonPath("$.dailyOlderLimit").value(300))
+                .andExpect(jsonPath("$.olderRemainingToday").value(nullValue()))
+                .andExpect(jsonPath("$.olderResetsAt").value(nullValue()));
+    }
+
+    @Test
+    void 등록된_기기면_오늘_남은_예전_스크린샷_몫과_다음_한국_자정을_준다() throws Exception {
+        long deviceId = deviceRepository.save(new Device(null)).getId();
+        usage.addDeviceOlderCount(deviceId, LocalDate.now(clock), 180);
+        String nextMidnight = LocalDate.now(clock).plusDays(1) + "T00:00:00+09:00";
+
+        mockMvc.perform(get("/api/config").header("X-Device-Id", deviceId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.olderRemainingToday").value(120))
+                .andExpect(jsonPath("$.olderResetsAt").value(nextMidnight));
+    }
+
+    @Test
+    void 모르는_기기면_404_없이_기기별_값만_비운다() throws Exception {
+        mockMvc.perform(get("/api/config").header("X-Device-Id", 987654321L))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.dailyOlderLimit").value(300))
+                .andExpect(jsonPath("$.olderRemainingToday").value(nullValue()));
     }
 }
 
