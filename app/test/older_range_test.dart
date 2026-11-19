@@ -214,6 +214,15 @@ void main() {
     handle.dispose();
   });
 
+  testWidgets('슬라이더 채움은 밝은 레몬(#EBD75A), 바탕 트랙은 연회색', (tester) async {
+    await _pump(tester);
+    await tester.tap(find.text(OlderTexts.custom));
+    await tester.pumpAndSettle();
+    final theme = SliderTheme.of(tester.element(find.byType(Slider)));
+    expect(theme.activeTrackColor, const Color(0xFFEBD75A));
+    expect(theme.inactiveTrackColor, AppColors.border);
+  });
+
   testWidgets('슬라이더 "전부"로 정하면 전부 카드가 선택된다', (tester) async {
     await _pump(tester);
     await tester.tap(find.text(OlderTexts.custom));

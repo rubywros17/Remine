@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:remine/core/tokens.dart';
 import 'package:remine/data/device/gallery_reader.dart';
 import 'package:remine/data/device/older_progress.dart';
 import 'package:remine/data/device/settings_store.dart';
@@ -103,6 +104,29 @@ void main() {
     expect(find.text('100%'), findsOneWidget);
     expect(find.text(OlderTexts.allDone), findsOneWidget);
     expect(find.text(OlderTexts.quotaLabel), findsNothing);
+    // 레몬 바탕·테두리 없음·검정 글씨(오늘 몫 카드와 같은 모양)
+    final box = tester.widget<DecoratedBox>(
+      find.byKey(const ValueKey('older-all-done')),
+    );
+    final deco = box.decoration as BoxDecoration;
+    expect(deco.color, AppColors.lemon);
+    expect(deco.border, isNull);
+    expect(
+      tester.widget<Text>(find.text(OlderTexts.allDone)).style?.color,
+      AppColors.ink,
+    );
+  });
+
+  testWidgets('스위치 켜짐은 셀라돈 트랙 + 흰 손잡이', (tester) async {
+    await _pump(tester, _settings());
+    final on = tester
+        .widgetList<Switch>(find.byType(Switch))
+        .where((w) => w.value);
+    expect(on, isNotEmpty);
+    for (final w in on) {
+      expect(w.activeTrackColor, AppColors.celadon);
+      expect(w.activeThumbColor, AppColors.white);
+    }
   });
 
   testWidgets('스위치를 누르면 바로 저장한다(이어서 정리하기·Wi-Fi에서만·충전 중일 때만)', (tester) async {

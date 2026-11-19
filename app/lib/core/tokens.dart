@@ -44,6 +44,10 @@ abstract final class AppColors {
   /// 목록 줄(설정 등) 눌림: 누르는 동안 셀라돈 12% 바탕, 물결은 24%.
   static const pressHighlight = Color(0x1F7DC4CE);
   static const pressSplash = Color(0x3D7DC4CE);
+
+  /// 설정 스위치 켜짐: 셀라돈 트랙 + 흰 손잡이(꺼짐은 기본 모양).
+  static const switchOnTrack = celadon;
+  static const switchOnThumb = white;
 }
 
 /// 카테고리 색(홈 비율 막대의 칸 · 알약 앞 점). 기존 토큰과 같은 값은 그 토큰을 그대로 쓴다.
@@ -446,11 +450,14 @@ abstract final class AppOlder {
   /// 아래 안내 박스 바탕("하루에 300장씩 정리해요.").
   static const noteBackground = Color(0xFFF1F1EE);
 
+  /// 모두 정리했을 때 카드 바탕(레몬, 테두리 없음, 글자 검정).
+  static const doneBackground = AppColors.lemon;
+
   /// 오늘 몫 카드 바탕(연한 레몬, 테두리 없음).
   static const quotaBackground = Color(0xFFF4F1D6);
 
-  /// 기간 슬라이더: 채움(진한 레몬)·바탕 트랙(연회색)·손잡이 테두리.
-  static const sliderFill = Color(0xFFD9CB6A);
+  /// 기간 슬라이더: 채움(진하지만 밝은 레몬)·바탕 트랙(연회색)·손잡이 테두리.
+  static const sliderFill = Color(0xFFEBD75A);
   static const sliderTrack = AppColors.border;
   static const sliderThumbBorder = AppColors.ink;
   static const double sliderTrackHeight = 6;

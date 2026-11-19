@@ -26,7 +26,12 @@ class SwitchSettingsRow extends StatelessWidget {
       onTap: () => onChanged(!value),
       trailing: Semantics(
         label: title,
-        child: Switch(value: value, onChanged: onChanged),
+        child: Switch(
+          value: value,
+          onChanged: onChanged,
+          activeTrackColor: AppColors.switchOnTrack,
+          activeThumbColor: AppColors.switchOnThumb,
+        ),
       ),
     );
   }

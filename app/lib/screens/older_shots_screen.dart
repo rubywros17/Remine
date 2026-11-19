@@ -329,9 +329,22 @@ class _QuotaDoneCard extends StatelessWidget {
 class _DoneCard extends StatelessWidget {
   const _DoneCard();
 
+  /// 오늘 몫 카드와 같은 모양(둥근 모서리·패딩), 바탕만 레몬.
   @override
-  Widget build(BuildContext context) =>
-      _WhiteCard(child: Text(OlderTexts.allDone, style: AppText.label));
+  Widget build(BuildContext context) => DecoratedBox(
+    key: const ValueKey('older-all-done'),
+    decoration: BoxDecoration(
+      color: AppOlder.doneBackground,
+      borderRadius: BorderRadius.circular(AppOlder.optionRadius),
+    ),
+    child: Padding(
+      padding: const EdgeInsets.all(AppSpacing.s16),
+      child: Text(
+        OlderTexts.allDone,
+        style: AppText.label.copyWith(color: AppColors.ink),
+      ),
+    ),
+  );
 }
 
 /// 유료(준비 중): 누를 수 없다.
