@@ -44,6 +44,10 @@ abstract final class AppColors {
   /// 목록 줄(설정 등) 눌림: 누르는 동안 셀라돈 12% 바탕, 물결은 24%.
   static const pressHighlight = Color(0x1F7DC4CE);
   static const pressSplash = Color(0x3D7DC4CE);
+
+  /// 설정 스위치 켜짐: 진한 셀라돈 트랙 + 흰 손잡이(꺼짐은 기본 모양).
+  static const switchOnTrack = celadonDeep;
+  static const switchOnThumb = white;
 }
 
 /// 카테고리 색(홈 비율 막대의 칸 · 알약 앞 점). 기존 토큰과 같은 값은 그 토큰을 그대로 쓴다.
@@ -439,6 +443,38 @@ abstract final class AppTidy {
 
   /// 비율을 모를 때(가짜 데이터 모드) 쓰는 세로 화면 비율.
   static const double peekFallbackAspect = 9 / 19.5;
+}
+
+/// 예전 스크린샷 정리(범위 고르기·기간 시트·예전 스크린샷 화면·관심사 점선 칸). 디자인 캔버스 "예전 스크린샷 정리 · 최종 흐름".
+abstract final class AppOlder {
+  /// 아래 안내 박스 바탕("하루에 300장씩 정리해요.").
+  static const noteBackground = Color(0xFFF1F1EE);
+
+  /// 모두 정리했을 때 카드 바탕(레몬, 테두리 없음, 글자 검정).
+  static const doneBackground = AppColors.lemon;
+
+  /// 오늘 몫 카드 바탕(연한 레몬, 테두리 없음).
+  static const quotaBackground = Color(0xFFF4F1D6);
+
+  /// 기간 슬라이더: 채움(레몬, "모두 정리했어요" 카드와 같은 색)·바탕 트랙(연회색)·손잡이 테두리.
+  static const sliderFill = AppColors.lemon;
+  static const sliderTrack = AppColors.border;
+  static const sliderThumbBorder = AppColors.ink;
+  static const double sliderTrackHeight = 6;
+  static const double sliderThumbRadius = 11;
+  static const double sliderThumbStroke = 2;
+
+  /// 선택된 카드(차콜) 위 보조 글자: 흰색 70%.
+  static const onSelectedSub = Color(0xB3FFFFFF);
+
+  /// 선택지 카드·안내 박스 모서리, 라디오 지름.
+  static const double optionRadius = 20;
+  static const double noteRadius = 16;
+  static const double radio = 22;
+  static const double radioDot = 10;
+
+  /// 진행 막대 높이.
+  static const double barHeight = 8;
 }
 
 abstract final class AppRadii {

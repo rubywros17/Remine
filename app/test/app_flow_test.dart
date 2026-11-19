@@ -3,10 +3,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:remine/app.dart';
 import 'package:remine/core/tokens.dart';
+import 'package:remine/data/device/settings_store.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
 import 'package:remine/models/category.dart';
 import 'package:remine/screens/analysis_screen.dart';
 import 'package:remine/screens/category_screen.dart';
+import 'package:remine/screens/older_texts.dart';
 import 'package:remine/screens/tag_screen.dart';
 import 'package:remine/widgets/drawer_stage.dart';
 import 'package:remine/widgets/home_widgets.dart';
@@ -14,6 +16,9 @@ import 'package:remine/widgets/interest_brain_map.dart';
 import 'package:remine/widgets/small_widgets.dart';
 import 'package:remine/widgets/thumb_placeholder.dart';
 import 'package:remine/widgets/wordmark.dart';
+
+import 'support/fake_device.dart';
+import 'support/fake_remote.dart';
 
 final _now = DateTime(2026, 10, 19, 12, 0); // 월요일
 
@@ -452,6 +457,42 @@ void main() {
       for (final c in Category.values) {
         expect(find.text(drawerBinLabel(c)), findsOneWidget, reason: c.label);
       }
+    });
+  });
+
+  group('첫 실행(기기·서버 모드)', () {
+    testWidgets('사진 권한 → 이미지 동의 → 알림 → 범위 고르기 → 첫 분석 순서로, 범위를 고른 뒤에만 첫 분석', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.reset);
+      // 사진 없음: 첫 분석이 OCR 없이 바로 끝난다. 이미지 동의는 고른 상태, 푸시 없음(알림 안내 생략).
+      final rig = (await tester.runAsync(
+        () => SyncRig.create(photos: const []),
+      ))!;
+      await tester.pumpWidget(
+        RemineApp(
+          device: fakeServices(
+            rig.reader,
+            settings: rig.settings,
+            remote: rig.remote,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text(OlderTexts.rangeTitle), findsOneWidget);
+      expect(find.byType(AnalysisScreen), findsNothing);
+      expect(rig.client.analyzeCalls, isEmpty);
+
+      await tester.tap(find.text(OlderTexts.start));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(find.text(OlderTexts.rangeTitle), findsNothing);
+      expect(find.byType(AnalysisScreen), findsOneWidget);
+      expect(rig.settings.olderKind, OlderRangeKind.year, reason: '기본 선택 저장');
     });
   });
 }

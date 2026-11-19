@@ -1,11 +1,19 @@
 import 'package:flutter/material.dart';
 
+import '../core/helpers.dart';
 import '../core/tokens.dart';
+import '../data/device/device_services.dart';
+import '../data/device/older_progress.dart';
 import '../data/device/settings_store.dart';
 import '../data/remote/remote_services.dart';
+import '../widgets/settings_rows.dart';
 import '../widgets/small_widgets.dart';
+import 'older_range_screen.dart';
+import 'older_shots_screen.dart';
+import 'older_texts.dart';
 
-/// 설정: 이미지 분석 동의, 관심사 알림 받기(서버 연동 + 푸시가 있을 때만). 휴지통은 정리 탭에 있다.
+/// 설정: 이미지 분석 동의, 관심사 알림 받기(서버 연동 + 푸시가 있을 때만), 예전 스크린샷 정리(기기 모드).
+/// 휴지통은 정리 탭에 있다.
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key, required this.settings, this.remote});
 
@@ -22,6 +30,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
   ScaffoldMessengerState? _messenger;
 
   bool get _hasPush => widget.remote?.push != null;
+
+  /// 예전 스크린샷 현황(기기 모드에서만, 갤러리 count라 빠르다). 세기 전·크롬은 null → 줄을 숨긴다.
+  OlderOverview? _older;
+  bool _olderLoading = false;
+
+  Future<void> _loadOlder() async {
+    final device = DeviceScope.maybeOf(context);
+    if (device == null || _olderLoading) return;
+    _olderLoading = true;
+    final o = await loadOlderOverview(device.reader, widget.settings);
+    _olderLoading = false;
+    if (mounted) setState(() => _older = o);
+  }
+
+  Future<void> _openOlder() async {
+    final device = DeviceScope.maybeOf(context);
+    final o = _older;
+    if (device == null || o == null) return;
+    await Navigator.of(context).push<void>(
+      appRoute(
+        context,
+        (_) => o.chosen
+            ? OlderShotsScreen(
+                settings: widget.settings,
+                reader: device.reader,
+                remote: widget.remote,
+              )
+            : OlderRangeScreen(
+                settings: widget.settings,
+                reader: device.reader,
+                fromSettings: true,
+              ),
+      ),
+    );
+    _loadOlder(); // 범위·스위치를 바꿨을 수 있다
+  }
 
   @override
   void initState() {
@@ -47,6 +91,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.didChangeDependencies();
     // dispose에서는 context를 쓸 수 없어서 미리 잡아 둔다.
     _messenger = ScaffoldMessenger.maybeOf(context);
+    if (_older == null) _loadOlder();
   }
 
   @override
@@ -120,7 +165,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ),
             const SizedBox(height: AppSpacing.s8),
-            _SwitchRow(
+            SwitchSettingsRow(
               title: '이미지 분석',
               body:
                   '글자가 적은 캡처는 작게 줄인 사진을 함께 보내요.\n'
@@ -131,7 +176,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             if (_hasPush) ...[
               const SizedBox(height: AppSpacing.s4),
-              _SwitchRow(
+              SwitchSettingsRow(
                 title: '알림 받기',
                 body:
                     '같은 걸 여러 번 캡처하면 일주일에 한 번까지 알려 드려요.\n'
@@ -140,88 +185,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onChanged: _setNotify,
               ),
             ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SwitchRow extends StatelessWidget {
-  const _SwitchRow({
-    required this.title,
-    required this.body,
-    required this.value,
-    required this.onChanged,
-  });
-
-  final String title;
-  final String body;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    // 줄 어디를 눌러도 스위치가 바뀐다(ListTile과 같은 동작).
-    return _SettingsRow(
-      title: title,
-      body: body,
-      onTap: () => onChanged(!value),
-      trailing: Semantics(
-        label: title,
-        child: Switch(value: value, onChanged: onChanged),
-      ),
-    );
-  }
-}
-
-/// 설정 한 줄: 제목 · 설명 (+ 오른쪽 위젯). 누르면 셀라돈 톤 하이라이트·물결이 보인다.
-///
-/// [Flutter 메모] InkWell은 가장 가까운 Material 위에 물결을 그린다. 배경이 없는 투명 Material을 바로 위에 둔다.
-class _SettingsRow extends StatelessWidget {
-  const _SettingsRow({
-    required this.title,
-    required this.body,
-    required this.onTap,
-    this.trailing,
-  });
-
-  final String title;
-  final String body;
-  final VoidCallback onTap;
-  final Widget? trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    final radius = BorderRadius.circular(AppRadii.tile);
-    return Material(
-      type: MaterialType.transparency,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: radius,
-        highlightColor: AppColors.pressHighlight,
-        splashColor: AppColors.pressSplash,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 10, 0, 10),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title, style: AppText.cardTitle),
-                    const SizedBox(height: AppSpacing.s4),
-                    Text(body, style: AppText.caption),
-                  ],
-                ),
+            if (_older case final o?) ...[
+              const SizedBox(height: AppSpacing.s4),
+              SettingsRow(
+                title: OlderTexts.settingsRow,
+                body: o.chosen ? null : OlderTexts.pickRange,
+                bodySpan: o.chosen
+                    ? TextSpan(
+                        children: [
+                          const TextSpan(text: OlderTexts.settingsBodyBefore),
+                          TextSpan(
+                            text: OlderTexts.shots(o.unseen),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.ink,
+                            ),
+                          ),
+                          const TextSpan(text: OlderTexts.settingsBodyRest),
+                        ],
+                      )
+                    : null,
+                onTap: _openOlder,
+                trailing: const SettingsChevron(),
               ),
-              if (trailing != null) ...[
-                const SizedBox(width: AppSpacing.s12),
-                trailing!,
-              ],
             ],
-          ),
+          ],
         ),
       ),
     );

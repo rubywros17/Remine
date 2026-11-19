@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:remine/app.dart';
 import 'package:remine/core/tokens.dart';
+import 'package:remine/data/device/device_services.dart';
 import 'package:remine/data/device/gallery_reader.dart';
 import 'package:remine/data/device/privacy/local_verdict_store.dart';
 import 'package:remine/data/device/privacy/privacy_filter.dart';
@@ -11,6 +12,9 @@ import 'package:remine/screens/consent_screen.dart';
 import 'package:remine/screens/debug_ocr_screen.dart';
 import 'package:remine/screens/detail_screen.dart' show deviceClassifiedNotice;
 import 'package:remine/screens/excluded_screen.dart';
+import 'package:remine/screens/older_range_screen.dart';
+import 'package:remine/screens/older_shots_screen.dart';
+import 'package:remine/screens/older_texts.dart';
 import 'package:remine/screens/settings_screen.dart';
 
 import 'support/fake_device.dart';
@@ -111,12 +115,103 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: SettingsScreen(settings: s)));
     await tester.pumpAndSettle();
     expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
+    final sw = tester.widget<Switch>(find.byType(Switch));
+    expect(sw.activeTrackColor, AppColors.celadonDeep, reason: '켜짐 트랙은 진한 셀라돈');
+    expect(sw.activeThumbColor, AppColors.white);
     await tester.tap(find.byType(Switch));
     await tester.pumpAndSettle();
     expect(await s.imageConsent(), isFalse);
     await tester.tap(find.byType(Switch));
     await tester.pumpAndSettle();
     expect(await s.imageConsent(), isTrue);
+  });
+
+  group('설정 > 예전 스크린샷 정리', () {
+    /// 하루 1장씩 500일 치 갤러리(최근 300장 뒤 200장).
+    final reader = FakeGalleryReader(
+      photos: [
+        for (var d = 0; d < 500; d++)
+          GalleryPhoto(
+            id: 'g$d',
+            fileName: 'Screenshot_$d.png',
+            takenAt: DateTime(2026, 11, 18).subtract(Duration(days: d)),
+            modifiedAt: d,
+          ),
+      ],
+    );
+
+    Future<void> pump(WidgetTester tester, InMemorySettingsStore s) async {
+      tester.view.physicalSize = const Size(412, 915);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: DeviceScope(
+            services: fakeServices(reader, settings: s),
+            child: SettingsScreen(settings: s),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('범위를 안 골랐으면 "분석 범위를 골라 주세요", 누르면 범위 고르기(설정 모드)', (
+      tester,
+    ) async {
+      await pump(tester, InMemorySettingsStore(false));
+      // 줄 순서: 이미지 분석 → (알림 받기: 푸시가 있을 때) → 예전 스크린샷 정리
+      expect(
+        tester.getTopLeft(find.text(OlderTexts.settingsRow)).dy,
+        greaterThan(tester.getTopLeft(find.text('이미지 분석')).dy),
+      );
+      expect(find.text(OlderTexts.pickRange), findsOneWidget);
+
+      await tester.tap(find.text(OlderTexts.settingsRow));
+      await tester.pumpAndSettle();
+      expect(find.byType(OlderRangeScreen), findsOneWidget);
+      expect(find.text(OlderTexts.confirm), findsOneWidget);
+    });
+
+    testWidgets('범위를 골랐으면 "아직 안 본 스크린샷 N장 · 하루 300장씩"(N장 굵게), 누르면 예전 스크린샷 화면', (
+      tester,
+    ) async {
+      final s = InMemorySettingsStore(false)
+        ..olderKind = OlderRangeKind.all
+        ..olderRange = olderRangeAll;
+      await pump(tester, s);
+
+      expect(
+        find.text('아직 안 본 스크린샷 200장 · 하루 300장씩', findRichText: true),
+        findsOneWidget,
+      );
+      final rich = tester.widget<RichText>(
+        find.byWidgetPredicate(
+          (w) => w is RichText && w.text.toPlainText().startsWith('아직 안 본'),
+        ),
+      );
+      final bold = <String>[];
+      rich.text.visitChildren((span) {
+        if (span is TextSpan && span.style?.fontWeight == FontWeight.w700) {
+          bold.add(span.text ?? '');
+        }
+        return true;
+      });
+      expect(bold, ['200장']);
+
+      await tester.tap(find.text(OlderTexts.settingsRow));
+      await tester.pumpAndSettle();
+      expect(find.byType(OlderShotsScreen), findsOneWidget);
+    });
+
+    testWidgets('기기 모드가 아니면(크롬) 줄이 없다', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: SettingsScreen(settings: InMemorySettingsStore(false)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text(OlderTexts.settingsRow), findsNothing);
+    });
   });
 
   testWidgets('설정 줄은 눌림 피드백(셀라돈 톤)이 있고, 줄을 눌러도 스위치가 바뀐다', (tester) async {

@@ -32,6 +32,9 @@ import 'package:remine/widgets/wordmark.dart';
 import 'package:remine/data/remote/sync_status.dart';
 import 'package:remine/screens/analysis_screen.dart';
 import 'package:remine/screens/photo_viewer_screen.dart';
+import 'package:remine/screens/older_range_screen.dart';
+import 'package:remine/screens/older_shots_screen.dart';
+import 'package:remine/screens/older_texts.dart';
 
 import 'fake_device.dart';
 import 'fake_remote.dart';
@@ -797,6 +800,89 @@ void defineLayoutMatrix({
       });
       _expectClean('휴지통 $label', errors);
     });
+
+    // 예전 스크린샷 정리: ① 범위 고르기(첫 실행·직접 고른 뒤·설정 모드) · ② 기간 시트 · ⑤ 상세(보통·몫 0·다 끝남).
+    if (size == const Size(360, 800) || size == const Size(412, 915)) {
+      testWidgets('예전 스크린샷 범위 고르기·기간 시트·상세 · $label', (tester) async {
+        final errors = await _errorsDuring(() async {
+          tester.view.physicalSize = size;
+          tester.view.devicePixelRatio = 1.0;
+          tester.platformDispatcher.textScaleFactorTestValue = scale;
+          addTearDown(tester.view.reset);
+          addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+          // 하루 2장씩 900일 치(전부 1,800장, 1년 약 730장)
+          final reader = FakeGalleryReader(
+            photos: [
+              for (var i = 0; i < 1800; i++)
+                GalleryPhoto(
+                  id: 'o$i',
+                  fileName: 'Screenshot_$i.png',
+                  takenAt: _now.subtract(Duration(hours: 12 * i)),
+                  modifiedAt: i,
+                ),
+            ],
+          );
+          Widget range({bool fromSettings = false}) => MaterialApp(
+            home: OlderRangeScreen(
+              settings: InMemorySettingsStore(),
+              reader: reader,
+              now: () => _now,
+              fromSettings: fromSettings,
+              onDone: fromSettings ? null : () {},
+            ),
+          );
+
+          await tester.pumpWidget(range());
+          await tester.pumpAndSettle();
+          expect(find.text(OlderTexts.rangeTitle), findsOneWidget);
+          await _tap(tester, find.text(OlderTexts.custom));
+          expect(find.text(OlderTexts.sheetTitle), findsOneWidget);
+          await tester.tap(find.text(OlderTexts.confirm));
+          await tester.pumpAndSettle();
+          expect(find.textContaining('직접: '), findsOneWidget);
+
+          await tester.pumpWidget(const SizedBox());
+          await tester.pumpWidget(range(fromSettings: true));
+          await tester.pumpAndSettle();
+          expect(find.text(OlderTexts.confirm), findsOneWidget);
+
+          final cursor = reader.photos[400].position.encode();
+          for (final (remaining, done) in [
+            (120, false),
+            (0, false),
+            (120, true),
+          ]) {
+            final settings = InMemorySettingsStore()
+              ..olderKind = OlderRangeKind.year
+              ..olderRange = ymd(DateTime(_now.year - 1, _now.month, _now.day))
+              ..cursor = done
+                  ? PhotoPosition(DateTime(2000), 'x').encode()
+                  : cursor
+              ..quota = (remaining: remaining, resetsAt: null);
+            await tester.pumpWidget(const SizedBox());
+            await tester.pumpWidget(
+              MaterialApp(
+                home: OlderShotsScreen(settings: settings, reader: reader),
+              ),
+            );
+            await tester.pumpAndSettle();
+            expect(
+              find.text(
+                done
+                    ? OlderTexts.allDone
+                    : remaining == 0
+                    ? OlderTexts.quotaDoneTitle
+                    : OlderTexts.quotaLabel,
+              ),
+              findsOneWidget,
+            );
+            // 맨 아래 "더 빨리 정리하기"까지 내려 그려 본다
+            await _tap(tester, find.text(OlderTexts.faster));
+          }
+        });
+        _expectClean('예전 스크린샷 화면 $label', errors);
+      });
+    }
 
     testWidgets('첫 분석 · 실제 진행(큰 숫자·예상 시간·홈 버튼) · $label', (tester) async {
       final errors = await _errorsDuring(() async {

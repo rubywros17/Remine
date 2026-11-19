@@ -61,6 +61,17 @@ class PhotoManagerGalleryReader implements GalleryReader {
   }
 
   @override
+  Future<int> count(String albumId, {DateTime? from, DateTime? before}) async {
+    final path = await _album(
+      albumId,
+      min: from,
+      // 조건은 포함이라 1ms 앞까지
+      max: before?.subtract(const Duration(milliseconds: 1)),
+    );
+    return await path?.assetCountAsync ?? 0;
+  }
+
+  @override
   Future<List<GalleryPhoto>> since(String albumId, DateTime from) async {
     final path = await _album(albumId, min: from);
     final count = await path?.assetCountAsync ?? 0;

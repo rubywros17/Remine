@@ -218,7 +218,11 @@ class SyncService {
       await _forgetOwn(deviceId, own);
       await flushTrash(); // 지난번에 못 알린 휴지통
       final waiting = <GalleryPhoto>[];
+      // 고른 범위보다 오래된 캡처는 최신 300장 안이라도 보내지 않는다(1달만 고르면 첫 분석도 그 1달 치만).
+      final range = await _range();
+      final from = range.enabled ? range.from : null;
       for (final photo in mine) {
+        if (from != null && photo.createdAt.isBefore(from)) continue;
         if (!await _upToDate(photo)) waiting.add(photo);
       }
       // SYNC_LIMIT는 실제로 보낼 후보(자기 캡처·이미 보낸 것을 뺀 나머지)의 최신 N장에 건다.
@@ -304,6 +308,28 @@ class SyncService {
     return '${e.runtimeType}: $e\n${stack.join('\n')}';
   }
 
+  /// 예전 스크린샷 범위. 고른 값이 있으면 그것, 없으면 디버그 `OLDER_RANGE`([olderRange]).
+  Future<({bool enabled, DateTime? from})> _range() async => olderRangeStart(
+    await settings.olderRangeFrom() ?? olderRangeFromDefine(olderRange, _now()),
+  );
+
+  /// 오늘 남은 예전 스크린샷 몫을 서버에서 다시 받아 저장한다(예전 스크린샷 화면에 들어올 때).
+  /// [limit]은 기기당 하루 장수(옛 서버면 0). 아직 기기 등록 전이면 null. 실패는 [ApiException].
+  Future<({int remaining, int limit, DateTime? resetsAt})?>
+  refreshOlderQuota() async {
+    final id = await state.deviceId();
+    if (id == null) return null;
+    final c = await api.config(deviceId: id);
+    final remaining = c.olderRemainingToday;
+    if (remaining == null) return null;
+    await settings.setOlderQuota(remaining, c.olderResetsAt);
+    return (
+      remaining: remaining,
+      limit: c.dailyOlderLimit,
+      resetsAt: c.olderResetsAt,
+    );
+  }
+
   /// 이미 보냈거나 기기에서 끝난 캡처인지(바뀌면 다시 판정). 실패 기록은 다시 보낸다.
   Future<bool> _upToDate(GalleryPhoto photo) async {
     final e = await state.entry(photo.id);
@@ -342,10 +368,7 @@ class SyncService {
     PhotoPosition? start,
   ) async {
     final total = Stopwatch()..start();
-    final range = olderRangeStart(
-      await settings.olderRangeFrom() ??
-          olderRangeFromDefine(olderRange, _now()),
-    );
+    final range = await _range();
     if (!range.enabled || !await settings.olderEnabled()) return;
     if (await settings.olderWifiOnly() && !await _isWifi()) {
       log?.call('[older] Wi-Fi 아님 → 건너뜀');

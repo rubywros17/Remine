@@ -6,6 +6,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:remine/core/helpers.dart';
 import 'package:remine/core/tokens.dart';
+import 'package:remine/data/device/device_services.dart';
+import 'package:remine/data/device/gallery_reader.dart';
+import 'package:remine/data/device/settings_store.dart';
 import 'package:remine/data/fake_screenshot_repository.dart';
 import 'package:remine/data/remine_store.dart';
 import 'package:remine/models/category.dart';
@@ -14,11 +17,15 @@ import 'package:remine/models/screenshot_item.dart';
 import 'package:remine/screens/analysis_screen.dart';
 import 'package:remine/screens/detail_screen.dart';
 import 'package:remine/screens/interests_screen.dart';
+import 'package:remine/screens/older_range_screen.dart';
+import 'package:remine/screens/older_shots_screen.dart';
+import 'package:remine/screens/older_texts.dart';
 import 'package:remine/screens/tag_screen.dart';
 import 'package:remine/widgets/home_widgets.dart';
 import 'package:remine/widgets/interest_brain_map.dart';
 import 'package:remine/widgets/sync_banner.dart';
 
+import 'support/fake_device.dart';
 import 'support/fake_remote.dart';
 
 final _now = DateTime(2026, 10, 26, 12);
@@ -1201,6 +1208,111 @@ void main() {
       expect(parse({}).linkedTags, isEmpty);
       expect(parse({}).forgotten, isTrue, reason: '일수로 다시 재지 않고 서버 status를 쓴다');
       expect(parse({'status': 'RECENT'}).forgotten, isFalse);
+    });
+  });
+
+  group('관심사 목록 맨 아래 "더 오래된 관심사도 찾아볼까요?"', () {
+    /// 하루 1장씩 [days]일 치 갤러리.
+    FakeGalleryReader gallery(int days) => FakeGalleryReader(
+      photos: [
+        for (var d = 0; d < days; d++)
+          GalleryPhoto(
+            id: 'g$d',
+            fileName: 'Screenshot_$d.png',
+            takenAt: _now.subtract(Duration(days: d)),
+            modifiedAt: d,
+          ),
+      ],
+    );
+
+    Future<void> openList(
+      WidgetTester tester,
+      FakeGalleryReader reader,
+      InMemorySettingsStore settings,
+    ) async {
+      tester.view.physicalSize = const Size(412, 2000); // 목록 끝까지 한 화면에
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        _scoped(
+          // 앱에서는 탭 화면(Scaffold) 안에 있다(검색창 TextField에 Material이 필요)
+          Scaffold(
+            body: DeviceScope(
+              services: fakeServices(reader, settings: settings),
+              child: const InterestsScreen(),
+            ),
+          ),
+          // 카드 하나(두 카드가 같은 캡처를 보이면 다른 화면으로 갈 때 Hero 태그가 겹친다)
+          seed: [
+            for (var i = 1; i <= 4; i++)
+              _shot(i, i, Category.shopping, ['뜨개질']),
+          ],
+        ),
+      );
+      await tester.pump();
+      await tester.tap(find.text('목록 보기'));
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('아직 안 본 예전 스크린샷이 있으면 목록 끝에 보이고, 범위를 안 골랐으면 범위 고르기로', (
+      tester,
+    ) async {
+      await openList(tester, gallery(500), InMemorySettingsStore(false));
+
+      expect(find.text(OlderTexts.moreTitle), findsOneWidget);
+      expect(
+        find.text(OlderTexts.moreBody(200)),
+        findsOneWidget,
+        reason: '최근 300장 뒤 200장',
+      );
+      // 요즘 모으는 중 섹션 뒤(목록 맨 끝)
+      expect(
+        tester.getTopLeft(find.text(OlderTexts.moreTitle)).dy,
+        greaterThan(tester.getTopLeft(find.text('요즘 모으는 중')).dy),
+      );
+
+      await tester.tap(find.text(OlderTexts.moreButton));
+      await tester.pumpAndSettle();
+      expect(find.byType(OlderRangeScreen), findsOneWidget);
+      expect(find.text(OlderTexts.confirm), findsOneWidget, reason: '설정 모드');
+    });
+
+    testWidgets('"최근 300장"을 고른 사람에게도 보이고, 범위를 골랐으면 예전 스크린샷 화면으로', (
+      tester,
+    ) async {
+      final settings = InMemorySettingsStore(false)
+        ..olderKind = OlderRangeKind.recent300
+        ..olderRange = olderRangeNone;
+      await openList(tester, gallery(500), settings);
+
+      expect(find.text(OlderTexts.moreTitle), findsOneWidget);
+      await tester.tap(find.text(OlderTexts.moreButton));
+      await tester.pumpAndSettle();
+      expect(find.byType(OlderShotsScreen), findsOneWidget);
+    });
+
+    testWidgets('남은 예전 스크린샷이 0이면 숨긴다', (tester) async {
+      await openList(tester, gallery(250), InMemorySettingsStore(false));
+      expect(find.text(OlderTexts.moreTitle), findsNothing);
+    });
+
+    testWidgets('검색 중에는 숨긴다', (tester) async {
+      await openList(tester, gallery(500), InMemorySettingsStore(false));
+      expect(find.text(OlderTexts.moreTitle), findsOneWidget);
+
+      await tester.tap(find.byTooltip('관심사 검색'));
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), '뜨개');
+      await tester.pumpAndSettle();
+      expect(find.text(OlderTexts.moreTitle), findsNothing);
+    });
+
+    testWidgets('기기 모드가 아니면(크롬 가짜 데이터) 보이지 않는다', (tester) async {
+      await tester.pumpWidget(_scoped(const InterestsScreen()));
+      await tester.pump();
+      await tester.tap(find.text('목록 보기'));
+      await tester.pumpAndSettle();
+      expect(find.text(OlderTexts.moreTitle), findsNothing);
     });
   });
 }
