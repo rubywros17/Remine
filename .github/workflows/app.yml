@@ -1,0 +1,34 @@
+# 앱 CI: analyze → test. 빌드(APK)와 비밀값은 없다(google-services.json·서명 키 없이 도는 테스트만).
+name: app
+
+on:
+  push:
+    branches: [main]
+    paths: [app/**, .github/workflows/app.yml]
+  pull_request:
+    paths: [app/**, .github/workflows/app.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04   # server 워크플로와 동일하게 고정
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.6   # 로컬과 같은 버전
+          channel: stable
+          cache: true               # SDK + pub 캐시
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test

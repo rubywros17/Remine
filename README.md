@@ -1,5 +1,7 @@
 # 📸 Remine
 
+[![server](https://github.com/rubywros17/Remine/actions/workflows/deploy.yml/badge.svg)](https://github.com/rubywros17/Remine/actions/workflows/deploy.yml) [![app](https://github.com/rubywros17/Remine/actions/workflows/app.yml/badge.svg)](https://github.com/rubywros17/Remine/actions/workflows/app.yml)
+
 > 잊은 캡처, 다시 꺼내드릴게요
 
 나중에 보려고 찍어두고 잊어버린 스크린샷을 자동으로 분류해 보여주고,
