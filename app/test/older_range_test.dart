@@ -143,9 +143,9 @@ void main() {
       await _pump(tester, settings: settings, fromSettings: true);
     }
 
-    testWidgets('오늘 56장 남음 → "오늘 56장부터", 오늘 포함 일수', (tester) async {
+    testWidgets('오늘 56장 남음 → "오늘 56장 더", 오늘 포함 일수', (tester) async {
       await pumpWith(tester, (remaining: 56, resetsAt: DateTime(2026, 11, 19)));
-      expect(find.text('오늘 56장부터'), findsNWidgets(2));
+      expect(find.text('오늘 56장 더'), findsNWidgets(2));
       expect(
         find.text(OlderTexts.days(olderDays(430, today: 56))),
         findsOneWidget,
@@ -156,7 +156,7 @@ void main() {
       );
       expect(
         find.text(
-          '하루에 300장씩 정리해요.\n나머지는 앱을 열 때마다 이어서 분석해요.',
+          '오늘은 56장 더 정리할 수 있어요.\n하루에 300장씩 정리해요.\n나머지는 앱을 열 때마다 이어서 분석해요.',
           findRichText: true,
         ),
         findsOneWidget,
@@ -172,7 +172,7 @@ void main() {
       Finder inRecent(String t) =>
           find.descendant(of: recent, matching: find.text(t));
       expect(inRecent('완료'), findsOneWidget);
-      expect(inRecent('정리했어요'), findsOneWidget);
+      expect(inRecent('분석했어요'), findsOneWidget);
       expect(inRecent(OlderTexts.todayDone), findsNothing);
       expect(inRecent(OlderTexts.minutes(4)), findsNothing);
       expect(find.text(OlderTexts.recent300Badge), findsNothing);
@@ -181,12 +181,17 @@ void main() {
     testWidgets('오늘 0장 → "내일부터", 내일부터 센 일수', (tester) async {
       await pumpWith(tester, (remaining: 0, resetsAt: DateTime(2026, 11, 19)));
       expect(find.text('내일부터'), findsNWidgets(2));
+      expect(
+        find.textContaining('더 정리할 수 있어요', findRichText: true),
+        findsNothing,
+        reason: '오늘 남은 몫이 없으면 안내 첫 줄 없음',
+      );
       expect(find.text(OlderTexts.days(olderDaysFor(430))), findsOneWidget);
     });
 
-    testWidgets('어제 저장된 0 + 초기화 시각 지남 → "오늘 300장부터"', (tester) async {
+    testWidgets('어제 저장된 0 + 초기화 시각 지남 → "오늘 300장 더"', (tester) async {
       await pumpWith(tester, (remaining: 0, resetsAt: DateTime(2026, 11, 18)));
-      expect(find.text('오늘 300장부터'), findsNWidgets(2));
+      expect(find.text('오늘 300장 더'), findsNWidgets(2));
       expect(
         find.text(OlderTexts.days(olderDays(430, today: 300))),
         findsOneWidget,

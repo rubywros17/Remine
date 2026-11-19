@@ -824,7 +824,11 @@ void defineLayoutMatrix({
           );
           Widget range({bool fromSettings = false}) => MaterialApp(
             home: OlderRangeScreen(
-              settings: InMemorySettingsStore(),
+              // 설정 진입은 오늘 남은 몫이 있어 안내 박스가 3줄인 경우까지 본다.
+              settings: InMemorySettingsStore()
+                ..quota = fromSettings
+                    ? (remaining: 300, resetsAt: null)
+                    : null,
               reader: reader,
               now: () => _now,
               fromSettings: fromSettings,

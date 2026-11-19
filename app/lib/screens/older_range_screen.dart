@@ -336,7 +336,7 @@ class _OlderRangeScreenState extends State<OlderRangeScreen> {
                                 )
                               : _CustomCard(onTap: _openCustom),
                           const SizedBox(height: AppSpacing.s16),
-                          _Note(firstRun: _firstRun),
+                          _Note(firstRun: _firstRun, todayLeft: _todayLeft),
                         ],
                       ),
                     ),
@@ -600,10 +600,13 @@ class _CustomCard extends StatelessWidget {
 }
 
 class _Note extends StatelessWidget {
-  const _Note({required this.firstRun});
+  const _Note({required this.firstRun, required this.todayLeft});
 
   /// 첫 실행이면 첫날은 첫 분석(최신 300장)이라고 알린다.
   final bool firstRun;
+
+  /// 설정에서 들어왔을 때 오늘 남은 몫. 0보다 크면 첫 줄에 알린다.
+  final int todayLeft;
 
   @override
   Widget build(BuildContext context) => DecoratedBox(
@@ -616,6 +619,8 @@ class _Note extends StatelessWidget {
       child: Text.rich(
         TextSpan(
           children: [
+            if (!firstRun && todayLeft > 0)
+              TextSpan(text: OlderTexts.noteTodayLeft(todayLeft)),
             TextSpan(
               text: firstRun
                   ? OlderTexts.firstNoteBefore

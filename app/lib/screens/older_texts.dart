@@ -17,7 +17,7 @@ abstract final class OlderTexts {
   static String minutes(int m) => '약 $m분';
   static const todayDone = '오늘 끝';
   static const recentDone = '완료';
-  static const recentDoneSub = '정리했어요';
+  static const recentDoneSub = '분석했어요';
   static const year = '최근 1년';
   static const yearBadge = '추천';
   static const all = '전부';
@@ -29,7 +29,7 @@ abstract final class OlderTexts {
       firstRun
       ? '오늘 최신 300장부터'
       : today > 0
-      ? '오늘 ${formatThousands(today)}장부터'
+      ? '오늘 ${formatThousands(today)}장 더'
       : '내일부터';
   static const custom = '기간 직접 고르기';
   static String customChosen(DateTime from, int n) =>
@@ -37,6 +37,10 @@ abstract final class OlderTexts {
   static const noteBold = '300장';
   static const noteBefore = '하루에 ';
   static const noteAfter = '씩 정리해요.\n나머지는 앱을 열 때마다 이어서 분석해요.';
+
+  /// 설정에서 들어왔고 오늘 남은 몫이 있을 때 안내 박스 첫 줄.
+  static String noteTodayLeft(int n) =>
+      '오늘은 ${formatThousands(n)}장 더 정리할 수 있어요.\n';
   static const firstNoteBefore = '오늘은 ';
   static const firstNoteBold = '최신 300장';
   static const firstNoteAfter =
