@@ -89,6 +89,97 @@ Color? _cardColor(WidgetTester tester, String key) {
 }
 
 void main() {
+  group('olderDays: 오늘 몫 + 내일부터 하루 300장', () {
+    test('예전 1000장: 오늘 0장이면 내일부터 4일, 56장이면 오늘 포함 5일, 300장이면 오늘 포함 4일', () {
+      expect(olderDays(1000, today: 0), 4);
+      expect(olderDays(1000, today: 56), 5);
+      expect(olderDays(1000, today: 300), 4);
+    });
+
+    test('0장이면 0일, 오늘 몫 안에 끝나면 1일', () {
+      expect(olderDays(0, today: 300), 0);
+      expect(olderDays(40, today: 56), 1);
+    });
+
+    test('첫 실행(범위 전체, 오늘 = 최신 300장)은 ⌈n/300⌉과 같다', () {
+      for (final n in [1, 300, 301, 730, 900, 1800]) {
+        expect(olderDays(n, today: 300), olderDaysFor(n), reason: '$n장');
+      }
+    });
+
+    test('olderTodayLeft: 저장값 없으면 0, 초기화 시각 전이면 남은 값, 지났으면 하루 한도', () {
+      expect(olderTodayLeft(null, _now), 0);
+      final tomorrow = DateTime(2026, 11, 19);
+      expect(olderTodayLeft((remaining: 56, resetsAt: tomorrow), _now), 56);
+      expect(olderTodayLeft((remaining: 0, resetsAt: null), _now), 0);
+      final today0 = DateTime(2026, 11, 18);
+      expect(
+        olderTodayLeft((remaining: 0, resetsAt: today0), _now),
+        olderDailyLimit,
+        reason: '어제 저장된 0 + 초기화 시각 지남 → 300',
+      );
+    });
+  });
+
+  testWidgets('첫 실행 안내: 오늘은 최신 300장을 먼저, 나머지는 내일부터 하루 300장씩', (tester) async {
+    await _pump(tester);
+    expect(
+      find.text(
+        '오늘은 최신 300장을 먼저 정리해요.\n나머지는 내일부터 앱을 열 때마다 하루 300장씩 이어서 분석해요.',
+        findRichText: true,
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('오늘 최신 300장부터'), findsNWidgets(2), reason: '최근 1년·전부');
+  });
+
+  group('설정에서 다시 고를 때는 최신 300장을 빼고 오늘 남은 몫으로 센다', () {
+    // 하루 2장 900일: 최근 1년 = 730장 → 예전 430장, 전부 1800장 → 예전 1500장.
+    Future<void> pumpWith(
+      WidgetTester tester,
+      ({int remaining, DateTime? resetsAt})? quota,
+    ) async {
+      final settings = InMemorySettingsStore()..quota = quota;
+      await _pump(tester, settings: settings, fromSettings: true);
+    }
+
+    testWidgets('오늘 56장 남음 → "오늘 56장부터", 오늘 포함 일수', (tester) async {
+      await pumpWith(tester, (remaining: 56, resetsAt: DateTime(2026, 11, 19)));
+      expect(find.text('오늘 56장부터'), findsNWidgets(2));
+      expect(
+        find.text(OlderTexts.days(olderDays(430, today: 56))),
+        findsOneWidget,
+      );
+      expect(
+        find.text(OlderTexts.days(olderDays(1500, today: 56))),
+        findsOneWidget,
+      );
+      expect(
+        find.text(
+          '하루에 300장씩 정리해요.\n나머지는 앱을 열 때마다 이어서 분석해요.',
+          findRichText: true,
+        ),
+        findsOneWidget,
+        reason: '설정 진입은 지금 안내 그대로',
+      );
+    });
+
+    testWidgets('오늘 0장 → "내일부터", 내일부터 센 일수', (tester) async {
+      await pumpWith(tester, (remaining: 0, resetsAt: DateTime(2026, 11, 19)));
+      expect(find.text('내일부터'), findsNWidgets(2));
+      expect(find.text(OlderTexts.days(olderDaysFor(430))), findsOneWidget);
+    });
+
+    testWidgets('어제 저장된 0 + 초기화 시각 지남 → "오늘 300장부터"', (tester) async {
+      await pumpWith(tester, (remaining: 0, resetsAt: DateTime(2026, 11, 18)));
+      expect(find.text('오늘 300장부터'), findsNWidgets(2));
+      expect(
+        find.text(OlderTexts.days(olderDays(430, today: 300))),
+        findsOneWidget,
+      );
+    });
+  });
+
   testWidgets('제목·설명·선택지 장수, 기본은 "최근 1년", 선택 카드는 차콜·나머지는 바탕색', (tester) async {
     final photos = _daily(900);
     await _pump(tester, photos: photos);
@@ -132,7 +223,7 @@ void main() {
 
     expect(
       find.bySemanticsLabel(
-        '최근 1년, ${_fmt(year)}장, 하루 300장씩 ${olderDaysFor(year)}일, 선택됨',
+        '최근 1년, ${_fmt(year)}장, 오늘 최신 300장부터 ${olderDaysFor(year)}일, 선택됨',
       ),
       findsOneWidget,
     );
@@ -187,7 +278,7 @@ void main() {
       reason: '슬라이더 화면 리더 문구',
     );
     expect(
-      find.text('2026년 2월부터 · 하루 300장씩 약 ${olderDaysFor(nine)}일'),
+      find.text('2026년 2월부터 · 오늘 포함 약 ${olderDaysFor(nine)}일'),
       findsOneWidget,
     );
     final bold = tester.widget<Text>(find.text('9달'));

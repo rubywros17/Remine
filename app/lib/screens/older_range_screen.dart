@@ -101,6 +101,11 @@ class _OlderRangeScreenState extends State<OlderRangeScreen> {
   int? _customMonths;
   bool _saving = false;
 
+  /// 설정에서 들어왔을 때 오늘 남은 예전 몫(저장된 서버 값). 첫 실행은 쓰지 않는다(첫 분석이 오늘 몫을 쓴다).
+  int _todayLeft = 0;
+
+  bool get _firstRun => !widget.fromSettings;
+
   DateTime get _now => (widget.now ?? DateTime.now)();
 
   @override
@@ -112,11 +117,39 @@ class _OlderRangeScreenState extends State<OlderRangeScreen> {
   Future<void> _load() async {
     final counts = await loadOlderRangeCounts(widget.reader, _now);
     final stored = await widget.settings.olderRangeKind();
+    final quota = await widget.settings.olderQuota();
     if (!mounted) return;
     setState(() {
       _counts = counts;
+      _todayLeft = olderTodayLeft(quota, _now);
       if (stored != null && stored != OlderRangeKind.custom) _kind = stored;
     });
+  }
+
+  /// 이 화면에서 셀 오늘 장수: 첫 실행은 첫 분석(최신 300장), 설정에서는 서버가 준 오늘 남은 몫.
+  int _today(OlderRangeCounts c) =>
+      _firstRun ? math.min(olderRecentShots, c.all) : _todayLeft;
+
+  /// 범위 [count]장을 정리하는 날(오늘 몫이 있으면 오늘 포함). 설정에서는 이미 끝난 최신 300장을 뺀다.
+  int _days(OlderRangeCounts c, int count) => olderDays(
+    _firstRun ? count : math.max(0, count - math.min(olderRecentShots, c.all)),
+    today: _today(c),
+  );
+
+  /// 선택지 오른쪽 두 줄(일수 / 언제부터). 남은 게 없으면 "오늘 끝".
+  ({String? top, String? bottom}) _trailing(OlderRangeCounts? c, int? count) {
+    if (c == null || count == null) {
+      return (
+        top: null,
+        bottom: OlderTexts.startsFrom(firstRun: _firstRun, today: 0),
+      );
+    }
+    final days = _days(c, count);
+    if (days == 0) return (top: OlderTexts.todayDone, bottom: null);
+    return (
+      top: OlderTexts.days(days),
+      bottom: OlderTexts.startsFrom(firstRun: _firstRun, today: _today(c)),
+    );
   }
 
   Future<void> _openCustom() async {
@@ -135,6 +168,8 @@ class _OlderRangeScreenState extends State<OlderRangeScreen> {
         counts: counts,
         now: _now,
         initial: _customMonths ?? 9,
+        today: _today(counts),
+        daysFor: (n) => _days(counts, n),
       ),
     );
     if (months == null || !mounted) return;
@@ -176,6 +211,9 @@ class _OlderRangeScreenState extends State<OlderRangeScreen> {
         : math.max(1, (recentShots * _secondsPerShot / 60).ceil());
     final year = c?.year;
     final custom = _customMonths == null ? null : c?.byMonths[_customMonths];
+    final yearT = _trailing(c, year);
+    final allT = _trailing(c, c?.all);
+    final customT = _trailing(c, custom);
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
@@ -259,10 +297,8 @@ class _OlderRangeScreenState extends State<OlderRangeScreen> {
                               color: AppColors.ink,
                             ),
                             sub: year == null ? null : OlderTexts.shots(year),
-                            trailingTop: year == null
-                                ? null
-                                : OlderTexts.days(olderDaysFor(year)),
-                            trailingBottom: OlderTexts.perDay,
+                            trailingTop: yearT.top,
+                            trailingBottom: yearT.bottom,
                             selected: _kind == OlderRangeKind.year,
                             onTap: () =>
                                 setState(() => _kind = OlderRangeKind.year),
@@ -272,10 +308,8 @@ class _OlderRangeScreenState extends State<OlderRangeScreen> {
                             key: const ValueKey('older-option-all'),
                             title: OlderTexts.all,
                             sub: c == null ? null : OlderTexts.shots(c.all),
-                            trailingTop: c == null
-                                ? null
-                                : OlderTexts.days(olderDaysFor(c.all)),
-                            trailingBottom: OlderTexts.perDay,
+                            trailingTop: allT.top,
+                            trailingBottom: allT.bottom,
                             selected: _kind == OlderRangeKind.all,
                             onTap: () =>
                                 setState(() => _kind = OlderRangeKind.all),
@@ -288,16 +322,14 @@ class _OlderRangeScreenState extends State<OlderRangeScreen> {
                                     monthsAgo(_now, _customMonths!),
                                     custom,
                                   ),
-                                  trailingTop: OlderTexts.days(
-                                    olderDaysFor(custom),
-                                  ),
-                                  trailingBottom: OlderTexts.perDay,
+                                  trailingTop: customT.top,
+                                  trailingBottom: customT.bottom,
                                   selected: true,
                                   onTap: _openCustom,
                                 )
                               : _CustomCard(onTap: _openCustom),
                           const SizedBox(height: AppSpacing.s16),
-                          const _Note(),
+                          _Note(firstRun: _firstRun),
                         ],
                       ),
                     ),
@@ -561,7 +593,10 @@ class _CustomCard extends StatelessWidget {
 }
 
 class _Note extends StatelessWidget {
-  const _Note();
+  const _Note({required this.firstRun});
+
+  /// 첫 실행이면 첫날은 첫 분석(최신 300장)이라고 알린다.
+  final bool firstRun;
 
   @override
   Widget build(BuildContext context) => DecoratedBox(
@@ -572,14 +607,20 @@ class _Note extends StatelessWidget {
     child: Padding(
       padding: const EdgeInsets.all(AppSpacing.s16),
       child: Text.rich(
-        const TextSpan(
+        TextSpan(
           children: [
-            TextSpan(text: OlderTexts.noteBefore),
             TextSpan(
-              text: OlderTexts.noteBold,
-              style: TextStyle(fontWeight: FontWeight.w700),
+              text: firstRun
+                  ? OlderTexts.firstNoteBefore
+                  : OlderTexts.noteBefore,
             ),
-            TextSpan(text: OlderTexts.noteAfter),
+            TextSpan(
+              text: firstRun ? OlderTexts.firstNoteBold : OlderTexts.noteBold,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            TextSpan(
+              text: firstRun ? OlderTexts.firstNoteAfter : OlderTexts.noteAfter,
+            ),
           ],
         ),
         style: AppText.caption.copyWith(color: AppColors.ink, height: 1.5),
@@ -595,10 +636,18 @@ class OlderCustomRangeSheet extends StatefulWidget {
     required this.counts,
     required this.now,
     this.initial = 9,
+    required this.today,
+    required this.daysFor,
   });
 
   final OlderRangeCounts counts;
   final DateTime now;
+
+  /// 오늘 셀 장수(0이면 "내일부터"). 범위 화면과 같은 값.
+  final int today;
+
+  /// 장수 → 걸리는 날. 범위 화면과 같은 계산.
+  final int Function(int count) daysFor;
 
   /// 처음 놓을 눈금(달 수). 없으면 9달.
   final int initial;
@@ -665,7 +714,8 @@ class _OlderCustomRangeSheetState extends State<OlderCustomRangeSheet> {
             Text(
               OlderTexts.sheetFrom(
                 months == null ? null : monthsAgo(widget.now, months),
-                _count,
+                widget.daysFor(_count),
+                today: widget.today,
               ),
               textAlign: TextAlign.center,
               style: AppText.caption,

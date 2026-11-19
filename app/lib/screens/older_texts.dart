@@ -21,21 +21,33 @@ abstract final class OlderTexts {
   static const all = '전부';
   static String shots(int n) => '${formatThousands(n)}장';
   static String days(int d) => '$d일';
-  static const perDay = '하루 300장씩';
+
+  /// 일수 아래 줄: 언제부터 세는지. 첫 실행은 첫 분석(최신 300장)이 오늘 몫을 쓴다.
+  static String startsFrom({required bool firstRun, required int today}) =>
+      firstRun
+      ? '오늘 최신 300장부터'
+      : today > 0
+      ? '오늘 ${formatThousands(today)}장부터'
+      : '내일부터';
   static const custom = '기간 직접 고르기';
   static String customChosen(DateTime from, int n) =>
       '직접: ${formatYearMonth(from)}부터 · ${formatThousands(n)}장';
   static const noteBold = '300장';
   static const noteBefore = '하루에 ';
   static const noteAfter = '씩 정리해요.\n나머지는 앱을 열 때마다 이어서 분석해요.';
+  static const firstNoteBefore = '오늘은 ';
+  static const firstNoteBold = '최신 300장';
+  static const firstNoteAfter =
+      '을 먼저 정리해요.\n나머지는 내일부터 앱을 열 때마다 하루 300장씩 이어서 분석해요.';
   static const start = '정리 시작';
   static const confirm = '이 범위로 정하기';
 
   // ② 기간 직접 고르기
   static const sheetTitle = '얼마나 거슬러 올라갈까요?';
   static const shotUnit = '장';
-  static String sheetFrom(DateTime? from, int n) =>
-      '${from == null ? '처음' : formatYearMonth(from)}부터 · 하루 300장씩 약 ${olderDaysFor(n)}일';
+  static String sheetFrom(DateTime? from, int days, {required int today}) =>
+      '${from == null ? '처음' : formatYearMonth(from)}부터 · '
+      '${today > 0 ? '오늘 포함' : '내일부터'} 약 $days일';
   static String tick(int? months) => switch (months) {
     null => '전부',
     12 => '1년',

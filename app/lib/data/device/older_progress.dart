@@ -12,6 +12,24 @@ const olderRecentShots = 300;
 /// [n]장을 하루 [olderDailyLimit]장씩 정리하면 걸리는 날(올림, 0장이면 0).
 int olderDaysFor(int n) => (n + olderDailyLimit - 1) ~/ olderDailyLimit;
 
+/// [n]장을 오늘 [today]장, 내일부터 하루 [olderDailyLimit]장씩 정리할 때 걸리는 날.
+/// [today]가 0보다 크면 오늘도 하루로 센다. 서버는 첫 분석(최신 300장)도 예전 몫으로 세므로,
+/// 첫 실행은 범위 전체를 today = 최신 300장으로 세면 ⌈n/300⌉(오늘 = 첫 분석)과 같다.
+int olderDays(int n, {required int today}) {
+  if (n <= 0) return 0;
+  if (today <= 0) return olderDaysFor(n);
+  return 1 + olderDaysFor(math.max(0, n - today));
+}
+
+/// 저장된 서버 몫([SettingsStore.olderQuota])으로 본 오늘 남은 예전 장수.
+/// 없으면 0(내일부터로 안내), 초기화 시각이 지났으면 하루 한도가 다시 찬 것으로 본다.
+int olderTodayLeft(({int remaining, DateTime? resetsAt})? quota, DateTime now) {
+  if (quota == null) return 0;
+  final resetsAt = quota.resetsAt;
+  if (resetsAt != null && !resetsAt.isAfter(now)) return olderDailyLimit;
+  return math.max(0, quota.remaining);
+}
+
 /// [now]에서 [months]달 전 같은 날.
 DateTime monthsAgo(DateTime now, int months) =>
     DateTime(now.year, now.month - months, now.day);
