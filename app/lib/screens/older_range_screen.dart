@@ -270,18 +270,25 @@ class _OlderRangeScreenState extends State<OlderRangeScreen> {
                           OlderRangeOption(
                             key: const ValueKey('older-option-recent'),
                             title: OlderTexts.recent300,
-                            badge: const _Badge(
-                              OlderTexts.recent300Badge,
-                              background: AppColors.celadonSoft,
-                              color: AppColors.celadonDeep,
-                            ),
+                            // 설정에서 들어오면 첫 분석(최신 300장)은 이미 끝났다 → "완료 / 정리했어요", "오늘 바로" 배지 없음.
+                            badge: _firstRun
+                                ? const _Badge(
+                                    OlderTexts.recent300Badge,
+                                    background: AppColors.celadonSoft,
+                                    color: AppColors.celadonDeep,
+                                  )
+                                : null,
                             sub: c == null
                                 ? null
                                 : OlderTexts.recentMonths(c.recentMonths),
-                            trailingTop: minutes == null
+                            trailingTop: !_firstRun
+                                ? OlderTexts.recentDone
+                                : minutes == null
                                 ? null
                                 : OlderTexts.minutes(minutes),
-                            trailingBottom: OlderTexts.todayDone,
+                            trailingBottom: _firstRun
+                                ? OlderTexts.todayDone
+                                : OlderTexts.recentDoneSub,
                             selected: _kind == OlderRangeKind.recent300,
                             onTap: () => setState(
                               () => _kind = OlderRangeKind.recent300,

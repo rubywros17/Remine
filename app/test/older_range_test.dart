@@ -164,6 +164,20 @@ void main() {
       );
     });
 
+    testWidgets('"최근 300장" 카드는 이미 끝났으니 "완료 / 정리했어요", "오늘 바로" 배지 없음', (
+      tester,
+    ) async {
+      await pumpWith(tester, null);
+      final recent = find.byKey(const ValueKey('older-option-recent'));
+      Finder inRecent(String t) =>
+          find.descendant(of: recent, matching: find.text(t));
+      expect(inRecent('완료'), findsOneWidget);
+      expect(inRecent('정리했어요'), findsOneWidget);
+      expect(inRecent(OlderTexts.todayDone), findsNothing);
+      expect(inRecent(OlderTexts.minutes(4)), findsNothing);
+      expect(find.text(OlderTexts.recent300Badge), findsNothing);
+    });
+
     testWidgets('오늘 0장 → "내일부터", 내일부터 센 일수', (tester) async {
       await pumpWith(tester, (remaining: 0, resetsAt: DateTime(2026, 11, 19)));
       expect(find.text('내일부터'), findsNWidgets(2));

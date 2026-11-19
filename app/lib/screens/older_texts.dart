@@ -16,6 +16,8 @@ abstract final class OlderTexts {
   static String recentMonths(int m) => '약 $m달 치';
   static String minutes(int m) => '약 $m분';
   static const todayDone = '오늘 끝';
+  static const recentDone = '완료';
+  static const recentDoneSub = '정리했어요';
   static const year = '최근 1년';
   static const yearBadge = '추천';
   static const all = '전부';
