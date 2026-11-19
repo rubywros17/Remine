@@ -16,6 +16,7 @@ import 'screens/analysis_screen.dart';
 import 'screens/tag_screen.dart';
 import 'screens/consent_screen.dart';
 import 'screens/notification_screen.dart';
+import 'screens/older_range_screen.dart';
 import 'screens/permission_gate.dart';
 import 'screens/shell_screen.dart';
 import 'screens/sync_gate.dart';
@@ -162,9 +163,14 @@ class _RemineAppState extends State<RemineApp> {
                       : NotificationGate(
                           remote: device.remote!,
                           settings: device.settings,
-                          child: SyncGate(
+                          child: RangeGate(
                             remote: device.remote!,
-                            child: const ShellScreen(),
+                            settings: device.settings,
+                            reader: device.reader,
+                            child: SyncGate(
+                              remote: device.remote!,
+                              child: const ShellScreen(),
+                            ),
                           ),
                         ),
                 ),

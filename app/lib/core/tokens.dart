@@ -441,6 +441,35 @@ abstract final class AppTidy {
   static const double peekFallbackAspect = 9 / 19.5;
 }
 
+/// 예전 스크린샷 정리(범위 고르기·기간 시트·예전 스크린샷 화면·관심사 점선 칸). 디자인 캔버스 "예전 스크린샷 정리 · 최종 흐름".
+abstract final class AppOlder {
+  /// 아래 안내 박스 바탕("하루에 300장씩 정리해요.").
+  static const noteBackground = Color(0xFFF1F1EE);
+
+  /// 오늘 몫 카드 바탕(연한 레몬, 테두리 없음).
+  static const quotaBackground = Color(0xFFF4F1D6);
+
+  /// 기간 슬라이더: 채움(진한 레몬)·바탕 트랙(연회색)·손잡이 테두리.
+  static const sliderFill = Color(0xFFD9CB6A);
+  static const sliderTrack = AppColors.border;
+  static const sliderThumbBorder = AppColors.ink;
+  static const double sliderTrackHeight = 6;
+  static const double sliderThumbRadius = 11;
+  static const double sliderThumbStroke = 2;
+
+  /// 선택된 카드(차콜) 위 보조 글자: 흰색 70%.
+  static const onSelectedSub = Color(0xB3FFFFFF);
+
+  /// 선택지 카드·안내 박스 모서리, 라디오 지름.
+  static const double optionRadius = 20;
+  static const double noteRadius = 16;
+  static const double radio = 22;
+  static const double radioDot = 10;
+
+  /// 진행 막대 높이.
+  static const double barHeight = 8;
+}
+
 abstract final class AppRadii {
   static const double card = 28;
   static const double sheet = 30;
