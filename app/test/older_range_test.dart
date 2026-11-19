@@ -313,6 +313,52 @@ void main() {
     });
   });
 
+  group('범위를 안 골랐거나 "최근 300장"이면 범위 규칙 없이 최신 300장을 다 보낸다', () {
+    // 3일에 1장씩 310장(약 2년 반 치): 1년 범위였다면 1년보다 오래된 장이 빠졌을 것
+    final photos = [
+      for (var i = 0; i < 310; i++)
+        GalleryPhoto(
+          id: 'p$i',
+          fileName: 'Screenshot_$i.png',
+          takenAt: DateTime(2026, 10, 21, 12).subtract(Duration(days: 3 * i)),
+          modifiedAt: 1000 + i,
+        ),
+    ];
+
+    Future<void> expectRecent300(SyncRig rig) async {
+      await rig.sync.run();
+      final sent = [
+        for (final r in rig.client.analyzeCalls)
+          ...RegExp(r'"localAssetId":"([^"]+)"')
+              .allMatches(r.utf8Text)
+              .map((m) => m.group(1)!),
+      ];
+      expect(rig.status.total, 300);
+      expect(sent, hasLength(300));
+      expect(sent, contains('p299'), reason: '약 2년 반 전 캡처도 보낸다');
+      expect(sent, isNot(contains('p300')), reason: '최신 300장까지만');
+    }
+
+    Future<SyncRig> rig() => SyncRig.create(
+      photos: photos,
+      texts: {for (final p in photos) p.id: '글자 ${p.id}'},
+      consent: false,
+    );
+
+    test('아직 안 고름(null)', () async {
+      final r = await rig();
+      expect(r.settings.olderRange, isNull);
+      await expectRecent300(r);
+    });
+
+    test('최근 300장(none)', () async {
+      final r = await rig();
+      await r.settings.setOlderRange(OlderRangeKind.recent300);
+      expect(r.settings.olderRange, olderRangeNone);
+      await expectRecent300(r);
+    });
+  });
+
   test('고른 범위보다 오래된 캡처는 첫 분석에서도 보내지 않는다(총 장수 = min(300, 범위 장수))', () async {
     final photos = [
       for (var i = 0; i < 40; i++)
