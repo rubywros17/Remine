@@ -3,6 +3,8 @@ import 'package:lucide_icons_flutter/lucide_icons.dart';
 
 import '../core/helpers.dart';
 import '../core/tokens.dart';
+import '../data/device/device_services.dart';
+import '../data/device/older_progress.dart';
 import '../data/remine_store.dart';
 import '../models/interest.dart';
 import '../widgets/home_widgets.dart';
@@ -10,6 +12,9 @@ import '../widgets/interest_brain_map.dart';
 import '../widgets/pressable_scale.dart';
 import '../widgets/reveal_section.dart';
 import '../widgets/small_widgets.dart';
+import 'older_range_screen.dart';
+import 'older_shots_screen.dart';
+import 'older_texts.dart';
 import 'tag_screen.dart';
 
 /// 관심사 탭: 반복해서 캡처한 관심사 카드 목록을 "잊고 있었던 관심사"(레몬)와 "요즘 모으는 중"(셀라돈) 두 섹션으로.
@@ -124,6 +129,9 @@ class _InterestsScreenState extends State<InterestsScreen> {
   List<Interest>? _interests;
   int _loadSeq = 0;
 
+  /// 예전 스크린샷 현황(기기 모드만). 목록 맨 아래 점선 칸("더 오래된 관심사도…")에 쓴다.
+  OlderOverview? _older;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -131,7 +139,38 @@ class _InterestsScreenState extends State<InterestsScreen> {
     if (_seenRevision != store.revision) {
       _seenRevision = store.revision;
       _load(store);
+      _loadOlder(); // 동기화가 끝나 목록이 바뀔 때 남은 장수도 다시
     }
+  }
+
+  Future<void> _loadOlder() async {
+    final device = DeviceScope.maybeOf(context);
+    if (device == null) return;
+    final o = await loadOlderOverview(device.reader, device.settings);
+    if (mounted) setState(() => _older = o);
+  }
+
+  /// 범위를 골랐으면 예전 스크린샷 화면, 아니면 범위 고르기(설정 모드).
+  Future<void> _openOlder() async {
+    final device = DeviceScope.maybeOf(context);
+    if (device == null) return;
+    await Navigator.of(context).push<void>(
+      appRoute(
+        context,
+        (_) => _older?.chosen == true
+            ? OlderShotsScreen(
+                settings: device.settings,
+                reader: device.reader,
+                remote: device.remote,
+              )
+            : OlderRangeScreen(
+                settings: device.settings,
+                reader: device.reader,
+                fromSettings: true,
+              ),
+      ),
+    );
+    _loadOlder();
   }
 
   Future<void> _load(RemineStore store) async {
@@ -312,6 +351,11 @@ class _InterestsScreenState extends State<InterestsScreen> {
                       header: _recentHeader,
                     ),
                   ],
+                ],
+                // 목록 끝: 아직 안 본 예전 스크린샷이 있으면(검색 중 아님) 범위를 넓히는 입구.
+                if (!filtering && (_older?.unseen ?? 0) > 0) ...[
+                  const SizedBox(height: AppSpacing.s8),
+                  _OlderMore(count: _older!.unseen, onTap: _openOlder),
                 ],
               ],
             ],
@@ -584,6 +628,63 @@ class _NoMatch extends StatelessWidget {
       "'$query'와 맞는 관심사가 없어요",
       style: AppText.body,
       textAlign: TextAlign.center,
+    ),
+  );
+}
+
+/// 목록 맨 아래 점선 칸: 예전 스크린샷까지 보면 더 오래된 관심사를 찾을 수 있다.
+class _OlderMore extends StatelessWidget {
+  const _OlderMore({required this.count, required this.onTap});
+
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: AppSpacing.s12),
+    child: CustomPaint(
+      key: const ValueKey('older-more'),
+      painter: const DashedBorderPainter(radius: AppRadii.card),
+      child: Padding(
+        padding: const EdgeInsets.all(AppSpacing.s20),
+        child: Column(
+          children: [
+            Text(
+              OlderTexts.moreTitle,
+              style: AppText.body.copyWith(fontWeight: FontWeight.w700),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppSpacing.s4),
+            Text(
+              OlderTexts.moreBody(count),
+              style: AppText.caption.copyWith(color: AppColors.inkSub),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: AppSpacing.s12),
+            PressableScale(
+              onTap: onTap,
+              label: OlderTexts.moreButton,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: AppColors.ink,
+                  borderRadius: BorderRadius.circular(AppRadii.pill),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.s16,
+                    vertical: 10,
+                  ),
+                  child: Text(
+                    OlderTexts.moreButton,
+                    textAlign: TextAlign.center,
+                    style: AppText.label.copyWith(color: AppColors.white),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     ),
   );
 }
