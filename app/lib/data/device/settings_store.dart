@@ -29,11 +29,17 @@ abstract interface class SettingsStore {
   /// [디버그] 첫 실행 선택(이미지 동의·알림)만 지워 첫 실행 안내를 다시 보게 한다. 분석·전송 기록은 그대로다.
   Future<void> clearFirstRunChoices();
 
-  /// 예전 스크린샷(최신 300장보다 오래된 것) 분석 범위: `all`(전부) 또는 시작 날짜 `yyyy-MM-dd`([olderRangeStart]).
-  /// 아직 고르지 않았으면 null이고, 그동안은 예전 스크린샷을 읽지 않는다.
+  /// 예전 스크린샷(최신 300장보다 오래된 것) 분석 범위: `none`(최근 300장만 — 예전 정리 안 함), `all`(전부),
+  /// 또는 시작 날짜 `yyyy-MM-dd`([olderRangeStart]). 아직 고르지 않았으면 null이고, 그동안은 예전 스크린샷을 읽지 않는다.
   Future<String?> olderRangeFrom();
 
   Future<void> setOlderRangeFrom(String value);
+
+  /// 고른 범위의 종류(화면에 보일 이름용). [setOlderRange]로 범위 값과 같이 저장한다. 고르지 않았으면 null.
+  Future<OlderRangeKind?> olderRangeKind();
+
+  /// 범위 고르기 화면에서 고른 범위를 저장한다. [from]은 [OlderRangeKind.year]·[OlderRangeKind.custom]의 시작 날짜.
+  Future<void> setOlderRange(OlderRangeKind kind, {DateTime? from});
 
   /// 예전 스크린샷을 어디까지 봤는지([PhotoPosition.encode]). 처음이면 null(맨 앞부터).
   Future<String?> olderCursor();
@@ -62,15 +68,50 @@ abstract interface class SettingsStore {
   Future<void> setOlderQuota(int remaining, DateTime? resetsAt);
 }
 
-/// [SettingsStore.olderRangeFrom] 값을 해석한다: 꺼짐(null) / 전부(from null) / 그 날짜부터.
+/// [SettingsStore.olderRangeFrom] 값을 해석한다: 꺼짐(null·`none`) / 전부(from null) / 그 날짜부터.
 ({bool enabled, DateTime? from}) olderRangeStart(String? value) {
-  if (value == null || value.isEmpty) return (enabled: false, from: null);
+  if (value == null || value.isEmpty || value == olderRangeNone) {
+    return (enabled: false, from: null);
+  }
   if (value == olderRangeAll) return (enabled: true, from: null);
   final d = DateTime.tryParse(value);
   return d == null ? (enabled: false, from: null) : (enabled: true, from: d);
 }
 
 const olderRangeAll = 'all';
+
+/// "최근 300장"을 골랐다: 예전 스크린샷은 정리하지 않는다(고르지 않은 null과 달리 범위 고르기 화면을 다시 띄우지 않는다).
+const olderRangeNone = 'none';
+
+/// 범위 고르기 화면의 선택지.
+enum OlderRangeKind {
+  recent300('recent'),
+  year('year'),
+  all('all'),
+  custom('custom');
+
+  const OlderRangeKind(this.code);
+  final String code;
+
+  static OlderRangeKind? parse(String? code) {
+    for (final k in values) {
+      if (k.code == code) return k;
+    }
+    return null;
+  }
+
+  /// 저장할 [SettingsStore.olderRangeFrom] 값.
+  String rangeValue(DateTime? from) => switch (this) {
+    recent300 => olderRangeNone,
+    all => olderRangeAll,
+    year || custom => ymd(from!),
+  };
+}
+
+/// `yyyy-MM-dd`.
+String ymd(DateTime d) =>
+    '${d.year.toString().padLeft(4, '0')}-'
+    '${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
 /// [디버그] `--dart-define=OLDER_RANGE=1y`(또는 `6m`·`30d`·`all`)을 [now] 기준 범위 값으로 바꾼다. 틀린 값이면 null.
 String? olderRangeFromDefine(String define, DateTime now) {
@@ -83,8 +124,7 @@ String? olderRangeFromDefine(String define, DateTime now) {
     'm' => DateTime(now.year, now.month - n, now.day),
     _ => DateTime(now.year - n, now.month, now.day),
   };
-  return '${from.year.toString().padLeft(4, '0')}-'
-      '${from.month.toString().padLeft(2, '0')}-${from.day.toString().padLeft(2, '0')}';
+  return ymd(from);
 }
 
 const _imageConsentKey = 'image_consent';
@@ -92,6 +132,7 @@ const _notificationsKey = 'notifications_enabled';
 const _ownCaptureLogKey = 'own_capture_log';
 const _swipeTutorialKey = 'swipe_tutorial_seen';
 const _olderRangeKey = 'older_range_from';
+const _olderRangeKindKey = 'older_range_kind';
 const _olderCursorKey = 'older_cursor';
 const _olderEnabledKey = 'older_enabled';
 const _olderWifiKey = 'older_wifi_only';
@@ -148,6 +189,16 @@ class SqfliteSettingsStore implements SettingsStore {
 
   @override
   Future<void> setOlderRangeFrom(String value) => _put(_olderRangeKey, value);
+
+  @override
+  Future<OlderRangeKind?> olderRangeKind() async =>
+      OlderRangeKind.parse(await _get(_olderRangeKindKey));
+
+  @override
+  Future<void> setOlderRange(OlderRangeKind kind, {DateTime? from}) async {
+    await _put(_olderRangeKey, kind.rangeValue(from));
+    await _put(_olderRangeKindKey, kind.code);
+  }
 
   @override
   Future<String?> olderCursor() => _get(_olderCursorKey);
@@ -274,6 +325,17 @@ class InMemorySettingsStore implements SettingsStore {
 
   @override
   Future<void> setOlderRangeFrom(String value) async => olderRange = value;
+
+  OlderRangeKind? olderKind;
+
+  @override
+  Future<OlderRangeKind?> olderRangeKind() async => olderKind;
+
+  @override
+  Future<void> setOlderRange(OlderRangeKind kind, {DateTime? from}) async {
+    olderRange = kind.rangeValue(from);
+    olderKind = kind;
+  }
 
   @override
   Future<String?> olderCursor() async => cursor;

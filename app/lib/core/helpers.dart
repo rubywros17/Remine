@@ -254,3 +254,17 @@ String withRo(String word) {
   final c = _finalConsonant(word);
   return '$word${c != 0 && c != 8 ? '으로' : '로'}';
 }
+
+/// 천 단위 쉼표(1240 → "1,240").
+String formatThousands(int n) {
+  final s = n.abs().toString();
+  final out = StringBuffer(n < 0 ? '-' : '');
+  for (var i = 0; i < s.length; i++) {
+    if (i > 0 && (s.length - i) % 3 == 0) out.write(',');
+    out.write(s[i]);
+  }
+  return out.toString();
+}
+
+/// "2026년 2월".
+String formatYearMonth(DateTime d) => '${d.year}년 ${d.month}월';

@@ -87,6 +87,13 @@ class FakeGalleryReader implements GalleryReader {
     return photos.take(limit).toList();
   }
 
+  @override
+  Future<int> count(String albumId, {DateTime? from, DateTime? before}) async =>
+      photos
+          .where((p) => from == null || !p.createdAt.isBefore(from))
+          .where((p) => before == null || p.createdAt.isBefore(before))
+          .length;
+
   /// [since]로 물어본 시작 시각.
   final List<DateTime> sinceAsked = [];
 

@@ -192,6 +192,9 @@ abstract interface class GalleryReader {
   /// 최신순 최대 [limit]장.
   Future<List<GalleryPhoto>> recent(String albumId, {int limit = 300});
 
+  /// 앨범 장수. [from](포함) 이후·[before](제외) 이전에 생긴 것만 셀 수 있다(범위 고르기·진행률). 사진을 읽지 않아 빠르다.
+  Future<int> count(String albumId, {DateTime? from, DateTime? before});
+
   /// [from] 이후(포함)에 생긴 사진 전부, 최신순. 기기 등록 뒤의 새 스크린샷을 개수 제한 없이 읽는다.
   Future<List<GalleryPhoto>> since(String albumId, DateTime from);
 
