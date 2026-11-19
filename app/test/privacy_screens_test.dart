@@ -116,7 +116,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
     final sw = tester.widget<Switch>(find.byType(Switch));
-    expect(sw.activeTrackColor, AppColors.celadon, reason: '켜짐 트랙은 셀라돈');
+    expect(sw.activeTrackColor, AppColors.celadonDeep, reason: '켜짐 트랙은 진한 셀라돈');
     expect(sw.activeThumbColor, AppColors.white);
     await tester.tap(find.byType(Switch));
     await tester.pumpAndSettle();

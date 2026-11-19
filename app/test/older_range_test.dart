@@ -214,12 +214,16 @@ void main() {
     handle.dispose();
   });
 
-  testWidgets('슬라이더 채움은 밝은 레몬(#EBD75A), 바탕 트랙은 연회색', (tester) async {
+  testWidgets('슬라이더 채움은 레몬(모두 정리했어요 카드 바탕과 같은 색), 바탕 트랙은 연회색', (tester) async {
     await _pump(tester);
     await tester.tap(find.text(OlderTexts.custom));
     await tester.pumpAndSettle();
     final theme = SliderTheme.of(tester.element(find.byType(Slider)));
-    expect(theme.activeTrackColor, const Color(0xFFEBD75A));
+    expect(
+      theme.activeTrackColor,
+      AppColors.lemon,
+      reason: '모두 정리했어요 카드와 같은 레몬',
+    );
     expect(theme.inactiveTrackColor, AppColors.border);
   });
 

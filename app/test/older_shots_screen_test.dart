@@ -117,14 +117,14 @@ void main() {
     );
   });
 
-  testWidgets('스위치 켜짐은 셀라돈 트랙 + 흰 손잡이', (tester) async {
+  testWidgets('스위치 켜짐은 진한 셀라돈 트랙 + 흰 손잡이', (tester) async {
     await _pump(tester, _settings());
     final on = tester
         .widgetList<Switch>(find.byType(Switch))
         .where((w) => w.value);
     expect(on, isNotEmpty);
     for (final w in on) {
-      expect(w.activeTrackColor, AppColors.celadon);
+      expect(w.activeTrackColor, AppColors.celadonDeep);
       expect(w.activeThumbColor, AppColors.white);
     }
   });

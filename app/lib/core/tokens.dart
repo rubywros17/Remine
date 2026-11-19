@@ -45,8 +45,8 @@ abstract final class AppColors {
   static const pressHighlight = Color(0x1F7DC4CE);
   static const pressSplash = Color(0x3D7DC4CE);
 
-  /// 설정 스위치 켜짐: 셀라돈 트랙 + 흰 손잡이(꺼짐은 기본 모양).
-  static const switchOnTrack = celadon;
+  /// 설정 스위치 켜짐: 진한 셀라돈 트랙 + 흰 손잡이(꺼짐은 기본 모양).
+  static const switchOnTrack = celadonDeep;
   static const switchOnThumb = white;
 }
 
@@ -456,8 +456,8 @@ abstract final class AppOlder {
   /// 오늘 몫 카드 바탕(연한 레몬, 테두리 없음).
   static const quotaBackground = Color(0xFFF4F1D6);
 
-  /// 기간 슬라이더: 채움(진하지만 밝은 레몬)·바탕 트랙(연회색)·손잡이 테두리.
-  static const sliderFill = Color(0xFFEBD75A);
+  /// 기간 슬라이더: 채움(레몬, "모두 정리했어요" 카드와 같은 색)·바탕 트랙(연회색)·손잡이 테두리.
+  static const sliderFill = AppColors.lemon;
   static const sliderTrack = AppColors.border;
   static const sliderThumbBorder = AppColors.ink;
   static const double sliderTrackHeight = 6;
