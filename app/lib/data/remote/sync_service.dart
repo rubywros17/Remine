@@ -558,9 +558,12 @@ class SyncService {
     }
     await capture.verdicts.removeAll(cleared);
     await settings.setOwnRuleVersion(OwnCaptureRule.version);
-    log?.call(
-      '[sync] 자기 캡처 규칙 v$applied → v${OwnCaptureRule.version}: 다시 판정 ${cleared.length}장',
-    );
+    // 다시 판정할 장이 있을 때만 남긴다(버전 숫자·장수뿐, 캡처 id·시각은 없다).
+    if (cleared.isNotEmpty) {
+      log?.call(
+        '[sync] 자기 캡처 규칙 v$applied → v${OwnCaptureRule.version}: 다시 판정 ${cleared.length}장',
+      );
+    }
   }
 
   /// 자기 캡처를 기기 판정에 "숨김 + APP_OWN"으로 남긴다 → "분석 제외"에서 보고 휴지통으로 보낼 수 있다.

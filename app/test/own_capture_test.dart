@@ -388,11 +388,13 @@ void main() {
           onServer: false,
         ),
       );
+      final lines = <String>[];
       final rig = await SyncRig.create(
         photos: [book, mine, binned],
         texts: {'book': '책 소개 ' * 30, 'mine': '우리 앱', 'binned': '책 ' * 30},
         foreground: await opened(),
         trash: trash,
+        log: lines.add,
       );
       for (final p in [book, mine, binned]) {
         await saveOwn(rig, p);
@@ -402,6 +404,9 @@ void main() {
       await rig.sync.run();
 
       expect(rig.settings.ownRule, OwnCaptureRule.version);
+      // 로그는 버전·장수만(book·mine 2장, 휴지통 binned 제외). 캡처 id·시각은 없다.
+      final ruleLines = lines.where((l) => l.contains('자기 캡처 규칙'));
+      expect(ruleLines, ['[sync] 자기 캡처 규칙 v1 → v2: 다시 판정 2장']);
       final sent = rig.client.analyzeCalls.map((r) => r.utf8Text).join();
       expect(sent, contains('"book"'), reason: '자기 캡처가 아니게 됐으니 평소처럼 분석');
       expect(
@@ -438,16 +443,27 @@ void main() {
           ),
       ];
       final old = _nameless('old', _t0.subtract(const Duration(seconds: 3)));
+      final lines = <String>[];
       final rig = await SyncRig.create(
         photos: [...recent, old],
         texts: {for (final p in recent) p.id: '글자 ' * 60},
         foreground: await opened(),
+        log: lines.add,
       );
       await saveOwn(rig, old);
 
       await rig.sync.run();
 
-      expect(rig.settings.ownRule, OwnCaptureRule.version);
+      expect(
+        rig.settings.ownRule,
+        OwnCaptureRule.version,
+        reason: '0장이어도 버전은 저장',
+      );
+      expect(
+        lines.where((l) => l.contains('자기 캡처 규칙')),
+        isEmpty,
+        reason: '다시 판정 0장이면 로그를 남기지 않는다',
+      );
       expect((await rig.capture.verdicts.find('old'))?.reasons, [
         ReasonCode.appOwn,
       ], reason: '다시 읽지 않는 곳이라 지우면 분석 제외에서 사라진다');
