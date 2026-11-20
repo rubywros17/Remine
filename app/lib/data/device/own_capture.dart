@@ -9,7 +9,8 @@ import 'settings_store.dart';
 ///
 /// - 파일명 앱 이름이 `Remine`이면 바로 자기 캡처([isOwnAppCapture]).
 /// - 앱 이름이 없는 스크린샷만 시각을 본다. 다른 앱 이름이 붙은 캡처는 시각과 상관없이 자기 캡처가 아니다.
-/// - 구간 앞뒤 [margin] 여유: 파일명 시각은 초 단위이고, 앱이 뒤로 가는 순간과 저장 시각이 조금 어긋난다.
+/// - 구간 앞 [marginBefore](1초)·뒤 [marginAfter](5초) 여유: 파일명 시각은 초 단위이고, 앱이 뒤로 가는 순간과
+///   저장 시각이 조금 어긋난다. 앞은 "캡처하고 바로 Remine 열기"를 자기 캡처로 오판하지 않게 짧게 둔다.
 /// - [backfill]: 이 규칙이 생기기 전(설치 ~ 이번 업데이트)의 이름 없는 캡처. 구간 기록이 없던 때라
 ///   한 번 정한 이 기간은 계속 제외한다(빼면 다음 동기화에 다시 보내진다). 그 뒤의 캡처는 구간 규칙만 따른다.
 ///
@@ -17,7 +18,15 @@ import 'settings_store.dart';
 class OwnCaptureRule {
   const OwnCaptureRule({this.intervals = const [], this.backfill});
 
-  static const margin = Duration(seconds: 5);
+  /// 구간 시작 전 여유(이 값은 포함하지 않는다: 1초 전 캡처는 아님, 0.5초 전은 자기 캡처).
+  /// "다른 앱에서 캡처하고 바로 Remine 열기"가 핵심 흐름이라 짧게 둔다. 앱이 켜질 때는 화면보다 구간 기록이 먼저 시작된다.
+  static const marginBefore = Duration(seconds: 1);
+
+  /// 구간 끝 뒤 여유(포함): 캡처 직후 앱을 나가면 저장 시각이 조금 늦게 찍힌다.
+  static const marginAfter = Duration(seconds: 5);
+
+  /// 규칙이 바뀌면 올린다. 1: 앞뒤 5초 → 2: 앞 1초·뒤 5초. 바뀌면 다시 읽는 범위의 APP_OWN 판정을 지우고 다시 판정한다.
+  static const version = 2;
 
   final List<(DateTime, DateTime)> intervals;
   final (DateTime, DateTime)? backfill;
@@ -30,11 +39,17 @@ class OwnCaptureRule {
     // 이름 있는 캡처(인스타 등)는 구간·정리 기간 안이어도 자기 캡처가 아니다
     if (!isNamelessScreenshot(p.fileName)) return null;
     final t = p.takenAt;
-    bool inside((DateTime, DateTime) r, Duration pad) =>
-        !t.isBefore(r.$1.subtract(pad)) && !t.isAfter(r.$2.add(pad));
-    if (intervals.any((r) => inside(r, margin))) return OwnReason.interval;
+    if (intervals.any(
+      (r) =>
+          t.isAfter(r.$1.subtract(marginBefore)) &&
+          !t.isAfter(r.$2.add(marginAfter)),
+    )) {
+      return OwnReason.interval;
+    }
     final b = backfill;
-    if (b != null && inside(b, Duration.zero)) return OwnReason.backfill;
+    if (b != null && !t.isBefore(b.$1) && !t.isAfter(b.$2)) {
+      return OwnReason.backfill;
+    }
     return null;
   }
 }

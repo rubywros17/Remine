@@ -18,6 +18,11 @@ abstract interface class SettingsStore {
 
   Future<void> setOwnCaptureLog(String json);
 
+  /// 마지막으로 적용한 자기 캡처 규칙 버전([OwnCaptureRule.version]). 아직 없으면 null(= 버전 1).
+  Future<int?> ownRuleVersion();
+
+  Future<void> setOwnRuleVersion(int version);
+
   /// 상세 화면의 "위로 밀어 삭제" 안내를 봤는지(한 번만 보여 준다).
   Future<bool> swipeTutorialSeen();
 
@@ -130,6 +135,7 @@ String? olderRangeFromDefine(String define, DateTime now) {
 const _imageConsentKey = 'image_consent';
 const _notificationsKey = 'notifications_enabled';
 const _ownCaptureLogKey = 'own_capture_log';
+const _ownRuleVersionKey = 'own_rule_version';
 const _swipeTutorialKey = 'swipe_tutorial_seen';
 const _olderRangeKey = 'older_range_from';
 const _olderRangeKindKey = 'older_range_kind';
@@ -169,6 +175,14 @@ class SqfliteSettingsStore implements SettingsStore {
 
   @override
   Future<void> setOwnCaptureLog(String json) => _put(_ownCaptureLogKey, json);
+
+  @override
+  Future<int?> ownRuleVersion() async =>
+      int.tryParse(await _get(_ownRuleVersionKey) ?? '');
+
+  @override
+  Future<void> setOwnRuleVersion(int version) =>
+      _put(_ownRuleVersionKey, '$version');
 
   @override
   Future<bool> swipeTutorialSeen() async =>
@@ -297,6 +311,15 @@ class InMemorySettingsStore implements SettingsStore {
 
   @override
   Future<void> setOwnCaptureLog(String json) async => _ownCaptureLog = json;
+
+  /// 테스트에서 이전 버전 상태를 만들려고 바로 읽고 쓴다.
+  int? ownRule;
+
+  @override
+  Future<int?> ownRuleVersion() async => ownRule;
+
+  @override
+  Future<void> setOwnRuleVersion(int version) async => ownRule = version;
 
   @override
   Future<bool> swipeTutorialSeen() async => _swipeTutorialSeen;

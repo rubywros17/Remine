@@ -209,6 +209,8 @@ class SyncService {
       final gallery = Stopwatch()..start();
       final (:albumId, :all, :mine, :own, :ownBy) = await _photos();
       gallery.stop();
+      // 보내기 전에: 남아 있는 APP_OWN 판정이 있으면 전송 계획이 "기기에서 끝남"으로 건너뛴다.
+      await _rejudgeOwnIfRuleChanged([...mine, ...own]);
       final config = await api.config();
       final deviceId = await _ensureDevice();
       // 이 시각 뒤에 찍은 캡처는 다음부터 300장을 넘어도 모두 읽는다(이미 등록된 기기는 이 버전의 첫 동기화 시각).
@@ -535,6 +537,29 @@ class SyncService {
       mine: mine,
       own: own,
       ownBy: ownBy,
+    );
+  }
+
+  /// 자기 캡처 규칙이 바뀌었으면([OwnCaptureRule.version]) **이번에 다시 읽은 범위**(최신 300장 + 기기 등록 뒤)의
+  /// APP_OWN 판정만 지운다 → 같은 실행에서 여전히 자기 캡처면 [_recordOwn]이 다시 남기고, 아니면 평소처럼 OCR·판정·전송.
+  /// 범위 밖(예전 단계 커서가 지난 곳) APP_OWN은 다시 볼 일이 없어 그대로 둔다(분석 제외에서 사라지지 않게).
+  /// 휴지통에 있는 장도 그대로 둔다(이미 정리한 캡처가 서버로 가지 않게).
+  Future<void> _rejudgeOwnIfRuleChanged(List<GalleryPhoto> read) async {
+    final applied = await settings.ownRuleVersion() ?? 1;
+    if (applied == OwnCaptureRule.version) return;
+    final trashed = {
+      for (final t in await trash?.hidden() ?? const <TrashedShot>[]) t.assetId,
+    };
+    final cleared = <String>[];
+    for (final p in read) {
+      if (trashed.contains(p.id)) continue;
+      final v = await capture.verdicts.find(p.id);
+      if (v != null && v.reasons.contains(ReasonCode.appOwn)) cleared.add(p.id);
+    }
+    await capture.verdicts.removeAll(cleared);
+    await settings.setOwnRuleVersion(OwnCaptureRule.version);
+    log?.call(
+      '[sync] 자기 캡처 규칙 v$applied → v${OwnCaptureRule.version}: 다시 판정 ${cleared.length}장',
     );
   }
 
