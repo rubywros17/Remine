@@ -168,9 +168,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             SwitchSettingsRow(
               title: '이미지 분석',
               body:
-                  '글자가 적은 캡처는 작게 줄인 사진을 함께 보내요.\n'
-                  '서버에 저장하지 않고, 민감한 정보나 전화번호가 보이는 캡처는 사진을 보내지 않아요.\n'
-                  '해제 시 글자만 보내요.',
+                  '민감한 개인정보가 보이는 사진은 분석하지 않아요.\n'
+                  '해제 시 이미지 속 글자로만 분류해요.',
               value: _consent,
               onChanged: _set,
             ),
@@ -178,9 +177,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(height: AppSpacing.s4),
               SwitchSettingsRow(
                 title: '알림 받기',
-                body:
-                    '같은 걸 여러 번 캡처하면 일주일에 한 번까지 알려 드려요.\n'
-                    '알림에는 태그만 담겨요.',
+                body: '일주일에 한 번, 잊고 있던 관심사를 알려 드려요.',
                 value: _notify,
                 onChanged: _setNotify,
               ),

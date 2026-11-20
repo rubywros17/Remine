@@ -72,7 +72,7 @@ void main() {
       expect(text, contains('저장하지 않아요'));
       expect(text, contains('전화번호'));
       expect(text, contains('설정에서 언제든 끌 수 있어요'));
-      expect(text, contains('해제 시 글자만 보내요.')); // 설정 화면과 같은 문구
+      expect(text, contains('해제 시 이미지 속 글자로만 분류해요.')); // 설정 화면과 같은 문구
       expect(text, isNot(contains('끄면 글자만')));
       for (final sentence in [consentBody, ...consentPoints]) {
         expect(sentence, endsWith('요.'));
@@ -226,9 +226,10 @@ void main() {
       expect(r.splashColor, AppColors.pressSplash);
     }
     // 안내 글은 문장마다 줄을 바꾼다.
-    expect(find.textContaining('함께 보내요.\n서버에'), findsOneWidget);
-
-    expect(find.textContaining('\n해제 시 글자만 보내요.'), findsOneWidget);
+    expect(
+      find.text('민감한 개인정보가 보이는 사진은 분석하지 않아요.\n해제 시 이미지 속 글자로만 분류해요.'),
+      findsOneWidget,
+    );
     expect(find.text('휴지통'), findsNothing);
 
     await tester.tap(find.text('이미지 분석'));
