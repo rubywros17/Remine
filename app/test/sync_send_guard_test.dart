@@ -169,6 +169,10 @@ void main() {
       expect(body, contains('[전화번호]'));
       expect(rig.ocr.recognized, isNot(contains('chat1')));
       expect(rig.ocr.recognized, isNot(contains('own1')));
+      // 예전 단계의 자기 캡처도 숨김 판정으로 남는다(그래도 위처럼 요청 본문엔 id조차 없다).
+      final own = await rig.capture.verdicts.find('own1');
+      expect(own?.hidden, isTrue);
+      expect(own?.reasons, [ReasonCode.appOwn]);
     });
   });
 

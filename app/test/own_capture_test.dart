@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:remine/data/device/gallery_reader.dart';
 import 'package:remine/data/device/own_capture.dart';
+import 'package:remine/data/device/privacy/privacy_filter.dart';
+import 'package:remine/models/category.dart';
 import 'package:remine/data/device/settings_store.dart';
 import 'package:remine/data/remote/remote_state_store.dart';
 
@@ -199,6 +201,16 @@ void main() {
         expect(rig.ocr.recognized, unorderedEquals(['other', 'chrome']));
         final analyzed = rig.client.analyzeCalls.map((r) => r.utf8Text).join();
         expect(analyzed, isNot(contains('"own"')));
+        // 기기 판정에는 "숨김 + Remine 화면"으로 남아 분석 제외에서 보인다(서버 기록은 그대로 지워진 상태).
+        final own = await rig.capture.verdicts.find('own');
+        expect(own?.route, LocalRoute.deviceOnly);
+        expect(own?.hidden, isTrue);
+        expect(own?.category, Category.etc);
+        expect(own?.reasons, [ReasonCode.appOwn]);
+        expect(
+          (await rig.capture.verdicts.find('other'))?.reasons ?? const [],
+          isNot(contains(ReasonCode.appOwn)),
+        );
 
         await rig.sync.run();
         expect(

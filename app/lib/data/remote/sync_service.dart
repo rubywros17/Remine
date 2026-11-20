@@ -216,6 +216,7 @@ class SyncService {
         await state.setRegisteredAt(_now());
       }
       await _forgetOwn(deviceId, own);
+      await _recordOwn(own);
       await flushTrash(); // 지난번에 못 알린 휴지통
       final waiting = <GalleryPhoto>[];
       // 고른 범위보다 오래된 캡처는 최신 300장 안이라도 보내지 않는다(1달만 고르면 첫 분석도 그 1달 치만).
@@ -459,6 +460,7 @@ class SyncService {
           onBatchDone?.call();
         }
       }
+      await _recordOwn(own);
       final ownIds = {for (final p in own) p.id};
       for (final p in page) {
         if (blocked) break;
@@ -534,6 +536,33 @@ class SyncService {
       own: own,
       ownBy: ownBy,
     );
+  }
+
+  /// 자기 캡처를 기기 판정에 "숨김 + APP_OWN"으로 남긴다 → "분석 제외"에서 보고 휴지통으로 보낼 수 있다.
+  /// 판정이 deviceOnly라 어떤 요청에도 실리지 않는다. 전송 기록([state])은 건드리지 않는다([_forgetOwn]이 본다).
+  Future<void> _recordOwn(List<GalleryPhoto> own) async {
+    for (final p in own) {
+      final saved = await capture.verdicts.find(p.id);
+      if (saved != null &&
+          saved.modifiedAt == p.modifiedAt &&
+          saved.reasons.contains(ReasonCode.appOwn)) {
+        continue;
+      }
+      await capture.verdicts.save(
+        StoredVerdict.of(
+          const LocalVerdict(
+            route: LocalRoute.deviceOnly,
+            category: Category.etc,
+            hidden: true,
+            reasons: [ReasonCode.appOwn],
+          ),
+          assetId: p.id,
+          takenAt: p.takenAt,
+          modifiedAt: p.modifiedAt,
+          now: _now(),
+        ),
+      );
+    }
   }
 
   /// 예전에 보냈던 캡처가 지금 보니 Remine 자기 캡처면(판정 규칙이 생기기 전에 보낸 것) 서버에서 지운다.
