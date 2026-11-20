@@ -22,6 +22,9 @@ abstract final class ReasonCode {
   static const appPrivate = 'APP_PRIVATE';
   static const phone = 'PHONE';
 
+  /// Remine 자기 화면 캡처. 서버로 보내지 않고 숨김으로 남겨 "분석 제외"에서만 보인다(정리·휴지통용).
+  static const appOwn = 'APP_OWN';
+
   /// 글자가 없고 이미지도 보낼 수 없어 서버 없이 기기에서 ETC로 정했다(숨기지 않는다).
   static const noText = 'NO_TEXT';
 }

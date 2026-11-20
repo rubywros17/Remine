@@ -55,7 +55,10 @@ class _HomeScreenState extends State<HomeScreen> {
     final interests = await store.repository.interests();
     final excluded = device == null
         ? 0
-        : (await device.capture.verdicts.deviceOnly(hidden: true)).length;
+        : (await loadExcluded(
+            device.capture.verdicts,
+            device.trash.store,
+          )).length;
     if (!mounted || seq != _loadSeq) return;
     setState(() {
       _excludedCount = excluded;
@@ -235,6 +238,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           context,
                           ExcludedScreen(
                             verdicts: device.capture.verdicts,
+                            trash: device.trash.store,
                             reader: device.reader,
                           ),
                         ),

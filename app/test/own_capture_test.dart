@@ -3,6 +3,10 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:remine/data/device/gallery_reader.dart';
 import 'package:remine/data/device/own_capture.dart';
+import 'package:remine/data/device/privacy/local_verdict_store.dart';
+import 'package:remine/data/device/privacy/privacy_filter.dart';
+import 'package:remine/data/device/trash_store.dart';
+import 'package:remine/models/category.dart';
 import 'package:remine/data/device/settings_store.dart';
 import 'package:remine/data/remote/remote_state_store.dart';
 
@@ -43,18 +47,29 @@ void main() {
       );
     });
 
-    test('앞뒤 5초 여유: 5초까지는 자기 캡처, 6초면 아니다', () {
+    test('앞 여유 1초(미포함): 캡처 1초 뒤에 열면 아니고, 0.5초 뒤면 자기 캡처', () {
       expect(
-        rule.isOwn(_nameless('a', _t0.subtract(const Duration(seconds: 5)))),
+        rule.isOwn(_nameless('a', _t0.subtract(const Duration(seconds: 1)))),
+        isFalse,
+        reason: '캡처하고 바로 Remine 열기',
+      );
+      expect(
+        rule.isOwn(
+          _nameless('a2', _t0.subtract(const Duration(milliseconds: 500))),
+        ),
         isTrue,
       );
+      expect(
+        rule.isOwn(_nameless('c', _t0.subtract(const Duration(seconds: 5)))),
+        isFalse,
+        reason: '예전 규칙(앞 5초)이면 자기 캡처였다',
+      );
+    });
+
+    test('뒤 여유 5초는 그대로: 5초까지는 자기 캡처, 6초면 아니다', () {
       expect(
         rule.isOwn(_nameless('b', end.add(const Duration(seconds: 5)))),
         isTrue,
-      );
-      expect(
-        rule.isOwn(_nameless('c', _t0.subtract(const Duration(seconds: 6)))),
-        isFalse,
       );
       expect(
         rule.isOwn(_nameless('d', end.add(const Duration(seconds: 6)))),
@@ -199,6 +214,16 @@ void main() {
         expect(rig.ocr.recognized, unorderedEquals(['other', 'chrome']));
         final analyzed = rig.client.analyzeCalls.map((r) => r.utf8Text).join();
         expect(analyzed, isNot(contains('"own"')));
+        // 기기 판정에는 "숨김 + Remine 화면"으로 남아 분석 제외에서 보인다(서버 기록은 그대로 지워진 상태).
+        final own = await rig.capture.verdicts.find('own');
+        expect(own?.route, LocalRoute.deviceOnly);
+        expect(own?.hidden, isTrue);
+        expect(own?.category, Category.etc);
+        expect(own?.reasons, [ReasonCode.appOwn]);
+        expect(
+          (await rig.capture.verdicts.find('other'))?.reasons ?? const [],
+          isNot(contains(ReasonCode.appOwn)),
+        );
 
         await rig.sync.run();
         expect(
@@ -314,6 +339,138 @@ void main() {
       for (final id in ['i0', 'i1', 'i2', 'i3']) {
         expect(again, contains('"$id"'), reason: id);
       }
+    });
+  });
+
+  group('규칙 버전이 바뀌면 다시 읽는 범위의 APP_OWN만 다시 판정', () {
+    /// Remine이 [_t0] ~ +10분 앞에 있었다는 기록.
+    Future<ForegroundLog> opened() async {
+      var now = _t0;
+      final log = ForegroundLog(InMemorySettingsStore(), now: () => now);
+      await log.resumed();
+      now = _t0.add(const Duration(minutes: 10));
+      await log.paused();
+      return log;
+    }
+
+    const ownV1 = LocalVerdict(
+      route: LocalRoute.deviceOnly,
+      category: Category.etc,
+      hidden: true,
+      reasons: [ReasonCode.appOwn],
+    );
+
+    Future<void> saveOwn(SyncRig rig, GalleryPhoto p) =>
+        rig.capture.verdicts.save(
+          StoredVerdict.of(
+            ownV1,
+            assetId: p.id,
+            takenAt: p.takenAt,
+            modifiedAt: p.modifiedAt,
+            now: _t0,
+          ),
+        );
+
+    test('예전 규칙(앞 5초)으로 APP_OWN이던 장: 새 규칙에선 아니면 지우고 보낸다, 여전히 자기 캡처면 다시 남는다, 휴지통은 그대로', () async {
+      final book = _nameless('book', _t0.subtract(const Duration(seconds: 3)));
+      final mine = _nameless('mine', _t0.add(const Duration(minutes: 2)));
+      final binned = _nameless(
+        'binned',
+        _t0.subtract(const Duration(seconds: 4)),
+      );
+      final trash = InMemoryTrashStore();
+      await trash.add(
+        TrashedShot(
+          assetId: 'binned',
+          category: Category.etc,
+          takenAt: binned.takenAt,
+          trashedAt: _t0,
+          onServer: false,
+        ),
+      );
+      final lines = <String>[];
+      final rig = await SyncRig.create(
+        photos: [book, mine, binned],
+        texts: {'book': '책 소개 ' * 30, 'mine': '우리 앱', 'binned': '책 ' * 30},
+        foreground: await opened(),
+        trash: trash,
+        log: lines.add,
+      );
+      for (final p in [book, mine, binned]) {
+        await saveOwn(rig, p);
+      }
+      expect(rig.settings.ownRule, isNull, reason: '버전 1(앞뒤 5초)로 남긴 상태');
+
+      await rig.sync.run();
+
+      expect(rig.settings.ownRule, OwnCaptureRule.version);
+      // 로그는 버전·장수만(book·mine 2장, 휴지통 binned 제외). 캡처 id·시각은 없다.
+      final ruleLines = lines.where((l) => l.contains('자기 캡처 규칙'));
+      expect(ruleLines, ['[sync] 자기 캡처 규칙 v1 → v2: 다시 판정 2장']);
+      final sent = rig.client.analyzeCalls.map((r) => r.utf8Text).join();
+      expect(sent, contains('"book"'), reason: '자기 캡처가 아니게 됐으니 평소처럼 분석');
+      expect(
+        (await rig.capture.verdicts.find('book'))?.reasons ?? const [],
+        isNot(contains(ReasonCode.appOwn)),
+      );
+      expect(sent, isNot(contains('"mine"')));
+      expect((await rig.capture.verdicts.find('mine'))?.reasons, [
+        ReasonCode.appOwn,
+      ]);
+      expect(sent, isNot(contains('"binned"')), reason: '휴지통에 있는 장은 건드리지 않는다');
+      expect((await rig.capture.verdicts.find('binned'))?.reasons, [
+        ReasonCode.appOwn,
+      ]);
+
+      // 같은 버전으로 다시 돌면 아무것도 지우지 않는다.
+      rig.client.sent.clear();
+      await rig.sync.run();
+      expect((await rig.capture.verdicts.find('mine'))?.reasons, [
+        ReasonCode.appOwn,
+      ]);
+      expect(rig.client.analyzeCalls, isEmpty);
+    });
+
+    test('범위 밖(최신 300장보다 오래되고 등록 전) APP_OWN은 버전이 바뀌어도 남는다', () async {
+      // 최신 300장(다른 앱 이름) 뒤에 예전 규칙으로 APP_OWN이던 오래된 장 하나.
+      final recent = [
+        for (var i = 0; i < 300; i++)
+          _shot(
+            'f$i',
+            'Screenshot_20261026_15${(20 + i ~/ 60).toString().padLeft(2, '0')}'
+                '${(i % 60).toString().padLeft(2, '0')}_Chrome.jpg',
+            _t0.add(Duration(minutes: 20, seconds: i)),
+          ),
+      ];
+      final old = _nameless('old', _t0.subtract(const Duration(seconds: 3)));
+      final lines = <String>[];
+      final rig = await SyncRig.create(
+        photos: [...recent, old],
+        texts: {for (final p in recent) p.id: '글자 ' * 60},
+        foreground: await opened(),
+        log: lines.add,
+      );
+      await saveOwn(rig, old);
+
+      await rig.sync.run();
+
+      expect(
+        rig.settings.ownRule,
+        OwnCaptureRule.version,
+        reason: '0장이어도 버전은 저장',
+      );
+      expect(
+        lines.where((l) => l.contains('자기 캡처 규칙')),
+        isEmpty,
+        reason: '다시 판정 0장이면 로그를 남기지 않는다',
+      );
+      expect((await rig.capture.verdicts.find('old'))?.reasons, [
+        ReasonCode.appOwn,
+      ], reason: '다시 읽지 않는 곳이라 지우면 분석 제외에서 사라진다');
+      expect(
+        rig.client.analyzeCalls.map((r) => r.utf8Text).join(),
+        isNot(contains('"old"')),
+      );
     });
   });
 }

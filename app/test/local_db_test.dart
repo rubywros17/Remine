@@ -372,6 +372,32 @@ void main() {
     expect(dump, contains('ocr_result')); // 파일을 제대로 읽었는지 확인
   });
 
+  test('Remine 자기 캡처(APP_OWN) 판정은 표를 바꾸지 않고 저장·조회된다(새 설치, 다시 열기)', () async {
+    final first = open();
+    await SqfliteLocalVerdictStore(first).save(
+      StoredVerdict(
+        assetId: 'own1',
+        takenAt: DateTime(2026, 11, 20),
+        modifiedAt: 7,
+        route: LocalRoute.deviceOnly,
+        category: Category.etc,
+        hidden: true,
+        reasons: const [ReasonCode.appOwn],
+        decidedAt: DateTime(2026, 11, 20),
+      ),
+    );
+    await first.close();
+
+    final again = open();
+    final hidden = await SqfliteLocalVerdictStore(again)
+        .deviceOnly(hidden: true);
+    expect(hidden.single.assetId, 'own1');
+    expect(hidden.single.reasons, [ReasonCode.appOwn]);
+    expect(hidden.single.category, Category.etc);
+    expect(LocalDb.version, 6, reason: '마이그레이션 없음');
+    await again.close();
+  });
+
   test('새 설치(v2 바로 생성)도 같은 표를 만든다', () async {
     final local = open();
     final verdicts = SqfliteLocalVerdictStore(local);
