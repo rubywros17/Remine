@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:remine/core/tokens.dart';
 import 'package:remine/data/device/privacy/local_verdict_store.dart';
 import 'package:remine/data/device/privacy/privacy_filter.dart';
 import 'package:remine/data/device/trash_store.dart';
@@ -8,6 +9,7 @@ import 'package:remine/data/local_merged_repository.dart';
 import 'package:remine/data/remine_store.dart';
 import 'package:remine/models/category.dart';
 import 'package:remine/screens/excluded_screen.dart';
+import 'package:remine/widgets/peek_preview.dart';
 
 import 'support/fake_device.dart';
 
@@ -144,6 +146,22 @@ void main() {
     expect(find.textContaining('휴지통으로'), findsNothing, reason: '처음엔 아무것도 안 고름');
 
     await tester.tap(find.byKey(const ValueKey('excluded-own1')));
+    await tester.pump();
+    expect(find.text('휴지통으로 1장'), findsOneWidget);
+
+    // 꾹 누르면 크게 보기, 떼면 닫힘. 누른 칸(bank1)은 선택되지 않고 own1 선택도 그대로.
+    final gesture = await tester.startGesture(
+      tester.getCenter(find.byKey(const ValueKey('excluded-bank1'))),
+    );
+    await tester.pump(AppTidy.peekPress + const Duration(milliseconds: 20));
+    await tester.pump();
+    await tester.pump(AppTidy.peekOpen);
+    expect(find.byType(PeekPreview), findsOneWidget);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(find.byType(PeekPreview), findsNothing);
+    expect(find.text('휴지통으로 1장'), findsOneWidget, reason: '꾹 누르기는 선택을 바꾸지 않는다');
+
     await tester.tap(find.byKey(const ValueKey('excluded-bank1')));
     await tester.pump();
     await tester.tap(find.text('휴지통으로 2장'));

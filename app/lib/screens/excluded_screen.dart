@@ -6,7 +6,10 @@ import '../data/device/privacy/local_verdict_store.dart';
 import '../data/device/trash_store.dart';
 import '../data/remine_store.dart';
 import '../widgets/app_button.dart';
+import '../models/category.dart';
+import '../models/screenshot_item.dart';
 import '../widgets/gallery_thumb.dart';
+import '../widgets/peekable_thumb.dart';
 import '../widgets/selectable_thumb.dart';
 import '../widgets/small_widgets.dart';
 
@@ -278,9 +281,18 @@ class _ExcludedTile extends StatelessWidget {
       button: true,
       selected: selected,
       label: '$reasons 캡처',
+      hint: '길게 눌러 미리 보기',
       excludeSemantics: true,
-      child: GestureDetector(
+      // 탭 = 선택, 꾹 = 크게 보기(정리 묶음 화면과 같은 위젯). 미리 보기엔 촬영 시각만(출처 앱 없음).
+      child: PeekableThumb(
         key: ValueKey('excluded-${verdict.assetId}'),
+        item: ScreenshotItem(
+          id: -verdict.localId,
+          localAssetId: verdict.assetId,
+          takenAt: verdict.takenAt,
+          category: verdict.category ?? Category.etc,
+          tags: const [],
+        ),
         onTap: onTap,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
