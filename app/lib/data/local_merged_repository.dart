@@ -179,8 +179,10 @@ class LocalMergedRepository implements ScreenshotRepository {
     return _base.updateCategory(id, category);
   }
 
+  /// 숨김 판정(민감·금융·자기 캡처)도 찾는다: "분석 제외" 화면에서 휴지통·되살리기를 하려면 필요하다.
+  /// 목록·요약은 [_localItems]가 계속 숨김을 빼므로 여기서 찾는다고 서랍에 나오지 않는다.
   Future<StoredVerdict?> _verdictOf(int id) async {
-    for (final v in await _verdicts.deviceOnly(hidden: false)) {
+    for (final v in await _verdicts.deviceOnly()) {
       if (v.localId == -id) return v;
     }
     return null;

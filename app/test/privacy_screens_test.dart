@@ -8,6 +8,7 @@ import 'package:remine/data/device/gallery_reader.dart';
 import 'package:remine/data/device/privacy/local_verdict_store.dart';
 import 'package:remine/data/device/privacy/privacy_filter.dart';
 import 'package:remine/data/device/settings_store.dart';
+import 'package:remine/data/device/trash_store.dart';
 import 'package:remine/screens/consent_screen.dart';
 import 'package:remine/screens/debug_ocr_screen.dart';
 import 'package:remine/screens/detail_screen.dart' show deviceClassifiedNotice;
@@ -247,7 +248,11 @@ void main() {
     await put('c', judgeByApp('Screenshot_20261019_120000_KakaoTalk.jpg')!);
     await tester.pumpWidget(
       MaterialApp(
-        home: ExcludedScreen(verdicts: verdicts, reader: FakeGalleryReader()),
+        home: ExcludedScreen(
+          verdicts: verdicts,
+          trash: InMemoryTrashStore(),
+          reader: FakeGalleryReader(),
+        ),
       ),
     );
     await tester.pumpAndSettle();
