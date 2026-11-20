@@ -927,6 +927,20 @@ void defineLayoutMatrix({
             if (remaining > 0 && !done) {
               _expectQuotaCard(tester, scale, label, realFonts: realFonts);
             }
+            if (remaining == 0) {
+              // 다 쓴 카드도 남은 횟수 카드와 같은 레몬 바탕
+              final box = tester.widget<DecoratedBox>(
+                find.descendant(
+                  of: find.byKey(const ValueKey('older-quota-done')),
+                  matching: find.byType(DecoratedBox),
+                ),
+              );
+              expect(
+                (box.decoration as BoxDecoration).color,
+                AppOlder.quotaBackground,
+                reason: label,
+              );
+            }
             // 맨 아래 "더 빨리 정리하기"까지 내려 그려 본다
             await _tap(tester, find.text(OlderTexts.faster));
           }

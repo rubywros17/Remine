@@ -128,7 +128,7 @@ class _OlderShotsScreenState extends State<OlderShotsScreen> {
                     if (o.done || !o.scanning)
                       const _DoneCard()
                     else if (_remaining == 0)
-                      _QuotaDoneCard(left: o.unseen)
+                      _QuotaDoneCard(left: o.unseen, limit: _limit)
                     else
                       _QuotaCard(remaining: _remaining, limit: _limit),
                   ] else
@@ -257,72 +257,84 @@ class _QuotaCard extends StatelessWidget {
   final int limit;
 
   @override
+  Widget build(BuildContext context) => _LemonCard(
+    // 1줄: 라벨(가로 전체) / 2줄: 숫자 왼쪽 + 안내 오른쪽 끝, 글자 바닥선(baseline) 맞춤.
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(OlderTexts.quotaLabel, style: AppText.caption),
+        const SizedBox(height: AppSpacing.s4),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Text.rich(
+              TextSpan(
+                children: [
+                  TextSpan(
+                    text: remaining == null ? '–' : formatThousands(remaining!),
+                    style: AppText.brand().copyWith(fontSize: 26),
+                  ),
+                  TextSpan(
+                    text: ' / ${formatThousands(limit)}',
+                    style: AppText.caption,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: AppSpacing.s8),
+            // 좁으면 안내만 줄바꿈(오른쪽 정렬이라 오른쪽 끝은 그대로).
+            Expanded(
+              child: Text(
+                OlderTexts.quotaAside,
+                key: const ValueKey('older-quota-aside'),
+                textAlign: TextAlign.right,
+                style: AppText.caption.copyWith(fontSize: 11),
+              ),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+}
+
+/// 오늘 몫 카드(남은 횟수·다 씀)의 바탕: 연한 레몬, 테두리 없음. 같은 자리 같은 카드의 상태만 바뀐다.
+class _LemonCard extends StatelessWidget {
+  const _LemonCard({super.key, required this.child});
+
+  final Widget child;
+
+  @override
   Widget build(BuildContext context) => DecoratedBox(
     decoration: BoxDecoration(
       color: AppOlder.quotaBackground,
       borderRadius: BorderRadius.circular(AppOlder.optionRadius),
     ),
-    child: Padding(
-      padding: const EdgeInsets.all(AppSpacing.s16),
-      // 1줄: 라벨(가로 전체) / 2줄: 숫자 왼쪽 + 안내 오른쪽 끝, 글자 바닥선(baseline) 맞춤.
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(OlderTexts.quotaLabel, style: AppText.caption),
-          const SizedBox(height: AppSpacing.s4),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text.rich(
-                TextSpan(
-                  children: [
-                    TextSpan(
-                      text: remaining == null
-                          ? '–'
-                          : formatThousands(remaining!),
-                      style: AppText.brand().copyWith(fontSize: 26),
-                    ),
-                    TextSpan(
-                      text: ' / ${formatThousands(limit)}',
-                      style: AppText.caption,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: AppSpacing.s8),
-              // 좁으면 안내만 줄바꿈(오른쪽 정렬이라 오른쪽 끝은 그대로).
-              Expanded(
-                child: Text(
-                  OlderTexts.quotaAside,
-                  key: const ValueKey('older-quota-aside'),
-                  textAlign: TextAlign.right,
-                  style: AppText.caption.copyWith(fontSize: 11),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    ),
+    child: Padding(padding: const EdgeInsets.all(AppSpacing.s16), child: child),
   );
 }
 
 class _QuotaDoneCard extends StatelessWidget {
-  const _QuotaDoneCard({required this.left});
+  const _QuotaDoneCard({required this.left, required this.limit});
 
   final int left;
+  final int limit;
 
   @override
-  Widget build(BuildContext context) => _WhiteCard(
+  Widget build(BuildContext context) => _LemonCard(
+    key: const ValueKey('older-quota-done'),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(OlderTexts.quotaDoneTitle, style: AppText.label),
         const SizedBox(height: AppSpacing.s4),
-        Text(OlderTexts.quotaDoneBody, style: AppText.caption),
-        const SizedBox(height: AppSpacing.s4),
-        Text(OlderTexts.quotaDoneLeft(left), style: AppText.caption),
+        Text(OlderTexts.quotaDoneBody(left, limit), style: AppText.caption),
+        // 한도보다 적게 남았으면 안내에 장수가 이미 있어 겹치므로 숨긴다.
+        if (left >= limit) ...[
+          const SizedBox(height: AppSpacing.s4),
+          Text(OlderTexts.quotaDoneLeft(left), style: AppText.caption),
+        ],
       ],
     ),
   );

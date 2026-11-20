@@ -83,14 +83,54 @@ void main() {
     expect(find.text('최근 1년 · ${OlderTexts.shots(total)}'), findsOneWidget);
   });
 
-  testWidgets('오늘 몫이 0이면 오늘 몫 카드 대신 "오늘 몫은 다 정리했어요"와 남은 장수·날수', (tester) async {
-    await _pump(tester, _settings(remaining: 0));
-    final left = _inYear.length - 400;
+  test('다 쓴 카드 안내: 한도보다 적게 남으면 "남은 N장을", 한도 이상이면 "다음 300장을"', () {
+    expect(OlderTexts.quotaDoneBody(58, 300), '내일 앱을 열면 남은 58장을 이어서 정리해요.');
+    for (final left in [300, 1000]) {
+      expect(
+        OlderTexts.quotaDoneBody(left, 300),
+        '내일 앱을 열면 다음 300장을 이어서 정리해요.',
+      );
+    }
+  });
 
-    expect(find.text(OlderTexts.quotaDoneTitle), findsOneWidget);
-    expect(find.text(OlderTexts.quotaDoneBody), findsOneWidget);
-    expect(find.text(OlderTexts.quotaDoneLeft(left)), findsOneWidget);
+  testWidgets('오늘 몫이 0이면 같은 레몬 카드에 "오늘 분량은 다 정리했어요", 남은 58장이면 셋째 줄 없음', (
+    tester,
+  ) async {
+    await _pump(tester, _settings(seen: _inYear.length - 58, remaining: 0));
+
+    expect(find.text('오늘 분량은 다 정리했어요'), findsOneWidget);
+    expect(find.text('내일 앱을 열면 남은 58장을 이어서 정리해요.'), findsOneWidget);
+    expect(
+      find.text(OlderTexts.quotaDoneLeft(58)),
+      findsNothing,
+      reason: '안내와 겹친다',
+    );
     expect(find.text(OlderTexts.quotaLabel), findsNothing);
+    // 남은 횟수 카드와 같은 바탕·모양(레몬, 테두리 없음)
+    final box = tester.widget<DecoratedBox>(
+      find.descendant(
+        of: find.byKey(const ValueKey('older-quota-done')),
+        matching: find.byType(DecoratedBox),
+      ),
+    );
+    final d = box.decoration as BoxDecoration;
+    expect(d.color, AppOlder.quotaBackground);
+    expect(d.border, isNull);
+    expect(d.borderRadius, BorderRadius.circular(AppOlder.optionRadius));
+  });
+
+  testWidgets('오늘 몫이 0이고 1000장 남았으면 "다음 300장을"과 셋째 줄 "남은 1,000장 · 약 4일"', (
+    tester,
+  ) async {
+    final s = InMemorySettingsStore()
+      ..olderKind = OlderRangeKind.all
+      ..olderRange = olderRangeAll
+      ..cursor = _photos[_photos.length - 1001].position.encode()
+      ..quota = (remaining: 0, resetsAt: null);
+    await _pump(tester, s);
+
+    expect(find.text('내일 앱을 열면 다음 300장을 이어서 정리해요.'), findsOneWidget);
+    expect(find.text('남은 1,000장 · 약 4일'), findsOneWidget);
   });
 
   testWidgets('다 끝나면 100%와 "예전 스크린샷을 모두 정리했어요"', (tester) async {

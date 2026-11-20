@@ -77,8 +77,12 @@ abstract final class OlderTexts {
   /// 큰 글자에서 두 줄이 돼도 단어 중간("횟/수")에서 끊기지 않게([keepWords]).
   static final quotaLabel = keepWords('오늘 남은 예전 스크린샷 정리 횟수');
   static const quotaAside = '새 스크린샷은 상관없이 바로 분석해요';
-  static const quotaDoneTitle = '오늘 몫은 다 정리했어요';
-  static const quotaDoneBody = '내일 앱을 열면 다음 300장을 이어서 정리해요.';
+  static const quotaDoneTitle = '오늘 분량은 다 정리했어요';
+
+  /// 남은 [left]장이 하루 한도 [limit]보다 적으면 그 장수를, 아니면 다음 [limit]장을 말한다.
+  static String quotaDoneBody(int left, int limit) => left < limit
+      ? '내일 앱을 열면 남은 ${formatThousands(left)}장을 이어서 정리해요.'
+      : '내일 앱을 열면 다음 ${formatThousands(limit)}장을 이어서 정리해요.';
   static String quotaDoneLeft(int n) =>
       '남은 ${formatThousands(n)}장 · 약 ${olderDaysFor(n)}일';
   static const allDone = '예전 스크린샷을 모두 정리했어요';
