@@ -268,3 +268,8 @@ String formatThousands(int n) {
 
 /// "2026년 2월".
 String formatYearMonth(DateTime d) => '${d.year}년 ${d.month}월';
+
+/// 단어 안에서는 줄을 바꾸지 않게 한다(글자 사이에 U+2060 단어 결합자, 띄어쓰기에서만 줄바꿈).
+/// Flutter는 한글을 글자 사이 어디서든 줄바꿈해서 "횟/수"처럼 끊길 수 있다.
+String keepWords(String s) =>
+    s.split(' ').map((w) => w.split('').join('⁠')).join(' ');
