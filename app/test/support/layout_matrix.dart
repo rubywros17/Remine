@@ -1115,6 +1115,20 @@ void defineLayoutMatrix({
             ),
           );
         }
+        await verdicts.save(
+          StoredVerdict.of(
+            const LocalVerdict(
+              route: LocalRoute.deviceOnly,
+              category: Category.etc,
+              hidden: true,
+              reasons: [ReasonCode.appOwn],
+            ),
+            assetId: 'own1',
+            takenAt: _now,
+            modifiedAt: 1,
+            now: _now,
+          ),
+        );
         await _pump(tester, size, scale, device: services);
         await _tap(tester, find.textContaining('분석 제외'));
         expect(
@@ -1122,6 +1136,12 @@ void defineLayoutMatrix({
           findsOneWidget,
           reason: '분석 제외 화면이 아님',
         );
+        // 두 장 골라 하단 [휴지통으로 2장] 바까지 그려 본다.
+        // 맨 위 두 장(최신순: 마지막에 저장한 own1, 그다음 b11).
+        await _tap(tester, find.byKey(const ValueKey('excluded-own1')));
+        await _tap(tester, find.byKey(const ValueKey('excluded-b11')));
+        // 240×320처럼 아주 작은 화면은 첫 선택으로 바가 올라와 두 번째 칸을 가릴 수 있어 바가 떴는지만 본다.
+        expect(find.textContaining('휴지통으로'), findsOneWidget);
       });
       _expectClean('분석 제외 $label', errors);
     });
