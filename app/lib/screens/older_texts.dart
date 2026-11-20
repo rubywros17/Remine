@@ -73,8 +73,10 @@ abstract final class OlderTexts {
   static String progressLine(int seen, int total, DateTime? until) =>
       '${formatThousands(seen)} / ${formatThousands(total)}장'
       '${until == null ? '' : ' · ${formatYearMonth(until)}까지 봤어요'}';
-  static const quotaLabel = '오늘 남은 예전 스크린샷 정리 횟수';
-  static const quotaAside = '새 스크린샷은 상관없이\n바로 분석해요';
+
+  /// 큰 글자에서 두 줄이 돼도 단어 중간("횟/수")에서 끊기지 않게([keepWords]).
+  static final quotaLabel = keepWords('오늘 남은 예전 스크린샷 정리 횟수');
+  static const quotaAside = '새 스크린샷은 상관없이 바로 분석해요';
   static const quotaDoneTitle = '오늘 몫은 다 정리했어요';
   static const quotaDoneBody = '내일 앱을 열면 다음 300장을 이어서 정리해요.';
   static String quotaDoneLeft(int n) =>

@@ -264,41 +264,43 @@ class _QuotaCard extends StatelessWidget {
     ),
     child: Padding(
       padding: const EdgeInsets.all(AppSpacing.s16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
+      // 1줄: 라벨(가로 전체) / 2줄: 숫자 왼쪽 + 안내 오른쪽 끝, 글자 바닥선(baseline) 맞춤.
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(OlderTexts.quotaLabel, style: AppText.caption),
-                const SizedBox(height: AppSpacing.s4),
-                Text.rich(
-                  TextSpan(
-                    children: [
-                      TextSpan(
-                        text: remaining == null
-                            ? '–'
-                            : formatThousands(remaining!),
-                        style: AppText.brand().copyWith(fontSize: 26),
-                      ),
-                      TextSpan(
-                        text: ' / ${formatThousands(limit)}',
-                        style: AppText.caption,
-                      ),
-                    ],
-                  ),
+          Text(OlderTexts.quotaLabel, style: AppText.caption),
+          const SizedBox(height: AppSpacing.s4),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: remaining == null
+                          ? '–'
+                          : formatThousands(remaining!),
+                      style: AppText.brand().copyWith(fontSize: 26),
+                    ),
+                    TextSpan(
+                      text: ' / ${formatThousands(limit)}',
+                      style: AppText.caption,
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(width: AppSpacing.s8),
-          Flexible(
-            child: Text(
-              OlderTexts.quotaAside,
-              textAlign: TextAlign.right,
-              style: AppText.caption.copyWith(fontSize: 11),
-            ),
+              ),
+              const SizedBox(width: AppSpacing.s8),
+              // 좁으면 안내만 줄바꿈(오른쪽 정렬이라 오른쪽 끝은 그대로).
+              Expanded(
+                child: Text(
+                  OlderTexts.quotaAside,
+                  key: const ValueKey('older-quota-aside'),
+                  textAlign: TextAlign.right,
+                  style: AppText.caption.copyWith(fontSize: 11),
+                ),
+              ),
+            ],
           ),
         ],
       ),

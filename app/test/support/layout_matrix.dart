@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart' hide Category;
 import 'package:flutter/gestures.dart' show kTouchSlop;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show RenderParagraph;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:remine/app.dart';
@@ -188,6 +189,48 @@ List<ScreenshotItem> _sevenInterests(List<String> tags) {
 
 void _expectClean(String where, List<String> errors) {
   expect(errors, isEmpty, reason: '$where\n  ${errors.toSet().join('\n  ')}');
+}
+
+/// 예전 스크린샷 노란 카드: 라벨은 단어 중간에서 끊기지 않고(실제 폰트면 1.0배 한 줄 · 1.3배 두 줄까지),
+/// 안내는 카드 오른쪽 안쪽 끝에 붙는다.
+void _expectQuotaCard(
+  WidgetTester tester,
+  double scale,
+  String where, {
+  required bool realFonts,
+}) {
+  final p = tester.renderObject<RenderParagraph>(
+    find.text(OlderTexts.quotaLabel),
+  );
+  final text = OlderTexts.quotaLabel;
+  // 커서 높이(y)가 바뀌는 글자 = 새 줄의 첫 글자. 그 앞이나 그 글자가 띄어쓰기여야 단어 경계에서 바뀐 것이다.
+  double y(int i) => p.getOffsetForCaret(TextPosition(offset: i), Rect.zero).dy;
+  var lines = 1;
+  for (var i = 1; i < text.length; i++) {
+    if (y(i) <= y(i - 1)) continue;
+    lines++;
+    expect(
+      text[i] == ' ' || text[i - 1] == ' ',
+      isTrue,
+      reason: '$where 라벨이 단어 중간에서 줄바꿈',
+    );
+  }
+  if (realFonts) {
+    expect(
+      lines,
+      lessThanOrEqualTo(scale > 1 ? 2 : 1),
+      reason: '$where 라벨 줄 수',
+    );
+  }
+  final aside = find.byKey(const ValueKey('older-quota-aside'));
+  final card = find
+      .ancestor(of: aside, matching: find.byType(DecoratedBox))
+      .first;
+  expect(
+    tester.getTopRight(aside).dx,
+    moreOrLessEquals(tester.getTopRight(card).dx - AppSpacing.s16),
+    reason: '$where 안내가 카드 오른쪽 끝에 붙지 않음',
+  );
 }
 
 /// [realFonts]가 false면 앱 폰트를 불러오지 않는다(테스트 기본 폰트는 글자 폭이 훨씬 넓다 = 웹에서 폰트를 못 불러온 최악의 경우).
@@ -881,6 +924,9 @@ void defineLayoutMatrix({
               ),
               findsOneWidget,
             );
+            if (remaining > 0 && !done) {
+              _expectQuotaCard(tester, scale, label, realFonts: realFonts);
+            }
             // 맨 아래 "더 빨리 정리하기"까지 내려 그려 본다
             await _tap(tester, find.text(OlderTexts.faster));
           }

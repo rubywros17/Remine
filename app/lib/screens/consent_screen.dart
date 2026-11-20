@@ -11,7 +11,7 @@ const consentBody =
 const consentPoints = [
   '분석에 쓴 사진은 서버에 저장하지 않아요.',
   '민감한 정보나 전화번호가 보이는 캡처는\n사진을 보내지 않아요.',
-  '설정에서 언제든 끌 수 있어요. 해제 시 글자만 보내요.',
+  '설정에서 언제든 끌 수 있어요. 해제 시 이미지 속 글자로만 분류해요.',
 ];
 
 /// 첫 실행 때 한 번 묻는다. 아직 고르지 않았으면([SettingsStore.imageConsent]가 null) [ConsentGate]가 이 화면을 먼저 보여 준다.
