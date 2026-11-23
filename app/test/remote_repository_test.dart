@@ -108,7 +108,7 @@ void main() {
     );
     client = c;
     state = InMemoryRemoteStateStore();
-    await state.setDeviceId(7);
+    await state.setDeviceToken('tok-7');
     status = SyncStatus();
     repo = RemoteRepository(
       RemineApi('http://localhost:8080', client),

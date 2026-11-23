@@ -2,6 +2,7 @@ package com.remine.server.service;
 
 import com.remine.server.domain.device.Device;
 import com.remine.server.domain.device.DeviceRepository;
+import com.remine.server.domain.device.DeviceToken;
 import com.remine.server.dto.DeviceRegisterRequest;
 import com.remine.server.dto.DeviceRegisterResponse;
 import com.remine.server.exception.DeviceNotFoundException;
@@ -13,11 +14,13 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.util.Arrays;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -28,16 +31,33 @@ class DeviceServiceTest {
     @InjectMocks DeviceService service;
 
     @Test
-    void 기기를_저장하고_deviceId를_반환한다() {
-        when(deviceRepository.save(any(Device.class))).thenAnswer(inv -> {
-            Device device = inv.getArgument(0);
-            ReflectionTestUtils.setField(device, "id", 7L);
-            return device;
-        });
+    void 등록하면_무작위_토큰을_한_번만_주고_해시만_저장한다() {
+        when(deviceRepository.save(any(Device.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        DeviceRegisterResponse response = service.register(new DeviceRegisterRequest("fcm-token"));
+        DeviceRegisterResponse first = service.register(new DeviceRegisterRequest("fcm-token"));
+        DeviceRegisterResponse second = service.register(new DeviceRegisterRequest("fcm-token"));
 
-        assertThat(response.deviceId()).isEqualTo(7L);
+        // 256비트 → URL-safe Base64(패딩 없음) 43자
+        assertThat(first.token()).matches("[A-Za-z0-9_-]{43}").isNotEqualTo(second.token());
+        ArgumentCaptor<Device> saved = ArgumentCaptor.forClass(Device.class);
+        verify(deviceRepository, times(2)).save(saved.capture());
+        assertThat(saved.getAllValues().getFirst().getTokenHash()).isEqualTo(DeviceToken.hash(first.token()));
+    }
+
+    @Test
+    void 토큰으로_기기를_찾고_없거나_틀리면_빈_값() {
+        Device device = new Device("fcm");
+        String token = device.issueToken();
+        ReflectionTestUtils.setField(device, "id", 7L);
+        when(deviceRepository.findByTokenHash(any())).thenAnswer(inv ->
+                Arrays.equals(inv.getArgument(0), DeviceToken.hash(token)) ? Optional.of(device) : Optional.empty());
+
+        assertThat(service.authenticate(token)).contains(7L);
+        assertThat(service.authenticate(DeviceToken.generate())).isEmpty();
+        assertThat(service.authenticate("7")).isEmpty(); // 숫자 id는 토큰이 아니다
+        assertThat(service.authenticate("")).isEmpty();
+        assertThat(service.authenticate(null)).isEmpty();
+        assertThat(service.authenticate("x".repeat(129))).isEmpty();
     }
 
     @Test

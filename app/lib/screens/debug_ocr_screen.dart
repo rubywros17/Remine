@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import '../app.dart';
 import '../core/helpers.dart';
@@ -49,35 +48,25 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
   DeviceCaptureService get _capture => widget.services.capture;
   DateTime _now() => (widget.now ?? DateTime.now)();
 
-  /// 서버 기기 id 줄. 실기기에서 `curl -H "X-Device-Id: N"`으로 서버 응답을 직접 볼 때 쓴다.
-  String _deviceIdLine = '';
-  int? _deviceId;
+  /// 서버 등록 상태 줄. 기기 토큰은 화면·클립보드에 내지 않는다(등록 여부만).
+  String _deviceLine = '';
 
   @override
   void initState() {
     super.initState();
     _loadAlbums();
-    _loadDeviceId();
+    _loadDevice();
   }
 
-  Future<void> _loadDeviceId() async {
+  Future<void> _loadDevice() async {
     final remote = widget.services.remote;
-    final id = await remote?.state.deviceId();
+    final registered = await remote?.state.deviceToken() != null;
     if (!mounted) return;
     setState(() {
-      _deviceId = id;
-      _deviceIdLine = remote == null
+      _deviceLine = remote == null
           ? '서버 연동 꺼짐 (가짜/기기 데이터만)'
-          : '서버 기기 id: ${id ?? '없음(아직 등록 전)'}';
+          : '서버 기기: ${registered ? '등록됨' : '아직 등록 전'}';
     });
-  }
-
-  Future<void> _copyDeviceId() async {
-    final id = _deviceId;
-    if (id == null) return;
-    await Clipboard.setData(ClipboardData(text: '$id'));
-    if (!mounted) return;
-    setState(() => _status = '기기 id $id 복사했어.');
   }
 
   /// 서버(dev 프로필)가 이 기기에 관심사 알림 1건을 보낸다. 앱이 앞에 있으면 FCM 알림이 화면에 안 뜨므로
@@ -302,22 +291,19 @@ class _DebugOcrScreenState extends State<DebugOcrScreen> {
                   ],
                 ),
               ),
-            if (_deviceIdLine.isNotEmpty)
-              GestureDetector(
-                onLongPress: _copyDeviceId, // 길게 누르면 복사
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(
-                    AppSpacing.screenPadding,
-                    AppSpacing.s4,
-                    AppSpacing.screenPadding,
-                    0,
-                  ),
-                  child: Text(
-                    _deviceIdLine,
-                    style: AppText.caption.copyWith(color: AppColors.inkSub),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+            if (_deviceLine.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.screenPadding,
+                  AppSpacing.s4,
+                  AppSpacing.screenPadding,
+                  0,
+                ),
+                child: Text(
+                  _deviceLine,
+                  style: AppText.caption.copyWith(color: AppColors.inkSub),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             SingleChildScrollView(

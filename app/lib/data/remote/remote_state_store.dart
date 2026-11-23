@@ -33,11 +33,16 @@ class SyncEntry {
   final int? serverId;
 }
 
-/// 서버 연동 상태를 기기에 둔다: 기기 id, 첫 분석 완료 여부, asset id ↔ 서버 id 매핑, 마지막으로 받은 목록·요약.
+/// 서버 연동 상태를 기기에 둔다: 기기 토큰, 첫 분석 완료 여부, asset id ↔ 서버 id 매핑, 마지막으로 받은 목록·요약.
 /// 캐시는 서버 응답 JSON(카테고리·태그·요약)이라 OCR 원문은 없다.
 abstract interface class RemoteStateStore {
-  Future<int?> deviceId();
-  Future<void> setDeviceId(int id);
+  /// 서버가 등록 때 한 번 준 기기 인증 토큰. 요청마다 `Authorization: Bearer`로 보낸다. 로그·화면에 내지 않는다.
+  /// 앱 전용 폴더의 sqflite에 두고, 백업은 꺼져 있다(AndroidManifest allowBackup=false).
+  Future<String?> deviceToken();
+  Future<void> setDeviceToken(String token);
+
+  /// [임시] 토큰 도입 전 앱이 저장한 숫자 기기 id. 이전 창구(legacy-claim)에 한 번 쓰고, 토큰을 저장하면 지운다.
+  Future<int?> legacyDeviceId();
 
   /// 이 기기를 서버에 처음 등록한(또는 이 기능이 생긴 뒤 처음 동기화한) 시각. 이 뒤에 찍은 캡처가 "새 스크린샷"이라
   /// 개수 제한 없이 읽는다. 아직이면 null. 서버가 기기를 잊어도([clear]) 그대로 둔다.
@@ -97,13 +102,24 @@ class SqfliteRemoteStateStore implements RemoteStateStore {
       }, conflictAlgorithm: ConflictAlgorithm.replace);
 
   @override
-  Future<int?> deviceId() async {
-    final v = await _setting('device_id');
-    return v == null ? null : int.tryParse(v);
+  Future<String?> deviceToken() => _setting('device_token');
+
+  /// 토큰을 저장하고 예전 숫자 기기 id는 지운다(이전이 끝났거나 새로 등록했다).
+  @override
+  Future<void> setDeviceToken(String token) async {
+    await _putSetting('device_token', token);
+    await (await _db).delete(
+      'setting',
+      where: 'key = ?',
+      whereArgs: ['device_id'],
+    );
   }
 
   @override
-  Future<void> setDeviceId(int id) => _putSetting('device_id', '$id');
+  Future<int?> legacyDeviceId() async {
+    final v = await _setting('device_id');
+    return v == null ? null : int.tryParse(v);
+  }
 
   @override
   Future<DateTime?> registeredAt() async {
@@ -240,14 +256,17 @@ class SqfliteRemoteStateStore implements RemoteStateStore {
     await db.delete('server_cache');
     await db.delete(
       'setting',
-      where: 'key IN (?, ?)',
-      whereArgs: ['device_id', _olderFailuresKey],
+      where: 'key IN (?, ?, ?)',
+      whereArgs: ['device_token', 'device_id', _olderFailuresKey],
     );
   }
 }
 
 class InMemoryRemoteStateStore implements RemoteStateStore {
-  int? _deviceId;
+  String? _deviceToken;
+
+  /// 테스트용: 토큰 도입 전 앱이 저장해 둔 숫자 기기 id.
+  int? legacyId;
   DateTime? registered;
 
   @override
@@ -272,10 +291,16 @@ class InMemoryRemoteStateStore implements RemoteStateStore {
   final Map<String, String> _cache = {};
 
   @override
-  Future<int?> deviceId() async => _deviceId;
+  Future<String?> deviceToken() async => _deviceToken;
 
   @override
-  Future<void> setDeviceId(int id) async => _deviceId = id;
+  Future<void> setDeviceToken(String token) async {
+    _deviceToken = token;
+    legacyId = null;
+  }
+
+  @override
+  Future<int?> legacyDeviceId() async => legacyId;
 
   @override
   Future<bool> firstSyncDone() async => _first;
@@ -325,7 +350,8 @@ class InMemoryRemoteStateStore implements RemoteStateStore {
 
   @override
   Future<void> clear() async {
-    _deviceId = null;
+    _deviceToken = null;
+    legacyId = null;
     _entries.clear();
     _cache.clear();
     olderFailureCounts.clear();

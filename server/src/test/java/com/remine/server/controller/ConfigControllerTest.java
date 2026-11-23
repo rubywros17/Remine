@@ -1,6 +1,6 @@
 package com.remine.server.controller;
 
-import com.remine.server.domain.device.Device;
+import com.remine.server.TestDevices;
 import com.remine.server.domain.device.DeviceRepository;
 import com.remine.server.domain.usage.DailyUsageRepository;
 import org.junit.jupiter.api.Test;
@@ -52,11 +52,11 @@ class ConfigControllerTest {
 
     @Test
     void 등록된_기기면_오늘_남은_예전_스크린샷_몫과_다음_한국_자정을_준다() throws Exception {
-        long deviceId = deviceRepository.save(new Device(null)).getId();
+        long deviceId = TestDevices.save(deviceRepository, null);
         usage.addDeviceOlderCount(deviceId, LocalDate.now(clock), 180);
         String nextMidnight = LocalDate.now(clock).plusDays(1) + "T00:00:00+09:00";
 
-        mockMvc.perform(get("/api/config").header("X-Device-Id", deviceId))
+        mockMvc.perform(get("/api/config").header("Authorization", TestDevices.auth(deviceId)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.olderRemainingToday").value(120))
                 .andExpect(jsonPath("$.olderResetsAt").value(nextMidnight));
@@ -64,7 +64,7 @@ class ConfigControllerTest {
 
     @Test
     void 모르는_기기면_404_없이_기기별_값만_비운다() throws Exception {
-        mockMvc.perform(get("/api/config").header("X-Device-Id", 987654321L))
+        mockMvc.perform(get("/api/config").header("Authorization", TestDevices.auth(987654321L)))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.dailyOlderLimit").value(300))
                 .andExpect(jsonPath("$.olderRemainingToday").value(nullValue()));

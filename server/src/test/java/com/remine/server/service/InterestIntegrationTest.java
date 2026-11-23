@@ -1,7 +1,7 @@
 package com.remine.server.service;
 
+import com.remine.server.TestDevices;
 import com.remine.server.classifier.ClassificationResult;
-import com.remine.server.domain.device.Device;
 import com.remine.server.domain.device.DeviceRepository;
 import com.remine.server.domain.screenshot.Category;
 import com.remine.server.domain.screenshot.Screenshot;
@@ -64,7 +64,7 @@ class InterestIntegrationTest {
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(context).build();
-        deviceId = deviceRepository.save(new Device("token")).getId();
+        deviceId = TestDevices.save(deviceRepository, "token");
     }
 
     private void capture(Long device, String assetId, LocalDateTime takenAt, String... tags) {
@@ -73,7 +73,7 @@ class InterestIntegrationTest {
     }
 
     private JsonNode interests(Long device) throws Exception {
-        MockHttpServletResponse response = mockMvc.perform(get("/api/interests").header("X-Device-Id", device))
+        MockHttpServletResponse response = mockMvc.perform(get("/api/interests").header("Authorization", TestDevices.auth(device)))
                 .andReturn().getResponse();
         response.setCharacterEncoding("UTF-8");
         assertThat(response.getStatus()).isEqualTo(200);
@@ -121,7 +121,7 @@ class InterestIntegrationTest {
 
         JsonNode items = interests(deviceId);
 
-        assertThat(statistics.getPrepareStatementCount()).isEqualTo(2); // 기기 확인 + 행 조회
+        assertThat(statistics.getPrepareStatementCount()).isEqualTo(3); // 토큰 확인 + 기기 확인 + 행 조회
         assertThat(items).extracting(i -> i.get("tag").asString()).containsExactly("코바늘도안", "요즘네일");
         JsonNode forgotten = items.get(0);
         assertThat(forgotten.get("status").asString()).isEqualTo("FORGOTTEN");
@@ -146,7 +146,7 @@ class InterestIntegrationTest {
         for (int i = 0; i < 3; i++) {
             capture(deviceId, "old-app-" + i, NOW.minusDays(40 + i), "옛앱호환");
         }
-        MockHttpServletResponse response = mockMvc.perform(get("/api/interests").header("X-Device-Id", deviceId))
+        MockHttpServletResponse response = mockMvc.perform(get("/api/interests").header("Authorization", TestDevices.auth(deviceId)))
                 .andReturn().getResponse();
         response.setCharacterEncoding("UTF-8");
 
@@ -170,7 +170,7 @@ class InterestIntegrationTest {
 
     @Test
     void 다른_기기의_캡처는_섞이지_않는다() throws Exception {
-        Long other = deviceRepository.save(new Device("other")).getId();
+        Long other = TestDevices.save(deviceRepository, "other");
         capture(deviceId, "mine-1", NOW.minusDays(1), "기기분리");
         capture(other, "theirs-1", NOW.minusDays(1), "기기분리");
         capture(other, "theirs-2", NOW.minusDays(2), "기기분리");
@@ -182,8 +182,8 @@ class InterestIntegrationTest {
     }
 
     @Test
-    void 미등록_기기는_404() throws Exception {
-        assertThat(mockMvc.perform(get("/api/interests").header("X-Device-Id", 999_999L))
-                .andReturn().getResponse().getStatus()).isEqualTo(404);
+    void 모르는_토큰은_401() throws Exception {
+        assertThat(mockMvc.perform(get("/api/interests").header("Authorization", TestDevices.auth(999_999L)))
+                .andReturn().getResponse().getStatus()).isEqualTo(401);
     }
 }

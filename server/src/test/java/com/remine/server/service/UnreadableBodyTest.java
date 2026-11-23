@@ -1,10 +1,10 @@
 package com.remine.server.service;
 
+import com.remine.server.TestDevices;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.classic.spi.ThrowableProxyUtil;
 import ch.qos.logback.core.read.ListAppender;
-import com.remine.server.domain.device.Device;
 import com.remine.server.domain.device.DeviceRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -49,7 +49,7 @@ class UnreadableBodyTest {
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(context).build();
-        deviceId = deviceRepository.save(new Device("t")).getId();
+        deviceId = TestDevices.save(deviceRepository, "t");
         logs = new ListAppender<>();
         logs.start();
         ((Logger) LoggerFactory.getLogger(org.slf4j.Logger.ROOT_LOGGER_NAME)).addAppender(logs);
@@ -67,7 +67,7 @@ class UnreadableBodyTest {
     }
 
     private void assertProblem400(MockHttpServletRequestBuilder request) throws Exception {
-        MockHttpServletResponse response = mockMvc.perform(request.header("X-Device-Id", String.valueOf(deviceId))
+        MockHttpServletResponse response = mockMvc.perform(request.header("Authorization", TestDevices.auth(String.valueOf(deviceId)))
                 .contentType(MediaType.APPLICATION_JSON)).andReturn().getResponse();
         response.setCharacterEncoding("UTF-8");
         String body = response.getContentAsString(StandardCharsets.UTF_8);

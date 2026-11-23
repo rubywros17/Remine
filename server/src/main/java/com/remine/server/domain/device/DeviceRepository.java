@@ -9,6 +9,9 @@ import java.util.Optional;
 
 public interface DeviceRepository extends JpaRepository<Device, Long> {
 
+    @Query("select d from Device d where d.tokenHash = :tokenHash")
+    Optional<Device> findByTokenHash(byte[] tokenHash);
+
     @Query("select d.id from Device d order by d.id")
     List<Long> findAllIds();
 

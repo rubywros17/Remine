@@ -1,5 +1,6 @@
 package com.remine.server.image;
 
+import com.remine.server.TestDevices;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.classic.spi.ThrowableProxyUtil;
@@ -10,7 +11,6 @@ import com.remine.server.classifier.llm.LlmClassifier;
 import com.remine.server.classifier.llm.LlmProvider;
 import com.remine.server.classifier.llm.LlmReply;
 import com.remine.server.classifier.llm.PromptVersion;
-import com.remine.server.domain.device.Device;
 import com.remine.server.domain.device.DeviceRepository;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -188,7 +188,7 @@ abstract class MultipartTestSupport {
     void setUpTrace() {
         // 테스트 DB는 모든 컨텍스트가 공유한다. 미분석 행 수 같은 전역 집계와 DB 흔적 검사가 이 테스트의 데이터만 보도록 비운다.
         jdbc.execute("truncate table interest_alert, screenshot_tag, tag, screenshot, device cascade");
-        deviceId =deviceRepository.save(new Device("token")).getId();
+        deviceId =TestDevices.save(deviceRepository, "token");
         provider.reset();
         responseBodies.clear();
         logs = new ListAppender<>();
@@ -357,7 +357,7 @@ abstract class MultipartTestSupport {
             HttpRequest request = HttpRequest.newBuilder(URI.create(
                             "http://localhost:" + environment.getRequiredProperty("local.server.port") + "/api/screenshots/analyze"))
                     .header("Content-Type", contentType)
-                    .header("X-Device-Id", String.valueOf(deviceId))
+                    .header("Authorization", TestDevices.auth(String.valueOf(deviceId)))
                     .POST(body).build();
             HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             responseBodies.add(response.body());

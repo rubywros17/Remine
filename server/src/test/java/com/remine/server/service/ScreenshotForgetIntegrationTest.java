@@ -1,7 +1,7 @@
 package com.remine.server.service;
 
+import com.remine.server.TestDevices;
 import com.remine.server.classifier.ClassificationResult;
-import com.remine.server.domain.device.Device;
 import com.remine.server.domain.device.DeviceRepository;
 import com.remine.server.domain.screenshot.Category;
 import com.remine.server.domain.screenshot.ScreenshotRepository;
@@ -41,8 +41,8 @@ class ScreenshotForgetIntegrationTest {
     @Test
     void 이_기기의_그_캡처만_태그_연결과_함께_지우고_관심사_횟수가_줄어든다() {
         LocalDateTime now = LocalDateTime.now(clock);
-        Long mine = deviceRepository.save(new Device("t1")).getId();
-        Long other = deviceRepository.save(new Device("t2")).getId();
+        Long mine = TestDevices.save(deviceRepository, "t1");
+        Long other = TestDevices.save(deviceRepository, "t2");
         for (String id : List.of("a1", "a2", "a3", "own1")) {
             save(mine, id, now.minusDays(1), "뜨개질");
         }
@@ -65,14 +65,14 @@ class ScreenshotForgetIntegrationTest {
 
     @Test
     void 엔드포인트는_204이고_빈_목록도_204_목록이_없거나_500개를_넘으면_400() throws Exception {
-        Long id = deviceRepository.save(new Device("t3")).getId();
+        Long id = TestDevices.save(deviceRepository, "t3");
         String tooMany = "{\"assetIds\":[" + "\"a\",".repeat(500) + "\"a\"]}";
         for (String body : List.of("{\"assetIds\":[\"a\"]}", "{\"assetIds\":[]}")) {
-            mvc.perform(post("/api/screenshots/forget").header("X-Device-Id", id)
+            mvc.perform(post("/api/screenshots/forget").header("Authorization", TestDevices.auth(id))
                     .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isNoContent());
         }
         for (String body : List.of("{}", tooMany)) {
-            mvc.perform(post("/api/screenshots/forget").header("X-Device-Id", id)
+            mvc.perform(post("/api/screenshots/forget").header("Authorization", TestDevices.auth(id))
                     .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isBadRequest());
         }
     }

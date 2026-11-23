@@ -106,7 +106,7 @@ class SyncService {
   Future<void>? _inFlight;
   StreamSubscription<String>? _tokenSub;
   bool _again = false; // 재등록으로 전송 기록을 비웠다 → 이번 실행 뒤 한 번 더
-  Future<int>? _reregistering;
+  Future<String>? _reregistering;
 
   /// 예전 스크린샷 단계(2단계). 새 스크린샷 단계([_inFlight])와 잠금이 따로라 앱 복귀 때의 새 동기화를 막지 않는다.
   Future<void>? _olderInFlight;
@@ -181,22 +181,22 @@ class SyncService {
 
   /// 서버가 이 기기를 모를 때 [RemineApi]가 부른다(동시 요청이 여럿이어도 한 번).
   /// 새로 등록하고, 서버에 있다고 믿던 전송 기록을 버린 뒤 전체 재전송을 예약한다.
-  Future<int> _recoverDevice() async {
+  Future<String> _recoverDevice() async {
     log?.call('[sync] 서버가 기기를 모름 → 재등록');
-    final id = await (_reregistering = () async {
-      final id = await api.registerDevice(await _tokenForRegister());
+    final token = await (_reregistering = () async {
+      final token = await api.registerDevice(await _tokenForRegister());
       await state.clear();
-      await state.setDeviceId(id);
+      await state.setDeviceToken(token);
       await settings.setOlderCursor(null); // 전송 기록을 비웠으니 예전 스크린샷도 처음부터 다시 본다
       await trash?.resendAll(); // 새 기기에는 휴지통 표시가 없다. 이번 실행의 재전송 뒤에 다시 알린다
-      return id;
+      return token;
     }().whenComplete(() => _reregistering = null));
     if (_inFlight != null) {
       _again = true; // 돌고 있던 실행(수동이어도)이 끝나면 한 번 더
     } else if (autoSync) {
       unawaited(run());
     }
-    return id;
+    return token;
   }
 
   /// 새 스크린샷 단계가 도는 중인지(예전 단계는 [isOlderRunning]).
@@ -212,12 +212,12 @@ class SyncService {
       // 보내기 전에: 남아 있는 APP_OWN 판정이 있으면 전송 계획이 "기기에서 끝남"으로 건너뛴다.
       await _rejudgeOwnIfRuleChanged([...mine, ...own]);
       final config = await api.config();
-      final deviceId = await _ensureDevice();
+      final deviceToken = await _ensureDevice();
       // 이 시각 뒤에 찍은 캡처는 다음부터 300장을 넘어도 모두 읽는다(이미 등록된 기기는 이 버전의 첫 동기화 시각).
       if (await state.registeredAt() == null) {
         await state.setRegisteredAt(_now());
       }
-      await _forgetOwn(deviceId, own);
+      await _forgetOwn(deviceToken, own);
       await _recordOwn(own);
       await flushTrash(); // 지난번에 못 알린 휴지통
       final waiting = <GalleryPhoto>[];
@@ -240,14 +240,14 @@ class SyncService {
       );
       final tally = _Tally();
       status.begin(pending.length);
-      var deviceIdNow = deviceId;
+      var deviceTokenNow = deviceToken;
       final size = batchSize < config.maxBatchSize
           ? batchSize
           : config.maxBatchSize;
       for (var i = 0; i < pending.length; i += size) {
         final chunk = pending.sublist(i, (i + size).clamp(0, pending.length));
-        final r = await _batch(chunk, config, deviceIdNow, tally);
-        deviceIdNow = r.deviceId;
+        final r = await _batch(chunk, config, deviceTokenNow, tally);
+        deviceTokenNow = r.deviceToken;
         failed += r.failed;
         status.advance(chunk.length);
         onBatchDone?.call();
@@ -320,9 +320,9 @@ class SyncService {
   /// [limit]은 기기당 하루 장수(옛 서버면 0). 아직 기기 등록 전이면 null. 실패는 [ApiException].
   Future<({int remaining, int limit, DateTime? resetsAt})?>
   refreshOlderQuota() async {
-    final id = await state.deviceId();
+    final id = await state.deviceToken();
     if (id == null) return null;
-    final c = await api.config(deviceId: id);
+    final c = await api.config(deviceToken: id);
     final remaining = c.olderRemainingToday;
     if (remaining == null) return null;
     await settings.setOlderQuota(remaining, c.olderResetsAt);
@@ -386,7 +386,7 @@ class SyncService {
     if (cursor != null && from != null && cursor.time.isBefore(from)) {
       return; // 범위를 줄여 시작보다 오래된 곳까지 이미 봤다 → 완료
     }
-    final quota = await api.config(deviceId: await _ensureDevice());
+    final quota = await api.config(deviceToken: await _ensureDevice());
     var left = quota.olderRemainingToday ?? 0;
     await settings.setOlderQuota(left, quota.olderResetsAt);
     if (left <= 0) return;
@@ -595,7 +595,7 @@ class SyncService {
 
   /// 예전에 보냈던 캡처가 지금 보니 Remine 자기 캡처면(판정 규칙이 생기기 전에 보낸 것) 서버에서 지운다.
   /// 지운 뒤 전송 기록을 없애서 다음 실행에는 다시 보내지 않는다. 실패하면 다음 실행에서 다시(분석은 계속).
-  Future<void> _forgetOwn(int deviceId, List<GalleryPhoto> own) async {
+  Future<void> _forgetOwn(String deviceToken, List<GalleryPhoto> own) async {
     // 서버에 보낸 적 있는 것만. 기기에서 끝난 캡처(deviceOnly)의 id는 서버에 알리지 않는다.
     final sent = <String>[];
     for (final p in own) {
@@ -606,7 +606,7 @@ class SyncService {
     try {
       for (var i = 0; i < sent.length; i += _forgetChunk) {
         final ids = sent.sublist(i, (i + _forgetChunk).clamp(0, sent.length));
-        await api.forget(deviceId, ids);
+        await api.forget(deviceToken, ids);
         await state.removeEntries(ids);
       }
       log?.call('[sync] 자기 캡처 ${sent.length}장 서버에서 지움');
@@ -635,7 +635,7 @@ class SyncService {
     do {
       _flushAgain = false;
       try {
-        final id = await state.deviceId();
+        final id = await state.deviceToken();
         if (id == null) return; // 등록 전: 서버에 그 캡처가 아직 없다
         final o = await store.outbox();
         await _sendTrash(o.trash, (ids) => api.trash(id, ids), store.trashSent);
@@ -703,9 +703,9 @@ class SyncService {
 
   /// 등록된 기기에만 부르고 실패는 삼킨다. 서버에 닿지 못했거나 기기를 모름(404)
   /// → 다음 시작의 [startTokenSync]나 재등록이 설정에 맞게 다시 한다.
-  Future<void> _quietly(Future<void> Function(int deviceId) call) async {
+  Future<void> _quietly(Future<void> Function(String deviceToken) call) async {
     try {
-      final id = await state.deviceId();
+      final id = await state.deviceToken();
       if (id != null) await call(id);
     } catch (_) {}
   }
@@ -713,7 +713,7 @@ class SyncService {
   /// [개발용] 서버(dev 프로필)가 이 기기에 테스트 알림 1건을 바로 보내게 한다. 실패는 [ApiException].
   /// 서버가 [delaySeconds] 기다렸다 보내고 발송 결과를 돌려준다.
   Future<String> sendTestPush({int delaySeconds = 0}) async {
-    final id = await state.deviceId();
+    final id = await state.deviceToken();
     if (id == null) throw const ApiException(ApiFailure.rejected); // 아직 등록 전
     return api.sendTestPush(id, delaySeconds: delaySeconds);
   }
@@ -724,15 +724,27 @@ class SyncService {
       ? await push?.token()
       : null;
 
-  Future<int> _ensureDevice() async {
-    // 재등록 중이면(기기 id를 비우고 새로 받는 사이) 따로 등록하지 않고 그 결과를 쓴다.
+  Future<String> _ensureDevice() async {
+    // 재등록 중이면(기기 토큰을 비우고 새로 받는 사이) 따로 등록하지 않고 그 결과를 쓴다.
     final pending = _reregistering;
     if (pending != null) return pending;
-    final saved = await state.deviceId();
+    final saved = await state.deviceToken();
     if (saved != null) return saved;
-    final id = await api.registerDevice(await _tokenForRegister());
-    await state.setDeviceId(id);
-    return id;
+    // [임시] 토큰 도입 전에 등록한 기기: 이전 창구로 기존 기록을 이어 간다. 거절되면 새 기기로 다시 시작한다.
+    final legacy = await state.legacyDeviceId();
+    if (legacy != null) {
+      final claimed = await api.claimLegacyDevice(
+        legacy,
+        await _tokenForRegister(),
+      );
+      log?.call('[sync] 기존 기기 이전 ${claimed != null ? '성공' : '거절 → 새로 등록'}');
+      if (claimed == null) return _recoverDevice();
+      await state.setDeviceToken(claimed);
+      return claimed;
+    }
+    final token = await api.registerDevice(await _tokenForRegister());
+    await state.setDeviceToken(token);
+    return token;
   }
 
   /// [quiet]면 진행 화면([status])에 알리지 않는다(첫 분석이 끝난 뒤 조용히 도는 예전 스크린샷).
@@ -740,7 +752,7 @@ class SyncService {
   /// [failedIds]: 이번에 실패로 기록한 장(OCR 실패·호출 실패·응답 오류 등. 하루 한도·분석 중·마감은 기록하지 않아 빠진다).
   Future<
     ({
-      int deviceId,
+      String deviceToken,
       int failed,
       Set<String> failedIds,
       bool limitHit,
@@ -750,7 +762,7 @@ class SyncService {
   _batch(
     List<GalleryPhoto> chunk,
     ApiConfig config,
-    int deviceId,
+    String deviceToken,
     _Tally tally, {
     bool quiet = false,
   }) async {
@@ -828,7 +840,7 @@ class SyncService {
 
     // 서버가 일부를 되돌려 보내면(이미지가 크다/잘못됐다) 고쳐서 같은 배치 안에서 최대 3번 더 보낸다.
     var round = 0;
-    final currentDevice = deviceId; // 재등록되면 api가 새 id로 바꿔 보낸다
+    final currentDevice = deviceToken; // 재등록되면 api가 새 토큰으로 바꿔 보낸다
     while (send.isNotEmpty && round < 3) {
       round++;
       final AnalyzeResult result;
@@ -911,7 +923,7 @@ class SyncService {
       failed++;
     }
     return (
-      deviceId: currentDevice,
+      deviceToken: currentDevice,
       failed: failed,
       failedIds: failedIds,
       limitHit: limitHit,

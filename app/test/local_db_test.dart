@@ -139,8 +139,8 @@ void main() {
     expect((await verdicts.find('chat1'))!.category, Category.chat);
 
     // 새 표가 바로 쓸 수 있다: 기기 id, 첫 분석 여부, 매핑, 마지막 목록 캐시
-    expect(await remote.deviceId(), isNull);
-    await remote.setDeviceId(7);
+    expect(await remote.deviceToken(), isNull);
+    await remote.setDeviceToken('tok-7');
     expect(await remote.firstSyncDone(), isFalse);
     await remote.setFirstSyncDone();
     await remote.putEntry(
@@ -157,7 +157,7 @@ void main() {
     // 다시 열어도(업그레이드 이후 재실행) 값이 남아 있다.
     final again = open();
     final r2 = SqfliteRemoteStateStore(again);
-    expect(await r2.deviceId(), 7);
+    expect(await r2.deviceToken(), 'tok-7');
     expect(await r2.firstSyncDone(), isTrue);
     final e = (await r2.entry('a1'))!;
     expect(
@@ -172,7 +172,7 @@ void main() {
     await prefs.setImageConsent(true);
     await prefs.setNotificationsEnabled(true);
     await r2.clear();
-    expect(await r2.deviceId(), isNull);
+    expect(await r2.deviceToken(), isNull);
     expect(await r2.cached('summary'), isNull);
     expect(await r2.entry('a1'), isNull);
     expect(await r2.firstSyncDone(), isTrue);

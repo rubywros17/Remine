@@ -24,12 +24,22 @@ public class Device {
     // 푸시 토큰은 갱신될 수 있으므로 unique 제약은 걸지 않는다. 토큰을 못 받았거나 FCM이 무효라고 하면 null(푸시만 안 간다).
     private String fcmToken;
 
+    // 인증 토큰의 SHA-256. 원문은 저장하지 않는다(DeviceToken). V7 전에 등록된 기기는 null.
+    private byte[] tokenHash;
+
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
     public Device(String fcmToken) {
         this.fcmToken = blankToNull(fcmToken);
+    }
+
+    /** 새 인증 토큰을 만들어 해시만 남기고 원문을 돌려준다. 원문은 호출한 쪽이 응답으로 한 번만 내보낸다. */
+    public String issueToken() {
+        String token = DeviceToken.generate();
+        this.tokenHash = DeviceToken.hash(token);
+        return token;
     }
 
     public void updateFcmToken(String fcmToken) {

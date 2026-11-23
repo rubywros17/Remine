@@ -1,6 +1,6 @@
 package com.remine.server.controller;
 
-import com.remine.server.domain.device.Device;
+import com.remine.server.TestDevices;
 import com.remine.server.domain.device.DeviceRepository;
 import com.remine.server.push.PushSender;
 import org.junit.jupiter.api.Nested;
@@ -31,8 +31,8 @@ class DevPushEndpointTest {
 
         @Test
         void 경로가_없어_404() throws Exception {
-            Long id = deviceRepository.save(new Device("token")).getId();
-            mvc.perform(post("/api/dev/push-test").header("X-Device-Id", id)).andExpect(status().isNotFound());
+            Long id = TestDevices.save(deviceRepository, "token");
+            mvc.perform(post("/api/dev/push-test").header("Authorization", TestDevices.auth(id))).andExpect(status().isNotFound());
             mvc.perform(get("/api/dev/metrics")).andExpect(status().isNotFound());
         }
     }
@@ -55,27 +55,27 @@ class DevPushEndpointTest {
 
         @Test
         void 이_기기에_보내고_결과를_돌려준다() throws Exception {
-            Long id = deviceRepository.save(new Device("token")).getId();
-            mvc.perform(post("/api/dev/push-test").header("X-Device-Id", id))
+            Long id = TestDevices.save(deviceRepository, "token");
+            mvc.perform(post("/api/dev/push-test").header("Authorization", TestDevices.auth(id)))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.result").value("SENT"));
         }
 
         @Test
         void 서버가_기다렸다_보낼_수_있고_10초를_넘으면_400() throws Exception {
-            Long id = deviceRepository.save(new Device("token")).getId();
-            mvc.perform(post("/api/dev/push-test").header("X-Device-Id", id).param("delaySeconds", "1"))
+            Long id = TestDevices.save(deviceRepository, "token");
+            mvc.perform(post("/api/dev/push-test").header("Authorization", TestDevices.auth(id)).param("delaySeconds", "1"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.result").value("SENT"));
-            mvc.perform(post("/api/dev/push-test").header("X-Device-Id", id).param("delaySeconds", "11"))
+            mvc.perform(post("/api/dev/push-test").header("Authorization", TestDevices.auth(id)).param("delaySeconds", "11"))
                     .andExpect(status().isBadRequest());
         }
 
         @Test
-        void 토큰이_없으면_409_미등록_기기는_404() throws Exception {
-            Long id = deviceRepository.save(new Device(null)).getId();
-            mvc.perform(post("/api/dev/push-test").header("X-Device-Id", id)).andExpect(status().isConflict());
-            mvc.perform(post("/api/dev/push-test").header("X-Device-Id", 999_999)).andExpect(status().isNotFound());
+        void FCM_토큰이_없으면_409_모르는_기기_토큰은_401() throws Exception {
+            Long id = TestDevices.save(deviceRepository, null);
+            mvc.perform(post("/api/dev/push-test").header("Authorization", TestDevices.auth(id))).andExpect(status().isConflict());
+            mvc.perform(post("/api/dev/push-test").header("Authorization", TestDevices.auth(999_999))).andExpect(status().isUnauthorized());
         }
 
         @Test

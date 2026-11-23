@@ -115,7 +115,7 @@ void main() {
         texts: {'p0': '글자 ' * 60},
         client: client,
       );
-      await r.state.setDeviceId(7);
+      await r.state.setDeviceToken('tok-7');
       return r;
     }
 
@@ -239,7 +239,7 @@ void main() {
               : RecordingClient().defaultFor(req),
         ),
       );
-      await r.state.setDeviceId(7);
+      await r.state.setDeviceToken('tok-7');
       await r.repository.list();
       return (r, 5);
     }

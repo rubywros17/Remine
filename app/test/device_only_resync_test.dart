@@ -77,7 +77,7 @@ void main() {
       final e = await r.state.entry(p.id);
       if (e != null) await changed.state.putEntry(e);
     }
-    await changed.state.setDeviceId(7);
+    await changed.state.setDeviceToken('tok-7');
     await changed.sync.run();
     expect(changed.status.total, 1, reason: 'blank만 바뀌었다');
     expectNeverSent(changed);
@@ -90,7 +90,7 @@ void main() {
         'mine-sent': 'Screenshot_20261101_101011_Remine.jpg',
       }),
     );
-    await r.state.setDeviceId(7);
+    await r.state.setDeviceToken('tok-7');
     await r.state.putEntry(
       const SyncEntry(
         assetId: 'mine-device',

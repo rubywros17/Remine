@@ -1,7 +1,7 @@
 package com.remine.server.service;
 
+import com.remine.server.TestDevices;
 import com.remine.server.classifier.ClassificationResult;
-import com.remine.server.domain.device.Device;
 import com.remine.server.domain.device.DeviceRepository;
 import com.remine.server.domain.screenshot.Category;
 import com.remine.server.domain.screenshot.ScreenshotRepository;
@@ -38,7 +38,7 @@ class ScreenshotTrashIntegrationTest {
     @Test
     void 휴지통에_넣으면_관심사에서_빠지고_되살리면_돌아온다() {
         LocalDateTime now = LocalDateTime.now(clock);
-        Long device = deviceRepository.save(new Device("trash1")).getId();
+        Long device = TestDevices.save(deviceRepository, "trash1");
         for (String id : List.of("a1", "a2", "a3", "a4")) {
             save(device, id, now.minusDays(1), "뜨개질");
         }
@@ -58,8 +58,8 @@ class ScreenshotTrashIntegrationTest {
     @Test
     void 다른_기기의_같은_캡처는_바뀌지_않는다() {
         LocalDateTime now = LocalDateTime.now(clock);
-        Long mine = deviceRepository.save(new Device("trash2")).getId();
-        Long other = deviceRepository.save(new Device("trash3")).getId();
+        Long mine = TestDevices.save(deviceRepository, "trash2");
+        Long other = TestDevices.save(deviceRepository, "trash3");
         for (String id : List.of("b1", "b2", "b3")) {
             save(mine, id, now.minusDays(1), "캠핑");
             save(other, id, now.minusDays(1), "캠핑");
@@ -74,7 +74,7 @@ class ScreenshotTrashIntegrationTest {
     @Test
     void 다시_보내도_결과가_같고_없는_id는_무시한다() {
         LocalDateTime now = LocalDateTime.now(clock);
-        Long device = deviceRepository.save(new Device("trash4")).getId();
+        Long device = TestDevices.save(deviceRepository, "trash4");
         save(device, "c1", now.minusDays(1), "등산");
 
         assertThat(trashService.trash(device, List.of("c1", "없음"))).isEqualTo(1);
@@ -86,7 +86,7 @@ class ScreenshotTrashIntegrationTest {
     @Test
     void 휴지통에_있어도_분석된_캡처로_남아_다시_보내면_재분석하지_않는다() {
         LocalDateTime now = LocalDateTime.now(clock);
-        Long device = deviceRepository.save(new Device("trash5")).getId();
+        Long device = TestDevices.save(deviceRepository, "trash5");
         save(device, "d1", now.minusDays(1), "요리");
 
         trashService.trash(device, List.of("d1"));
@@ -96,14 +96,14 @@ class ScreenshotTrashIntegrationTest {
 
     @Test
     void 엔드포인트는_204이고_목록이_없거나_500개를_넘으면_400() throws Exception {
-        Long id = deviceRepository.save(new Device("trash6")).getId();
+        Long id = TestDevices.save(deviceRepository, "trash6");
         String tooMany = "{\"assetIds\":[" + "\"a\",".repeat(500) + "\"a\"]}";
         for (String path : List.of("/api/screenshots/trash", "/api/screenshots/restore")) {
-            mvc.perform(post(path).header("X-Device-Id", id)
+            mvc.perform(post(path).header("Authorization", TestDevices.auth(id))
                     .contentType(MediaType.APPLICATION_JSON).content("{\"assetIds\":[\"a\"]}"))
                     .andExpect(status().isNoContent());
             for (String body : List.of("{}", tooMany)) {
-                mvc.perform(post(path).header("X-Device-Id", id)
+                mvc.perform(post(path).header("Authorization", TestDevices.auth(id))
                         .contentType(MediaType.APPLICATION_JSON).content(body)).andExpect(status().isBadRequest());
             }
         }

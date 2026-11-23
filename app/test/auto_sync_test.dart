@@ -94,7 +94,7 @@ void main() {
             : RecordingClient().defaultFor(req),
       ),
     );
-    await r.state.setDeviceId(3);
+    await r.state.setDeviceToken('tok-3');
 
     await expectLater(r.repository.interests(), completes);
 

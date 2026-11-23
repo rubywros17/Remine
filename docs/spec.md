@@ -241,18 +241,19 @@
 - **검토 기준 정확도** = confirmed / (confirmed + corrected). 사용자가 직접 본 표본뿐이라 작고 편향될 수 있어 참고용이다.
 - **혼동 쌍** (auto_category → category) 건수: 프롬프트·카테고리 정의 개선의 입력.
 - 한계: 수정 이력 없음, 기기 안에서 분류한 캡처(민감·은행·메신저 앱)는 서버에 없어 제외, 모델·프롬프트 버전별 분리는 버전 컬럼(`classifier_version`)이 생기면 가능.
-- 조회 API: `GET /api/categories/accuracy` (헤더 `X-Device-Id`) → `{analyzed, corrected, confirmed, unreviewed, correctionRate, accuracyUpperBound, reviewedAccuracy, byAutoCategory:[{category, analyzed, corrected, confirmed}], confusions:[{from, to, count}]}`. 비율은 분모가 0이면 `null`. `confirmed`는 앱 수정 시트의 "X 그대로 둘게요"(같은 값 저장)로 생긴다. `from`/`to` 기간 필터는 아직 없다. `group by auto_category, category, category_source` 쿼리 1회. 기기 전체 합산은 인증이 없는 지금은 API로 열지 않고 관리용 SQL로만 본다.
+- 조회 API: `GET /api/categories/accuracy` (기기 토큰) → `{analyzed, corrected, confirmed, unreviewed, correctionRate, accuracyUpperBound, reviewedAccuracy, byAutoCategory:[{category, analyzed, corrected, confirmed}], confusions:[{from, to, count}]}`. 비율은 분모가 0이면 `null`. `confirmed`는 앱 수정 시트의 "X 그대로 둘게요"(같은 값 저장)로 생긴다. `from`/`to` 기간 필터는 아직 없다. `group by auto_category, category, category_source` 쿼리 1회. 기기 전체 합산은 인증이 없는 지금은 API로 열지 않고 관리용 SQL로만 본다.
 
 ## 9. API (초안)
 
 | Method | Path | 설명 |
 |---|---|---|
-| POST | `/api/devices` | 기기 등록 `{fcmToken}` (토큰은 없어도 됨 → 푸시만 안 감) |
-| PUT | `/api/devices/me/fcm-token` | FCM 토큰 갱신 `{fcmToken}`(빈 값 400) → 204. 알림을 켰을 때·토큰이 바뀔 때. 미등록 기기 404 |
-| DELETE | `/api/devices/me/fcm-token` | 알림 끄기 → 토큰 삭제, 204(이미 없어도 204). 미등록 기기 404 |
+| POST | `/api/devices` | 기기 등록 `{fcmToken}`(FCM 토큰은 없어도 됨 → 푸시만 안 감) → 201 `{token}`. 기기 인증 토큰(256비트, URL-safe Base64 43자)은 이 응답으로 **한 번만** 나가고 서버에는 SHA-256만 남는다. 숫자 기기 id는 응답에 없다 |
+| POST | `/api/devices/legacy-claim` | **[임시] 토큰 도입 전 기기 이전.** `{deviceId, fcmToken}` → 200 `{token}`. 허용 목록(`remine.legacy.ids`)·기한(`remine.legacy.until`)·저장된 FCM 토큰 일치·아직 토큰 없음을 모두 만족할 때 한 번만. 거절은 이유와 상관없이 403 `LEGACY_CLAIM_REJECTED`(로그에는 사유 코드만). 허용 목록이 비어 있으면 404(기본). 이전이 끝나면 지운다 |
+| PUT | `/api/devices/me/fcm-token` | FCM 토큰 갱신 `{fcmToken}`(빈 값 400) → 204. 알림을 켰을 때·토큰이 바뀔 때. 토큰 없음·틀림 401 |
+| DELETE | `/api/devices/me/fcm-token` | 알림 끄기 → 토큰 삭제, 204(이미 없어도 204). 토큰 없음·틀림 401 |
 | GET / DELETE | `/api/dev/metrics` | **dev 프로필 전용**(그 외 404). 서버 기동(또는 DELETE) 이후 누적 측정값 `{requests, llmCalls, llmItems, inputTokens, outputTokens, costUsd, costPerItemUsd, serverElapsedMs, maxRequestMs, wallElapsedMs}`. 비용은 유료 단가 환산. DELETE는 0으로 초기화(204) |
-| POST | `/api/dev/push-test?delaySeconds=0~10` | **dev 프로필 전용**(그 외 404). 서버가 delaySeconds 기다렸다(10 초과 400) 이 기기에 관심사 알림 1건을 보낸다(FCM notification 제목·본문 + 안드로이드 채널 `interest_alerts`·우선순위 HIGH)(지금 1순위 관심사, 없으면 예시 "신발"). `interest_alert`는 건드리지 않는다. 200 `{result: SENT/INVALID_TOKEN/FAILED}`, 토큰 없음 409, 서버 푸시 꺼짐 503 |
-| GET | `/api/config` | 분석 설정 조회(헤더 불필요). `{imageThresholdChars:150, maxBatchSize:20, imageMaxBytes:1048576, imageMaxLongSide:1024, imageContentType:"image/jpeg", maxRequestBytes:12582912, classifyIntervalMs:0, dailyOlderLimit:300, olderRemainingToday:null, olderResetsAt:null}` — 정책값은 모두 서버 설정(`remine.*`)에서 읽는다. `classifyIntervalMs`는 장당 분류 최소 간격(gemini면 `min-interval-ms`, 가짜 분류기는 0)이며 앱이 남은 시간을 처음부터 예상하는 데 쓴다. `X-Device-Id`(선택)가 등록된 기기면 `olderRemainingToday`(오늘 더 보낼 수 있는 예전 스크린샷 장수)·`olderResetsAt`(다음 한국 자정, 예 `2026-11-19T00:00:00+09:00`)을 채우고, 없거나 모르는 기기면 `null`(404 아님) |
+| POST | `/api/dev/push-test?delaySeconds=0~10` | **dev 프로필 전용**(그 외 404). 서버가 delaySeconds 기다렸다(10 초과 400) 이 기기(토큰)에 관심사 알림 1건을 보낸다(FCM notification 제목·본문 + 안드로이드 채널 `interest_alerts`·우선순위 HIGH)(지금 1순위 관심사, 없으면 예시 "신발"). `interest_alert`는 건드리지 않는다. 200 `{result: SENT/INVALID_TOKEN/FAILED}`, 토큰 없음 409, 서버 푸시 꺼짐 503 |
+| GET | `/api/config` | 분석 설정 조회(헤더 불필요). `{imageThresholdChars:150, maxBatchSize:20, imageMaxBytes:1048576, imageMaxLongSide:1024, imageContentType:"image/jpeg", maxRequestBytes:12582912, classifyIntervalMs:0, dailyOlderLimit:300, olderRemainingToday:null, olderResetsAt:null}` — 정책값은 모두 서버 설정(`remine.*`)에서 읽는다. `classifyIntervalMs`는 장당 분류 최소 간격(gemini면 `min-interval-ms`, 가짜 분류기는 0)이며 앱이 남은 시간을 처음부터 예상하는 데 쓴다. 기기 토큰(선택)이 맞으면 `olderRemainingToday`(오늘 더 보낼 수 있는 예전 스크린샷 장수)·`olderResetsAt`(다음 한국 자정, 예 `2026-11-19T00:00:00+09:00`)을 채우고, 없거나 틀리면 `null`(401 아님) |
 | POST | `/api/screenshots/analyze` | OCR 텍스트 배치(최대 20장, 초과 시 400) 전송 → 분류 결과 반환 `{analyzed, skipped, failed, olderRemainingToday}`. 일부 분류가 실패해도 200이며 실패한 캡처는 `failed`(`localAssetId`, `reason`)에 담기고 미분석으로 남는다(같은 요청을 다시 보내면 재분석). 요청 형식은 둘 중 하나: ① `application/json` — 기존 본문(이미지 없음), ② `multipart/form-data` — 아래 |
 
 **analyze multipart 형식**: `request` 파트(텍스트, 위 JSON 본문과 같은 스키마) + 이미지 파트 `image.<localAssetId>`(JPEG, 캡처당 최대 1개, 이미지는 동의한 경우의 짧은 OCR 캡처에만). 이미지는 저장·로그하지 않는다.
@@ -288,18 +289,20 @@
 | 상황 | 응답 |
 |---|---|
 | `category` 누락·빈 값·7개에 없는 값 | 400, 본문에 `allowed`(허용 값 목록) |
-| `X-Device-Id` 헤더 없음 | 400 |
-| 등록되지 않은 기기 | 404 |
+| 기기 토큰 없음·틀림 | 401 `DEVICE_UNAUTHORIZED` |
 | 없는 id **또는 다른 기기의 캡처** | 404 (같은 응답이라 다른 기기의 id 존재를 알 수 없음. 값 검증이 먼저라 400/404 차이로도 알 수 없음) |
 | 분석되지 않은 캡처(`analyzed_at` null) | 409 |
 | GET | `/api/screenshots?category=&tag=&page=&size=` | 분류된 스크린샷 목록. taken_at 최신순, page 기본 0 / size 기본 30·최대 100, 각 항목에 태그 포함. 항목: `{id, localAssetId, takenAt, sourceApp, category, autoCategory, categorySource, summary, tags}`. `tag`는 정규화 키로 비교한다(`#`·공백·대소문자 무시, "니트 가디건" = "니트가디건"). `category` 없이 `tag`만 주면 카테고리와 상관없이 그 태그 전부(앱의 태그 모아보기) |
-| POST | `/api/screenshots/forget` | 서버에서 지운다(Remine 자기 화면 캡처, 갤러리에서 삭제한 캡처). 본문 `{"assetIds":["..."]}`(최대 500개, 없으면 400) → 204. 이 기기의 캡처와 태그 연결만 지우고 없는 id는 무시(멱등). 관심사·카테고리 개수는 조회 때 다시 세므로 바로 반영된다. 미등록 기기 404 |
+| POST | `/api/screenshots/forget` | 서버에서 지운다(Remine 자기 화면 캡처, 갤러리에서 삭제한 캡처). 본문 `{"assetIds":["..."]}`(최대 500개, 없으면 400) → 204. 이 기기의 캡처와 태그 연결만 지우고 없는 id는 무시(멱등). 관심사·카테고리 개수는 조회 때 다시 세므로 바로 반영된다. 토큰 없음·틀림 401 |
 | POST | `/api/screenshots/trash` | 앱 휴지통 캡처를 관심사 집계·푸시에서 뺀다(행·태그·목록은 유지). 본문 `{"assetIds":[...]}`(최대 500개), 없는 id는 무시, 다시 보내도 결과가 같다. 204 |
 | POST | `/api/screenshots/restore` | 되살린 캡처를 다시 집계에 넣는다. 본문·규칙은 `trash`와 같다. 204 |
 | GET | `/api/categories/summary` | 홈 화면용. 7개 카테고리 전부 반환(0장은 count 0), 카테고리별 개수·대표 태그 상위 3개·최신 localAssetId 4개 |
 | GET | `/api/interests` | 감지된 관심사 목록(FORGOTTEN 장수↓ → 오래 안 본 순, 그다음 RECENT 장수↓ → 최근 순, 이름순). `{windowDays:30, recentDays:30, minCount:3, items:[{tag, category, status, captureCount, dormantDays, peakMonth, peakMonthCount, latestMonth, latestMonthCount, recent:[{id, localAssetId, takenAt}], linkedTags:[tag]}]}`. `windowDays`는 옛 앱 호환용(값은 recentDays, 새 앱은 읽지 않음, deprecated). `status`는 `FORGOTTEN`/`RECENT`, `captureCount`는 전체 기간 장수, `peakMonth`(1~12)는 캡처가 가장 많던 달(동점이면 최근 달)·`peakMonthCount`는 그 달 장수, `latestMonth`·`latestMonthCount`는 마지막 캡처의 달과 그 달 장수. `recent`는 최근 3장(최신순, 앱이 기기 사진으로 썸네일을 그림), `dormantDays`는 마지막 캡처 이후 일수, `linkedTags`는 같은 캡처에 함께 붙은 다른 관심사 태그(앱의 머릿속 지도 연결선, 이미 읽은 행으로 묶어 쿼리 추가 없음). OCR 원문·요약은 없다. 없으면 `items: []` |
 
-- 기기 등록(`POST /api/devices`)을 제외한 모든 API는 `X-Device-Id` 헤더로 기기를 식별한다. 미등록 기기는 404, 헤더 누락은 400. (로그인 없는 MVP의 임시 방식)
+- **기기 인증**: 기기 등록(`POST /api/devices`)과 `GET /api/config`를 뺀 모든 API는 `Authorization: Bearer <기기 토큰>`으로 기기를 찾는다(`@CurrentDevice`). 토큰이 없거나 틀리면 이유를 구분하지 않고 401 `{code: DEVICE_UNAUTHORIZED}` + `WWW-Authenticate: Bearer`. 앱은 이 응답(과 예전 404 `DEVICE_NOT_FOUND`)을 받으면 다시 등록하고 전체를 재전송한다.
+  - 서버는 토큰 원문을 저장·로그하지 않는다(`device.token_hash` = SHA-256, 유니크). 토큰이 256비트 무작위라 솔트·느린 해시는 쓰지 않는다. 해시로 찾으므로 DB 비교 시간이 원문 추측에 단서가 되지 않고, 찾은 뒤 상수 시간 비교를 한 번 더 한다.
+  - 숫자 기기 id는 서버 내부 키로만 쓰고 요청·응답·로그에 내지 않는다. 예전 `X-Device-Id` 헤더는 무시된다(401).
+  - 앱은 토큰을 앱 전용 저장소(sqflite `setting.device_token`)에 둔다. 백업은 꺼져 있다(`allowBackup=false`). 화면·클립보드·로그에 내지 않는다.
 
 ---
 

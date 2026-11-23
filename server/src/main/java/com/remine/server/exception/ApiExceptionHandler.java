@@ -1,7 +1,9 @@
 package com.remine.server.exception;
 
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -71,6 +73,18 @@ public class ApiExceptionHandler {
         problem.setTitle("미등록 기기");
         problem.setProperty("code", DeviceNotFoundException.CODE);
         return problem;
+    }
+
+    /** 토큰이 없거나 틀리다. 앱은 code로 알아보고 기기를 다시 등록한다. */
+    @ExceptionHandler(DeviceUnauthorizedException.class)
+    public ResponseEntity<ProblemDetail> deviceUnauthorized() {
+        ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.UNAUTHORIZED,
+                "기기 인증에 실패했습니다. 기기를 다시 등록해 주세요.");
+        problem.setTitle("기기 인증 실패");
+        problem.setProperty("code", DeviceUnauthorizedException.CODE);
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .header(HttpHeaders.WWW_AUTHENTICATE, "Bearer")
+                .body(problem);
     }
 
     @ExceptionHandler(ScreenshotNotFoundException.class)

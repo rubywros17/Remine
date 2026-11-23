@@ -1,10 +1,10 @@
 package com.remine.server.controller;
 
+import com.remine.server.auth.CurrentDevice;
 import com.remine.server.dto.InterestResponse;
 import com.remine.server.service.InterestService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -16,7 +16,7 @@ public class InterestController {
     private final InterestService interestService;
 
     @GetMapping
-    public InterestResponse list(@RequestHeader("X-Device-Id") Long deviceId) {
+    public InterestResponse list(@CurrentDevice Long deviceId) {
         return interestService.list(deviceId);
     }
 }

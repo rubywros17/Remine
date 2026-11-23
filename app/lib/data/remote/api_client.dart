@@ -148,11 +148,11 @@ class AnalyzeResult {
 
 /// 서버 REST 호출. [http.Client]를 주입받아 테스트에서 가짜로 바꾼다.
 ///
-/// 기기 id를 쓰는 요청이 "기기 없음"(404 DEVICE_NOT_FOUND)이면 여기 한 곳에서 [recoverDevice]로 재등록하고
-/// 원래 요청을 새 id로 **한 번** 다시 보낸다. 여러 요청이 동시에 404를 받아도 재등록은 한 번이고, 옛 id로 늦게 온
-/// 요청은 바뀐 id로 바로 다시 보낸다. 같은 GET이 진행 중이면 새로 보내지 않고 그 결과를 같이 받는다.
+/// 기기 토큰을 쓰는 요청이 "기기 없음"(401 DEVICE_UNAUTHORIZED·404 DEVICE_NOT_FOUND)이면 여기 한 곳에서
+/// [recoverDevice]로 재등록하고 원래 요청을 새 토큰으로 **한 번** 다시 보낸다. 여러 요청이 동시에 받아도 재등록은
+/// 한 번이고, 옛 토큰으로 늦게 온 요청은 바뀐 토큰으로 바로 다시 보낸다. 같은 GET이 진행 중이면 새로 보내지 않고 그 결과를 같이 받는다.
 /// 예외에 요청·응답 내용을 싣지 않는다. 로그는 [log]가 있을 때(디버그 빌드)만, 요청마다 한 줄
-/// `메서드 경로 → 결과 시간`뿐이다. 쿼리(태그 이름이 들어감)·헤더(기기 id)·본문(OCR·토큰)은 찍지 않는다.
+/// `메서드 경로 → 결과 시간`뿐이다. 쿼리(태그 이름이 들어감)·헤더(기기 토큰)·본문(OCR·토큰)은 찍지 않는다.
 class RemineApi {
   RemineApi(
     this.baseUrl,
@@ -170,11 +170,11 @@ class RemineApi {
   /// 디버그 빌드에서만 넘긴다(main.dart). 릴리스는 null이라 아무것도 남지 않는다.
   final void Function(String line)? log;
 
-  /// 재등록해서 새 기기 id를 돌려준다(SyncService가 채운다: 로컬 전송 기록 초기화 + 전체 재전송 예약).
-  Future<int> Function()? recoverDevice;
+  /// 재등록해서 새 기기 토큰을 돌려준다(SyncService가 채운다: 로컬 전송 기록 초기화 + 전체 재전송 예약).
+  Future<String> Function()? recoverDevice;
 
-  Future<int>? _recovering;
-  final Map<int, int> _replaced = {}; // 옛 기기 id → 재등록한 id
+  Future<String>? _recovering;
+  final Map<String, String> _replaced = {}; // 옛 기기 토큰 → 재등록한 토큰(메모리에만)
   final Map<String, Future<Map<String, dynamic>>> _gets = {};
 
   Uri _uri(String path, [Map<String, String>? query]) {
@@ -185,8 +185,8 @@ class RemineApi {
     );
   }
 
-  Map<String, String> _headers(int? deviceId) => {
-    if (deviceId != null) 'X-Device-Id': '$deviceId',
+  Map<String, String> _headers(String? deviceToken) => {
+    if (deviceToken != null) 'Authorization': 'Bearer $deviceToken',
   };
 
   /// 요청을 보내고 2xx 본문을 돌려준다. 실패는 [ApiException]으로만 나온다.
@@ -240,28 +240,31 @@ class RemineApi {
     }
   }
 
+  /// 서버가 이 기기를 모른다: 토큰이 없거나 틀림(401 DEVICE_UNAUTHORIZED), 또는 기기가 지워짐(404 DEVICE_NOT_FOUND).
   static bool _deviceGone(http.Response r) {
-    if (r.statusCode != 404) return false;
+    if (r.statusCode != 401 && r.statusCode != 404) return false;
     try {
       final body = jsonDecode(utf8.decode(r.bodyBytes));
-      return body is Map && body['code'] == 'DEVICE_NOT_FOUND';
+      return body is Map &&
+          (body['code'] == 'DEVICE_UNAUTHORIZED' ||
+              body['code'] == 'DEVICE_NOT_FOUND');
     } catch (_) {
       return false;
     }
   }
 
-  /// 기기 id를 쓰는 요청. [build]는 헤더 없는 새 요청을 만든다(multipart는 다시 보낼 수 없어 매번 새로 만든다).
+  /// 기기 토큰을 쓰는 요청. [build]는 헤더 없는 새 요청을 만든다(multipart는 다시 보낼 수 없어 매번 새로 만든다).
   Future<Map<String, dynamic>> _withDevice(
-    int deviceId,
+    String deviceToken,
     http.BaseRequest Function() build,
   ) async {
-    final id = _replaced[deviceId] ?? deviceId;
+    final id = _replaced[deviceToken] ?? deviceToken;
     try {
       return await _send(build()..headers.addAll(_headers(id)));
     } on ApiException catch (e) {
       final recover = recoverDevice;
       if (!e.deviceGone || recover == null) rethrow;
-      // 기다리는 사이 다른 요청이 이미 재등록했으면 그 id를 쓴다.
+      // 기다리는 사이 다른 요청이 이미 재등록했으면 그 토큰을 쓴다.
       final fresh =
           _replaced[id] ??
           await (_recovering ??= () async {
@@ -276,61 +279,76 @@ class RemineApi {
   /// 같은 GET(경로·쿼리·기기)이 진행 중이면 그 결과를 같이 받는다(홈이 짧은 사이 여러 번 불러도 요청은 하나).
   Future<Map<String, dynamic>> _getJson(
     String path,
-    int? deviceId, [
+    String? deviceToken, [
     Map<String, String>? query,
   ]) {
     final uri = _uri(path, query);
     http.BaseRequest build() => http.Request('GET', uri);
-    final key = '$uri|$deviceId';
+    final key = '$uri|$deviceToken';
     return _gets[key] ??=
-        (deviceId == null ? _send(build()) : _withDevice(deviceId, build))
+        (deviceToken == null ? _send(build()) : _withDevice(deviceToken, build))
         // 블록으로 쓴다: `=> _gets.remove(key)`면 지운 Future(자기 자신)를 whenComplete가 기다려 멈춘다.
         .whenComplete(() {
           _gets.remove(key);
         });
   }
 
-  /// POST /api/devices → 기기 id. 토큰을 못 받았으면 null로 등록한다(푸시만 안 간다).
-  Future<int> registerDevice(String? fcmToken) async {
+  /// POST /api/devices → 기기 인증 토큰(서버가 한 번만 준다). FCM 토큰을 못 받았으면 null로 등록한다(푸시만 안 간다).
+  Future<String> registerDevice(String? fcmToken) async {
     final request = http.Request('POST', _uri('/api/devices'))
       ..headers['Content-Type'] = 'application/json'
       ..body = jsonEncode({'fcmToken': fcmToken});
     final json = await _send(request);
-    return (json['deviceId'] as num).toInt();
+    return json['token'] as String;
+  }
+
+  /// [임시] POST /api/devices/legacy-claim: 토큰 도입 전에 등록한 기기가 기존 기록을 이어 갈 토큰을 한 번 받는다.
+  /// 서버가 거절하거나(403) 창구가 닫혔으면(404) null → 새로 등록한다. 닿지 못하면 [ApiException](다음에 다시).
+  Future<String?> claimLegacyDevice(int legacyId, String? fcmToken) async {
+    final request = http.Request('POST', _uri('/api/devices/legacy-claim'))
+      ..headers['Content-Type'] = 'application/json'
+      ..body = jsonEncode({'deviceId': legacyId, 'fcmToken': fcmToken});
+    try {
+      return (await _send(request))['token'] as String;
+    } on ApiException catch (e) {
+      if (e.failure == ApiFailure.rejected) return null;
+      rethrow;
+    }
   }
 
   /// PUT /api/devices/me/fcm-token. 앱 시작 때·FCM이 토큰을 바꿀 때.
-  Future<void> updateFcmToken(int deviceId, String fcmToken) => _withDevice(
-    deviceId,
-    () => http.Request('PUT', _uri('/api/devices/me/fcm-token'))
-      ..headers['Content-Type'] = 'application/json'
-      ..body = jsonEncode({'fcmToken': fcmToken}),
-  );
+  Future<void> updateFcmToken(String deviceToken, String fcmToken) =>
+      _withDevice(
+        deviceToken,
+        () => http.Request('PUT', _uri('/api/devices/me/fcm-token'))
+          ..headers['Content-Type'] = 'application/json'
+          ..body = jsonEncode({'fcmToken': fcmToken}),
+      );
 
   /// DELETE /api/devices/me/fcm-token. 사용자가 알림을 끄면 서버가 이 기기에 보내지 않게 한다.
-  Future<void> deleteFcmToken(int deviceId) => _withDevice(
-    deviceId,
+  Future<void> deleteFcmToken(String deviceToken) => _withDevice(
+    deviceToken,
     () => http.Request('DELETE', _uri('/api/devices/me/fcm-token')),
   );
 
   /// POST /api/screenshots/forget. 서버에서 지운다(없는 id는 무시): Remine 자기 캡처, 갤러리에서 삭제한 캡처.
-  Future<void> forget(int deviceId, List<String> assetIds) =>
-      _postAssetIds('/api/screenshots/forget', deviceId, assetIds);
+  Future<void> forget(String deviceToken, List<String> assetIds) =>
+      _postAssetIds('/api/screenshots/forget', deviceToken, assetIds);
 
   /// POST /api/screenshots/trash. 앱 휴지통 캡처를 관심사 집계·푸시에서 뺀다(없는 id는 무시).
-  Future<void> trash(int deviceId, List<String> assetIds) =>
-      _postAssetIds('/api/screenshots/trash', deviceId, assetIds);
+  Future<void> trash(String deviceToken, List<String> assetIds) =>
+      _postAssetIds('/api/screenshots/trash', deviceToken, assetIds);
 
   /// POST /api/screenshots/restore. 되살린 캡처를 다시 집계에 넣는다(없는 id는 무시).
-  Future<void> restore(int deviceId, List<String> assetIds) =>
-      _postAssetIds('/api/screenshots/restore', deviceId, assetIds);
+  Future<void> restore(String deviceToken, List<String> assetIds) =>
+      _postAssetIds('/api/screenshots/restore', deviceToken, assetIds);
 
   Future<void> _postAssetIds(
     String path,
-    int deviceId,
+    String deviceToken,
     List<String> assetIds,
   ) => _withDevice(
-    deviceId,
+    deviceToken,
     () => http.Request('POST', _uri(path))
       ..headers['Content-Type'] = 'application/json'
       ..body = jsonEncode({'assetIds': assetIds}),
@@ -338,9 +356,12 @@ class RemineApi {
 
   /// [개발용] POST /api/dev/push-test. 서버가 dev 프로필일 때만 있고, 아니면 404.
   /// 서버가 [delaySeconds] 기다렸다 보낸다(앱은 바로 내려도 된다). 발송 결과(SENT/INVALID_TOKEN/FAILED)를 돌려준다.
-  Future<String> sendTestPush(int deviceId, {int delaySeconds = 0}) async {
+  Future<String> sendTestPush(
+    String deviceToken, {
+    int delaySeconds = 0,
+  }) async {
     final body = await _withDevice(
-      deviceId,
+      deviceToken,
       () => http.Request(
         'POST',
         _uri('/api/dev/push-test', {'delaySeconds': '$delaySeconds'}),
@@ -351,12 +372,15 @@ class RemineApi {
     return result;
   }
 
-  /// [deviceId]를 주면 그 기기의 오늘 남은 예전 스크린샷 몫도 받는다([ApiConfig.olderRemainingToday]).
-  Future<ApiConfig> config({int? deviceId}) async =>
-      ApiConfig.fromJson(await _getJson('/api/config', deviceId));
+  /// [deviceToken]을 주면 그 기기의 오늘 남은 예전 스크린샷 몫도 받는다([ApiConfig.olderRemainingToday]).
+  Future<ApiConfig> config({String? deviceToken}) async =>
+      ApiConfig.fromJson(await _getJson('/api/config', deviceToken));
 
   /// POST /api/screenshots/analyze. 이미지가 하나라도 있으면 multipart, 없으면 JSON.
-  Future<AnalyzeResult> analyze(int deviceId, List<AnalyzeItem> items) async {
+  Future<AnalyzeResult> analyze(
+    String deviceToken,
+    List<AnalyzeItem> items,
+  ) async {
     final body = jsonEncode({
       'screenshots': [
         for (final i in items)
@@ -389,7 +413,7 @@ class RemineApi {
         : (http.Request('POST', _uri('/api/screenshots/analyze'))
             ..headers['Content-Type'] = 'application/json'
             ..body = body);
-    final json = await _withDevice(deviceId, build);
+    final json = await _withDevice(deviceToken, build);
     return AnalyzeResult(
       analyzed: [
         for (final a in json['analyzed'] as List)
@@ -412,31 +436,31 @@ class RemineApi {
 
   /// 응답 JSON을 그대로 돌려준다(로컬 캐시에 저장하려고). 해석은 호출한 쪽이 한다.
   Future<Map<String, dynamic>> listJson(
-    int deviceId, {
+    String deviceToken, {
     Category? category,
     String? tag,
     int page = 0,
     int size = 30,
-  }) => _getJson('/api/screenshots', deviceId, {
+  }) => _getJson('/api/screenshots', deviceToken, {
     if (category != null) 'category': category.code,
     if (tag != null && tag.isNotEmpty) 'tag': tag,
     'page': '$page',
     'size': '$size',
   });
 
-  Future<Map<String, dynamic>> summaryJson(int deviceId) =>
-      _getJson('/api/categories/summary', deviceId);
+  Future<Map<String, dynamic>> summaryJson(String deviceToken) =>
+      _getJson('/api/categories/summary', deviceToken);
 
-  Future<Map<String, dynamic>> interestsJson(int deviceId) =>
-      _getJson('/api/interests', deviceId);
+  Future<Map<String, dynamic>> interestsJson(String deviceToken) =>
+      _getJson('/api/interests', deviceToken);
 
   Future<CategoryUpdate> updateCategory(
-    int deviceId,
+    String deviceToken,
     int id,
     Category category,
   ) async => CategoryUpdate.fromJson(
     await _withDevice(
-      deviceId,
+      deviceToken,
       () => http.Request('PATCH', _uri('/api/screenshots/$id/category'))
         ..headers['Content-Type'] = 'application/json'
         ..body = jsonEncode({'category': category.code}),

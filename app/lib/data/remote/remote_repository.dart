@@ -70,8 +70,8 @@ class RemoteRepository implements ScreenshotRepository {
     final key = 'list|${category?.code ?? ''}|${tag ?? ''}|$page|$size';
     final json = await _fetch(
       key,
-      (deviceId) => _api.listJson(
-        deviceId,
+      (deviceToken) => _api.listJson(
+        deviceToken,
         category: category,
         tag: tag,
         page: page,
@@ -152,12 +152,12 @@ class RemoteRepository implements ScreenshotRepository {
   /// 서버에서 받아 캐시에 저장하고 JSON을 돌려준다. 실패하면 캐시(없으면 null)를 돌려주고 [SyncStatus]에 알린다.
   Future<Map<String, dynamic>?> _fetch(
     String key,
-    Future<Map<String, dynamic>> Function(int deviceId) call,
+    Future<Map<String, dynamic>> Function(String deviceToken) call,
   ) async {
-    final deviceId = await _state.deviceId();
-    if (deviceId != null) {
+    final deviceToken = await _state.deviceToken();
+    if (deviceToken != null) {
       try {
-        final json = await call(deviceId);
+        final json = await call(deviceToken);
         await _state.putCache(key, jsonEncode(json));
         _status.reportFetch(null);
         return json;
@@ -176,10 +176,10 @@ class RemoteRepository implements ScreenshotRepository {
 
   @override
   Future<CategoryUpdate> updateCategory(int id, Category category) async {
-    final deviceId = await _state.deviceId();
-    if (deviceId == null) throw const ApiException(ApiFailure.offline);
+    final deviceToken = await _state.deviceToken();
+    if (deviceToken == null) throw const ApiException(ApiFailure.offline);
     try {
-      final result = await _api.updateCategory(deviceId, id, category);
+      final result = await _api.updateCategory(deviceToken, id, category);
       _status.reportFetch(null);
       return result;
     } on ApiException catch (e) {

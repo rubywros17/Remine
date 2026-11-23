@@ -80,7 +80,7 @@ void main() {
 
         await rig.sync.run();
 
-        expect(await rig.state.deviceId(), 7);
+        expect(await rig.state.deviceToken(), 'tok-7');
         expect(
           rig.client.sent.singleWhere((r) => r.path == '/api/devices').utf8Text,
           '{"fcmToken":null}',
@@ -92,7 +92,7 @@ void main() {
     test('켜져 있으면 시작할 때 토큰을 올리고, FCM이 바꾸면 다시 올린다', () async {
       final push = FakePushClient();
       final rig = await rigWith(true, push: push);
-      await rig.state.setDeviceId(7);
+      await rig.state.setDeviceToken('tok-7');
 
       await rig.sync.startTokenSync();
       push.refresh.add('fcm-new-token');
@@ -107,7 +107,7 @@ void main() {
     test('꺼져 있으면 시작할 때 서버 토큰을 지우고, 토큰이 바뀌어도 올리지 않는다', () async {
       final push = FakePushClient();
       final rig = await rigWith(false, push: push);
-      await rig.state.setDeviceId(7);
+      await rig.state.setDeviceToken('tok-7');
 
       await rig.sync.startTokenSync();
       push.refresh.add('fcm-new-token');
@@ -118,7 +118,7 @@ void main() {
 
     test('아직 안 골랐으면 아무것도 하지 않는다', () async {
       final rig = await rigWith(null);
-      await rig.state.setDeviceId(7);
+      await rig.state.setDeviceToken('tok-7');
 
       await rig.sync.startTokenSync();
 
@@ -127,7 +127,7 @@ void main() {
 
     test('켜고 끄면 저장하고 서버 토큰을 올리거나 지운다', () async {
       final rig = await rigWith(null);
-      await rig.state.setDeviceId(7);
+      await rig.state.setDeviceToken('tok-7');
 
       await rig.sync.setNotifications(true);
       expect(await rig.settings.notificationsEnabled(), isTrue);
@@ -142,7 +142,7 @@ void main() {
         null,
         client: RecordingClient(responder: (r) => jsonResponse({}, 404)),
       );
-      await rig.state.setDeviceId(7);
+      await rig.state.setDeviceToken('tok-7');
 
       await rig.sync.setNotifications(false);
       await rig.sync.startTokenSync();
@@ -277,7 +277,7 @@ void main() {
     }) async {
       final rig = (await tester.runAsync(() async {
         final rig = await SyncRig.create(photos: const [], push: push);
-        await rig.state.setDeviceId(7);
+        await rig.state.setDeviceToken('tok-7');
         if (enabled != null) {
           await rig.settings.setNotificationsEnabled(enabled);
         }
@@ -394,7 +394,7 @@ void main() {
           push: FakePushClient(),
           log: logs.add,
         );
-        await rig.state.setDeviceId(7);
+        await rig.state.setDeviceToken('tok-7');
         return rig;
       }))!;
       await tester.pumpWidget(

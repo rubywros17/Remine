@@ -22,7 +22,7 @@ class ProdProfileTest {
 
     @Test
     void dev_엔드포인트는_404() throws Exception {
-        mvc.perform(post("/api/dev/push-test").header("X-Device-Id", 1)).andExpect(status().isNotFound());
+        mvc.perform(post("/api/dev/push-test").header("Authorization", "Bearer x")).andExpect(status().isNotFound());
         mvc.perform(get("/api/dev/metrics")).andExpect(status().isNotFound());
     }
 

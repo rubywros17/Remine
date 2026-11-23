@@ -26,7 +26,7 @@ void main() {
     final a = api(RecordingClient());
 
     await a.registerDevice('secret-fcm-token');
-    await a.analyze(7, [
+    await a.analyze('tok-secret-device', [
       AnalyzeItem(
         assetId: 'asset-1',
         takenAt: DateTime(2026, 10, 21),
@@ -35,7 +35,7 @@ void main() {
       ),
     ]);
     await expectLater(
-      a.listJson(7, category: Category.shopping, tag: '신발'),
+      a.listJson('tok-secret-device', category: Category.shopping, tag: '신발'),
       throwsA(isA<ApiException>()), // 가짜 서버는 목록 경로를 모른다(404)
     );
 
@@ -51,7 +51,9 @@ void main() {
       '신발',
       'SHOPPING',
       '?',
-      'X-Device-Id',
+      'tok-secret-device', // 기기 토큰
+      'Authorization',
+      'Bearer',
     ]) {
       expect(all, isNot(contains(secret)), reason: secret);
     }
