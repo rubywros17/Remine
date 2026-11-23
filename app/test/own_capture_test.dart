@@ -196,7 +196,8 @@ void main() {
           texts: {'own': '우리 앱 화면', 'other': '글자 ' * 60, 'chrome': '글자 ' * 60},
           foreground: log,
         );
-        // 규칙이 생기기 전에 보냈던 기록
+        // 규칙이 생기기 전에 보냈던 기록(이미 등록된 기기)
+        await rig.state.setDeviceToken('tok-7');
         await rig.state.putEntry(
           const SyncEntry(
             assetId: 'own',
@@ -288,6 +289,7 @@ void main() {
         photoLimit: 3,
         log: logs.add,
       );
+      await rig.state.setDeviceToken('tok-7'); // 이미 등록된 기기
       for (final id in ['i0', 'i1']) {
         await rig.state.putEntry(
           SyncEntry(assetId: id, modifiedAt: 1, status: SyncStatusCode.synced),
