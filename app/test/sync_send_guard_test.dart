@@ -291,6 +291,49 @@ void main() {
       expect(printed.join('\n'), isNot(contains('1234')));
     });
 
+    test('기기 토큰은 Authorization 헤더로만 가고 로그·본문·주소에는 없다', () async {
+      const token = 'tokSECRETdevice_0123456789abcdefghijklmnop';
+      final printed = <String>[];
+      late final RecordingClient client;
+      client = RecordingClient(
+        responder: (r) => r.path == '/api/devices'
+            ? jsonResponse({'token': token})
+            : client.defaultFor(r),
+      );
+      await runZoned(
+        () async {
+          rig = await SyncRig.create(
+            photos: photosNamed({'p1': 'a.jpg'}),
+            texts: {'p1': _longText},
+            client: client,
+            log: print, // 디버그 빌드처럼 api·동기화 로그를 켠다
+          );
+          await rig.sync.run();
+          await rig.repository.interests();
+        },
+        zoneSpecification: ZoneSpecification(
+          print: (self, parent, zone, line) => printed.add(line),
+        ),
+      );
+
+      expect(printed, isNotEmpty);
+      expect(printed.join('\n'), isNot(contains(token)));
+      final authed = client.sent.where((r) => r.deviceToken != null).toList();
+      expect(
+        authed.map((r) => r.path),
+        containsAll(['/api/screenshots/analyze', '/api/interests']),
+      );
+      expect(authed.map((r) => r.deviceToken).toSet(), {token});
+      for (final r in client.sent) {
+        final others = Map.of(r.headers)..remove('Authorization');
+        expect(
+          '${r.path} ${r.query} ${others.values.join()} ${r.text}',
+          isNot(contains(token)),
+          reason: r.path,
+        );
+      }
+    });
+
     test('실패해도 예외 메시지에 요청 내용이 없다', () {
       expect(
         const ApiException(ApiFailure.rejected, 400).toString(),

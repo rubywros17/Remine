@@ -228,7 +228,7 @@ void main() {
       rig.client.sent.where((r) => r.path == '/api/devices'),
       hasLength(1),
     );
-    expect(await rig.state.deviceId(), 7);
+    expect(await rig.state.deviceToken(), 'tok-7');
   });
 
   group('남은 시간 표시', () {

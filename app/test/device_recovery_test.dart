@@ -15,7 +15,7 @@ import 'support/fake_push.dart';
 import 'support/fake_remote.dart';
 import 'support/real_io.dart';
 
-/// 서버 재시작(H2 초기화) 재현: 서버가 아는 기기만 받고, 모르는 기기 id는 전부 404 DEVICE_NOT_FOUND.
+/// 서버 재시작(DB 초기화) 재현: 서버가 아는 기기만 받고, 모르는 기기 토큰은 전부 401 DEVICE_UNAUTHORIZED.
 class RestartableServer {
   RestartableServer() {
     client = RecordingClient(responder: _respond);
@@ -38,11 +38,11 @@ class RestartableServer {
     if (r.method == 'POST' && r.path == '/api/devices') {
       final id = _nextId++;
       known.add(id);
-      return jsonResponse({'deviceId': id});
+      return jsonResponse({'token': 'tok-$id'});
     }
     final id = r.deviceId;
-    if (id != null && !known.contains(id)) {
-      return jsonResponse({'code': 'DEVICE_NOT_FOUND'}, 404);
+    if (r.deviceToken != null && (id == null || !known.contains(id))) {
+      return jsonResponse({'code': 'DEVICE_UNAUTHORIZED'}, 401);
     }
     if (r.method == 'GET' &&
         {
@@ -82,7 +82,7 @@ void main() {
       );
       await rig.settings.setNotificationsEnabled(true);
       await rig.sync.run();
-      expect(await rig.state.deviceId(), 7);
+      expect(await rig.state.deviceToken(), 'tok-7');
       expect((await rig.state.entry('p0'))?.status, SyncStatusCode.synced);
 
       server.restart();
@@ -101,7 +101,7 @@ void main() {
 
       final after = rig.client.sent.skip(before).toList();
       expect(server.registrations, 2, reason: '재시작 뒤 재등록은 한 번');
-      expect(await rig.state.deviceId(), 8);
+      expect(await rig.state.deviceToken(), 'tok-8');
       expect(rig.status.issue, SyncIssue.none);
       // 원래 요청들은 404 한 번 뒤 새 id(8)로 한 번씩 다시 갔다
       for (final path in [
@@ -133,12 +133,12 @@ void main() {
       texts: {'p0': '캡처 글자'},
       client: server.client,
     );
-    await rig.state.setDeviceId(99); // 서버가 모르는 옛 id
+    await rig.state.setDeviceToken('tok-99'); // 서버가 모르는 옛 id
 
     await rig.sync.run();
 
     expect(server.registrations, 1);
-    expect(await rig.state.deviceId(), 7);
+    expect(await rig.state.deviceToken(), 'tok-7');
     expect((await rig.state.entry('p0'))?.status, SyncStatusCode.synced);
     expect(rig.status.issue, SyncIssue.none);
   });
@@ -190,10 +190,10 @@ void main() {
     final api = RemineApi('http://localhost:8080', client);
 
     final calls = [
-      api.interestsJson(7),
-      api.interestsJson(7),
-      api.interestsJson(7),
-      api.summaryJson(7), // 다른 경로는 따로
+      api.interestsJson('tok-7'),
+      api.interestsJson('tok-7'),
+      api.interestsJson('tok-7'),
+      api.summaryJson('tok-7'), // 다른 경로는 따로
     ];
     gate.complete();
     await Future.wait(calls);
@@ -201,7 +201,7 @@ void main() {
     expect(client.sent.where((r) => r.path == '/api/interests'), hasLength(1));
     expect(client.sent, hasLength(2));
 
-    await api.interestsJson(7); // 끝난 뒤에는 다시 보낸다
+    await api.interestsJson('tok-7'); // 끝난 뒤에는 다시 보낸다
     expect(client.sent.where((r) => r.path == '/api/interests'), hasLength(2));
   });
 

@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:remine/app.dart';
@@ -377,7 +376,7 @@ void main() {
       expect(out.listSync(), isEmpty);
     });
   });
-  group('디버그 측정 화면의 서버 기기 id', () {
+  group('디버그 측정 화면의 서버 기기', () {
     Future<void> pump(WidgetTester tester, DeviceServices services) async {
       await tester.pumpWidget(
         MaterialApp(home: DebugOcrScreen(services: services)),
@@ -385,41 +384,22 @@ void main() {
       await tester.pumpAndSettle();
     }
 
-    testWidgets('등록된 id를 보여 주고 길게 누르면 복사한다', (tester) async {
+    testWidgets('등록 여부만 보여 주고 기기 토큰은 화면에 없다', (tester) async {
       final rig = await tester.runAsync(() => SyncRig.create(photos: const []));
-      await rig!.state.setDeviceId(42);
-      String? copied;
-      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        (call) async {
-          if (call.method == 'Clipboard.setData') {
-            copied = (call.arguments as Map)['text'] as String?;
-          }
-          return null;
-        },
-      );
-      addTearDown(
-        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-          SystemChannels.platform,
-          null,
-        ),
-      );
+      await rig!.state.setDeviceToken('tok-secret-42');
 
       await pump(tester, fakeServices(FakeGalleryReader(), remote: rig.remote));
-      expect(find.text('서버 기기 id: 42'), findsOneWidget);
-
-      await tester.longPress(find.text('서버 기기 id: 42'));
-      await tester.pumpAndSettle();
-      expect(copied, '42');
+      expect(find.text('서버 기기: 등록됨'), findsOneWidget);
+      expect(find.textContaining('tok-secret-42'), findsNothing);
     });
 
-    testWidgets('등록 전이면 없다고 알려 준다', (tester) async {
+    testWidgets('등록 전이면 아직이라고 알려 준다', (tester) async {
       final rig = await tester.runAsync(() => SyncRig.create(photos: const []));
       await pump(
         tester,
         fakeServices(FakeGalleryReader(), remote: rig!.remote),
       );
-      expect(find.text('서버 기기 id: 없음(아직 등록 전)'), findsOneWidget);
+      expect(find.text('서버 기기: 아직 등록 전'), findsOneWidget);
     });
 
     testWidgets('서버 연동이 없으면 그렇다고 알려 준다', (tester) async {

@@ -217,7 +217,7 @@ void main() {
     final rig = (await tester.runAsync(
       () => SyncRig.create(photos: const []),
     ))!;
-    await rig.state.setDeviceId(7);
+    await rig.state.setDeviceToken('tok-7');
     rig.client.olderRemaining = 77;
     final s = _settings(remaining: 120);
 

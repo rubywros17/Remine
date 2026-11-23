@@ -327,7 +327,7 @@ void main() {
       await rig.sync.run();
       expect(rig.client.analyzeCalls, isNotEmpty);
       await rig.state.clear(); // 서버가 기기를 잊음 → 전송 기록 비움
-      await rig.state.setDeviceId(7);
+      await rig.state.setDeviceToken('tok-7');
       final before = rig.client.analyzeCalls.length;
 
       await rig.sync.run();

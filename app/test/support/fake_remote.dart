@@ -39,8 +39,15 @@ class SentRequest {
   final Uint8List body;
   final Map<String, String> headers;
 
-  /// `X-Device-Id` 헤더(없으면 null).
-  int? get deviceId => int.tryParse(headers['X-Device-Id'] ?? '');
+  /// `Authorization: Bearer <토큰>`의 토큰(없으면 null).
+  String? get deviceToken {
+    final h = headers['Authorization'];
+    return h != null && h.startsWith('Bearer ') ? h.substring(7) : null;
+  }
+
+  /// 가짜 서버가 준 토큰 `tok-N`의 N(테스트에서 기기를 숫자로 비교하려고). 토큰이 없으면 null.
+  int? get deviceId =>
+      int.tryParse(deviceToken?.replaceFirst('tok-', '') ?? '');
 
   /// 바이너리가 섞여 있어도 글자 검사를 할 수 있게 latin1로 푼 본문.
   String get text => latin1.decode(body);
@@ -104,7 +111,7 @@ class RecordingClient extends http.BaseClient {
   http.StreamedResponse defaultFor(SentRequest r) {
     switch ('${r.method} ${r.path}') {
       case 'POST /api/devices':
-        return jsonResponse({'deviceId': 7});
+        return jsonResponse({'token': 'tok-7'});
       case 'PUT /api/devices/me/fcm-token':
       case 'DELETE /api/devices/me/fcm-token':
       case 'POST /api/screenshots/forget':
