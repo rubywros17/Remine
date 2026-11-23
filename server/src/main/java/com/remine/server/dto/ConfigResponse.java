@@ -6,7 +6,7 @@ import java.time.OffsetDateTime;
 
 /**
  * 앱이 알아야 하는 서버 정책값. 정책값은 모두 RemineProperties에서 읽는다.
- * olderRemainingToday·olderResetsAt은 기기별 값이라 X-Device-Id가 있을 때만 채우고, 없거나 모르는 기기면 null이다.
+ * olderRemainingToday·olderResetsAt은 기기별 값이라 기기 토큰이 맞을 때만 채우고, 없거나 틀리면 null이다.
  */
 public record ConfigResponse(
         int imageThresholdChars,

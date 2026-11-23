@@ -1,6 +1,6 @@
 package com.remine.server.controller;
 
-import com.remine.server.domain.device.Device;
+import com.remine.server.TestDevices;
 import com.remine.server.domain.device.DeviceRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -15,6 +15,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -28,29 +29,31 @@ class ErrorStatusLogFilterTest {
     @Autowired DeviceRepository deviceRepository;
 
     @Test
-    void 미등록_기기_404는_경로와_상태_코드만_남긴다(CapturedOutput output) throws Exception {
-        mvc.perform(get("/api/screenshots").param("tag", "비밀태그").header("X-Device-Id", 987_654))
-                .andExpect(status().isNotFound());
+    void 인증_실패_401은_경로와_상태_코드만_남긴다(CapturedOutput output) throws Exception {
+        String auth = TestDevices.auth(987_654);
+        mvc.perform(get("/api/screenshots").param("tag", "비밀태그").header("Authorization", auth))
+                .andExpect(status().isUnauthorized());
 
-        assertThat(output).contains("WARN").contains("GET /api/screenshots → 404");
-        assertThat(output.getOut()).doesNotContain("비밀태그").doesNotContain("987654").doesNotContain("tag=");
+        assertThat(output).contains("WARN").contains("GET /api/screenshots → 401");
+        assertThat(output.getOut()).doesNotContain("비밀태그").doesNotContain(auth.substring(7)).doesNotContain("tag=");
     }
 
     @Test
-    void 미등록_기기_404는_본문_code로_다른_404와_구분된다() throws Exception {
-        mvc.perform(get("/api/interests").header("X-Device-Id", 987_654))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("DEVICE_NOT_FOUND"));
-        mvc.perform(get("/api/no-such-path").header("X-Device-Id", 987_654))
+    void 인증_실패는_401과_본문_code로_다른_오류와_구분된다() throws Exception {
+        mvc.perform(get("/api/interests").header("Authorization", TestDevices.auth(987_654)))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().string("WWW-Authenticate", "Bearer"))
+                .andExpect(jsonPath("$.code").value("DEVICE_UNAUTHORIZED"));
+        mvc.perform(get("/api/no-such-path").header("Authorization", TestDevices.auth(987_654)))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").doesNotExist());
     }
 
     @Test
     void 검증_실패_400도_남기고_본문은_남기지_않는다(CapturedOutput output) throws Exception {
-        Long id = deviceRepository.save(new Device("token")).getId();
+        Long id = TestDevices.save(deviceRepository, "token");
 
-        mvc.perform(post("/api/screenshots/analyze").header("X-Device-Id", id)
+        mvc.perform(post("/api/screenshots/analyze").header("Authorization", TestDevices.auth(id))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"screenshots\":[{\"ocrText\":\"OCR비밀원문\"}]}"))
                 .andExpect(status().isBadRequest());

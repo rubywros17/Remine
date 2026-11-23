@@ -204,8 +204,8 @@ public class ScreenshotService {
 
         long endedNanos = System.nanoTime();
         meter.recordRequest(startedNanos, endedNanos);
-        log.info("analyze deviceId={} requested={} analyzed={} skipped={} failed={} older={} olderOverLimit={} elapsedMs={}",
-                deviceId, requested, analyzed.size(), skipped.size(), failed.size(), older.size(), overLimit.size(),
+        log.info("analyze requested={} analyzed={} skipped={} failed={} older={} olderOverLimit={} elapsedMs={}",
+                requested, analyzed.size(), skipped.size(), failed.size(), older.size(), overLimit.size(),
                 (endedNanos - startedNanos) / 1_000_000);
         if (stats.received > 0) {
             // 이미지 관련 로그는 건수·바이트 수·사유 코드만. 이미지 내용은 남기지 않는다.

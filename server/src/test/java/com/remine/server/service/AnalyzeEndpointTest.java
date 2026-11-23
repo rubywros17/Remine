@@ -1,6 +1,6 @@
 package com.remine.server.service;
 
-import com.remine.server.domain.device.Device;
+import com.remine.server.TestDevices;
 import com.remine.server.domain.device.DeviceRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -35,7 +35,7 @@ class AnalyzeEndpointTest {
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(context).build();
-        deviceId = deviceRepository.save(new Device("token")).getId();
+        deviceId = TestDevices.save(deviceRepository, "token");
     }
 
     private static String body(int count) {
@@ -50,7 +50,7 @@ class AnalyzeEndpointTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json.getBytes(StandardCharsets.UTF_8));
         if (deviceHeader != null) {
-            request.header("X-Device-Id", deviceHeader);
+            request.header("Authorization", TestDevices.auth(deviceHeader));
         }
         MockHttpServletResponse response = mockMvc.perform(request).andReturn().getResponse();
         response.setCharacterEncoding("UTF-8");
@@ -82,8 +82,8 @@ class AnalyzeEndpointTest {
     }
 
     @Test
-    void 헤더가_없으면_400_미등록_기기는_404() throws Exception {
-        assertThat(send(body(1), null).getStatus()).isEqualTo(400);
-        assertThat(send(body(1), "999999").getStatus()).isEqualTo(404);
+    void 토큰이_없거나_모르는_토큰이면_401() throws Exception {
+        assertThat(send(body(1), null).getStatus()).isEqualTo(401);
+        assertThat(send(body(1), "999999").getStatus()).isEqualTo(401);
     }
 }

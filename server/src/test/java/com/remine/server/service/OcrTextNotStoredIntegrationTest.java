@@ -1,6 +1,6 @@
 package com.remine.server.service;
 
-import com.remine.server.domain.device.Device;
+import com.remine.server.TestDevices;
 import com.remine.server.domain.device.DeviceRepository;
 import com.remine.server.domain.screenshot.Category;
 import com.remine.server.domain.screenshot.Screenshot;
@@ -42,7 +42,7 @@ class OcrTextNotStoredIntegrationTest {
 
     @Test
     void 분석해도_저장된_행에_원문이_없다() {
-        Long deviceId = deviceRepository.save(new Device("ocr")).getId();
+        Long deviceId = TestDevices.save(deviceRepository, "ocr");
         analyzeService.analyze(deviceId, new AnalyzeRequest(List.of(new Item("a1", LocalDateTime.of(2026, 10, 19, 12, 0), "앱", OCR))));
         Screenshot s = screenshotRepository.findByDeviceAndLocalAssetIds(deviceId, List.of("a1")).get(0);
         assertThat(s.getCategory()).isEqualTo(Category.SHOPPING); // 원문은 분류에는 쓰였다

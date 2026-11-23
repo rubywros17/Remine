@@ -1,9 +1,9 @@
 package com.remine.server.service;
 
+import com.remine.server.TestDevices;
 import com.remine.server.classifier.ClassificationException;
 import com.remine.server.classifier.ClassificationResult;
 import com.remine.server.classifier.Classifier;
-import com.remine.server.domain.device.Device;
 import com.remine.server.domain.device.DeviceRepository;
 import com.remine.server.domain.screenshot.Category;
 import com.remine.server.domain.screenshot.Screenshot;
@@ -88,7 +88,7 @@ class AnalyzeIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        deviceId = deviceRepository.save(new Device("token")).getId();
+        deviceId = TestDevices.save(deviceRepository, "token");
         classifier.transactionActive.clear();
         classifier.rowCountsDuringClassify.clear();
         classifier.failing = true;

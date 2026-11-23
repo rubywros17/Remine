@@ -1,5 +1,6 @@
 package com.remine.server.controller;
 
+import com.remine.server.auth.CurrentDevice;
 import com.remine.server.push.PushSender;
 import com.remine.server.service.InterestPushService;
 import jakarta.validation.constraints.Max;
@@ -7,7 +8,6 @@ import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Profile;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -31,7 +31,7 @@ public class DevPushController {
     private final InterestPushService pushService;
 
     @PostMapping("/push-test")
-    public Map<String, PushSender.Result> pushTest(@RequestHeader("X-Device-Id") Long deviceId,
+    public Map<String, PushSender.Result> pushTest(@CurrentDevice Long deviceId,
                                                    @RequestParam(defaultValue = "0") @Min(0) @Max(10) int delaySeconds)
             throws InterruptedException {
         // ponytail: 요청 스레드를 재운다(dev 전용·1건이라 충분). 운영 기능이 되면 스케줄러로.

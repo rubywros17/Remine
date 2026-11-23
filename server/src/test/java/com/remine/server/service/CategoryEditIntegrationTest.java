@@ -1,6 +1,6 @@
 package com.remine.server.service;
 
-import com.remine.server.domain.device.Device;
+import com.remine.server.TestDevices;
 import com.remine.server.domain.device.DeviceRepository;
 import com.remine.server.domain.screenshot.Category;
 import com.remine.server.domain.screenshot.CategorySource;
@@ -59,8 +59,8 @@ class CategoryEditIntegrationTest {
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.webAppContextSetup(context).build();
-        deviceId = deviceRepository.save(new Device("a")).getId();
-        otherDeviceId = deviceRepository.save(new Device("b")).getId();
+        deviceId = TestDevices.save(deviceRepository, "a");
+        otherDeviceId = TestDevices.save(deviceRepository, "b");
     }
 
     private Screenshot analyze(Long device, String assetId, String ocr) {
@@ -72,7 +72,7 @@ class CategoryEditIntegrationTest {
         var request = patch("/api/screenshots/{id}/category", id)
                 .contentType(MediaType.APPLICATION_JSON).content(body.getBytes(StandardCharsets.UTF_8));
         if (deviceHeader != null) {
-            request.header("X-Device-Id", String.valueOf(deviceHeader));
+            request.header("Authorization", TestDevices.auth(String.valueOf(deviceHeader)));
         }
         MockHttpServletResponse response = mockMvc.perform(request).andReturn().getResponse();
         response.setCharacterEncoding("UTF-8");
@@ -111,7 +111,7 @@ class CategoryEditIntegrationTest {
         patchCategory(otherDeviceId, others.getId(), "{\"category\":\"ETC\"}");
 
         MockHttpServletResponse response = mockMvc.perform(
-                get("/api/categories/accuracy").header("X-Device-Id", deviceId)).andReturn().getResponse();
+                get("/api/categories/accuracy").header("Authorization", TestDevices.auth(deviceId))).andReturn().getResponse();
 
         assertThat(response.getStatus()).isEqualTo(200);
         JsonNode body = json(response);
@@ -122,8 +122,8 @@ class CategoryEditIntegrationTest {
         assertThat(body.path("reviewedAccuracy").asDouble()).isEqualTo(0.5);
         assertThat(body.path("confusions")).hasSize(1);
         assertThat(body.path("confusions").get(0).path("to").asString()).isEqualTo("INFO");
-        assertThat(mockMvc.perform(get("/api/categories/accuracy").header("X-Device-Id", 987654321L))
-                .andReturn().getResponse().getStatus()).isEqualTo(404);
+        assertThat(mockMvc.perform(get("/api/categories/accuracy").header("Authorization", TestDevices.auth(987654321L)))
+                .andReturn().getResponse().getStatus()).isEqualTo(401);
     }
 
     @Test
@@ -194,11 +194,11 @@ class CategoryEditIntegrationTest {
     }
 
     @Test
-    void 기기_헤더가_없으면_400_미등록_기기는_404() throws Exception {
+    void 기기_토큰이_없거나_모르는_토큰이면_401() throws Exception {
         Screenshot s = analyze(deviceId, "a1", "구매");
 
-        assertThat(patchCategory(null, s.getId(), "{\"category\":\"ETC\"}").getStatus()).isEqualTo(400);
-        assertThat(patchCategory(999999L, s.getId(), "{\"category\":\"ETC\"}").getStatus()).isEqualTo(404);
+        assertThat(patchCategory(null, s.getId(), "{\"category\":\"ETC\"}").getStatus()).isEqualTo(401);
+        assertThat(patchCategory(999999L, s.getId(), "{\"category\":\"ETC\"}").getStatus()).isEqualTo(401);
     }
 
     @Test
@@ -251,6 +251,6 @@ class CategoryEditIntegrationTest {
         assertThat(patchCategory(deviceId, s.getId(), "{\"category\":\"CHAT\"}").getStatus()).isEqualTo(200);
 
         // 기기 존재 확인 1 + 캡처 조회 1 + UPDATE 1
-        assertThat(statistics.getPrepareStatementCount()).isLessThanOrEqualTo(3);
+        assertThat(statistics.getPrepareStatementCount()).isLessThanOrEqualTo(4); // 토큰 확인 1 + 조회 + UPDATE
     }
 }
