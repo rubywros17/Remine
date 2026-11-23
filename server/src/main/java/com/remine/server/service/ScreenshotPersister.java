@@ -65,9 +65,9 @@ public class ScreenshotPersister {
             AnalyzeRequest.Item item = outcome.item();
             Screenshot screenshot = existing.get(item.localAssetId());
             if (screenshot == null) {
-                screenshot = new Screenshot(device, item.localAssetId(), item.takenAt(), item.sourceApp(), item.ocrText());
+                screenshot = new Screenshot(device, item.localAssetId(), item.takenAt(), item.sourceApp());
             } else {
-                screenshot.refreshCapture(item.takenAt(), item.sourceApp(), item.ocrText());
+                screenshot.refreshCapture(item.takenAt(), item.sourceApp());
             }
             if (!outcome.failed()) {
                 screenshot.applyAnalysis(outcome.result().category(), outcome.result().summary());

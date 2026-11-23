@@ -13,7 +13,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class ScreenshotCategoryTest {
 
     private Screenshot screenshot() {
-        return new Screenshot(new Device("t"), "a1", LocalDateTime.now(), "앱", "글");
+        return new Screenshot(new Device("t"), "a1", LocalDateTime.now(), "앱");
     }
 
     @Test

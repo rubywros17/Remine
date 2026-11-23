@@ -12,7 +12,7 @@ import java.util.List;
 public record AnalyzeRequest(
         @NotEmpty List<@Valid Item> screenshots) {
 
-    /** ocrText는 글자 없는 스크린샷이면 비어 있거나 null일 수 있다. */
+    /** ocrText는 글자 없는 스크린샷이면 비어 있거나 null일 수 있다. 분류에만 쓰고 서버에 저장하지 않는다. */
     public record Item(
             @NotBlank String localAssetId,
             @NotNull LocalDateTime takenAt,

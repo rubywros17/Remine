@@ -46,8 +46,7 @@ public class Screenshot {
 
     private String sourceApp;
 
-    @Column(columnDefinition = "TEXT")
-    private String ocrText;
+    // OCR 원문은 저장하지 않는다(데이터 최소화). 요청의 ocrText는 분류에만 쓰고 버린다(V6에서 컬럼 삭제).
 
     // 분석 전에는 null, 분석 후 채워진다.
     @Enumerated(EnumType.STRING)
@@ -69,19 +68,17 @@ public class Screenshot {
     private LocalDateTime trashedAt;
 
     public Screenshot(Device device, String localAssetId, LocalDateTime takenAt,
-                      String sourceApp, String ocrText) {
+                      String sourceApp) {
         this.device = device;
         this.localAssetId = localAssetId;
         this.takenAt = takenAt;
         this.sourceApp = sourceApp;
-        this.ocrText = ocrText;
     }
 
     /** 분석에 실패해 남은 행을 같은 캡처의 재전송으로 다시 분석할 때 최신 입력으로 갱신한다. */
-    public void refreshCapture(LocalDateTime takenAt, String sourceApp, String ocrText) {
+    public void refreshCapture(LocalDateTime takenAt, String sourceApp) {
         this.takenAt = takenAt;
         this.sourceApp = sourceApp;
-        this.ocrText = ocrText;
     }
 
     /**
