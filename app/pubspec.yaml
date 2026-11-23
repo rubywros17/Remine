@@ -33,6 +33,10 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
+  # 앱 시작 인트로의 re·mine 글자(앱 아이콘 1024px 원본에서 잘라 낸 흰 마스크, 코드에서 색을 입힌다)
+  assets:
+    - assets/intro/
+
   # 폰트는 둘 다 SIL OFL 1.1 (라이선스 원문은 assets/fonts/*-OFL.txt)
   fonts:
     - family: Pretendard
