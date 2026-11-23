@@ -33,7 +33,7 @@ class ScreenshotCategoryServiceTest {
     @InjectMocks ScreenshotCategoryService service;
 
     private Screenshot analyzed(Category auto) {
-        Screenshot s = new Screenshot(new Device("t"), "a1", LocalDateTime.now(), "앱", "글");
+        Screenshot s = new Screenshot(new Device("t"), "a1", LocalDateTime.now(), "앱");
         s.applyAnalysis(auto, "요약");
         return s;
     }
@@ -97,7 +97,7 @@ class ScreenshotCategoryServiceTest {
     @Test
     void 분석되지_않은_캡처는_수정할_수_없다() {
         when(deviceRepository.existsById(1L)).thenReturn(true);
-        Screenshot unanalyzed = new Screenshot(new Device("t"), "a1", LocalDateTime.now(), "앱", "글");
+        Screenshot unanalyzed = new Screenshot(new Device("t"), "a1", LocalDateTime.now(), "앱");
         when(screenshotRepository.findByIdAndDeviceId(5L, 1L)).thenReturn(Optional.of(unanalyzed));
 
         assertThatThrownBy(() -> service.updateCategory(1L, 5L, "ETC")).isInstanceOf(ScreenshotNotAnalyzedException.class);

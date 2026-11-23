@@ -205,7 +205,7 @@ class ScreenshotQueryServiceTest {
     }
 
     private Screenshot screenshot(Long id, String assetId) {
-        Screenshot s = new Screenshot(null, assetId, LocalDateTime.of(2026, 10, 14, 12, 0), null, "text");
+        Screenshot s = new Screenshot(null, assetId, LocalDateTime.of(2026, 10, 14, 12, 0), null);
         ReflectionTestUtils.setField(s, "id", id);
         return s;
     }

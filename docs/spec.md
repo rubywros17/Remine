@@ -135,7 +135,7 @@
 - **앱 휴지통**: 스와이프는 앱 DB(`trash` 표)에 남기고 갤러리 원본은 건드리지 않는다. 앱을 다시 켜도 유지되고 목록·카테고리 개수·최신 썸네일에서 빠진다. 설정 > 휴지통에서 되살릴 수 있다.
 - **서버 반영**: 서버 캡처는 `POST /api/screenshots/trash`·`/restore`로 알려 관심사 집계·푸시에서 뺀다(행과 태그는 유지, 목록·요약은 앱이 직접 뺀다). 실패하면 앱 대기열에 남아 다음 동기화 때 다시 보낸다. 기기에서만 분류한 캡처는 asset id도 보내지 않는다.
 - **갤러리에서 삭제**(Android 11+): 설정 > 휴지통에서 고른 장 또는 전체를 `MediaStore.createTrashRequest`로 시스템 확인창 한 번에 갤러리 휴지통으로 옮긴다(약 30일 뒤 시스템이 삭제). 허용한 장만 앱 기록과 서버 데이터(`forget`)를 지우고, 취소하면 아무것도 바뀌지 않는다. Android 10 이하는 버튼을 숨기고 앱 휴지통만 제공한다. 새 권한은 필요 없다.
-- 개인정보: 휴지통으로 옮기는 것은 서버 전송과 무관하다. 서버 삭제가 생기면 "저장하는 항목(OCR 텍스트·카테고리·태그·요약)"의 삭제 방식을 처리방침에 명시한다.
+- 개인정보: 휴지통으로 옮기는 것은 서버 전송과 무관하다. 서버 삭제가 생기면 "저장하는 항목(카테고리·태그·요약·메타데이터)"의 삭제 방식을 처리방침에 명시한다.
 
 ### ⏳ MVP 이후
 
@@ -199,7 +199,7 @@
 ### 개인정보 원칙
 > **민감한 캡처는 기기를 떠나지 않고, 분석용 이미지는 동의한 경우에만 보내며 서버에 저장하지 않는다.**
 
-- 서버가 저장하는 것은 OCR 텍스트, 카테고리, 태그, 요약, 메타데이터뿐이다. **이미지는 저장하지 않는다.**
+- 서버가 저장하는 것은 카테고리, 태그, 요약, 메타데이터뿐이다. **OCR 원문과 이미지는 저장하지 않는다**(원문은 분류 요청 처리 중 LLM 입력으로만 쓰고 버린다. 예전에 저장하던 `ocr_text` 컬럼은 V6에서 삭제).
 - 원본 이미지는 기기에만 있고, 서버로 가는 이미지는 분석용으로 줄인 축소본(긴 변 1024px)이다.
 
 ### 안전장치
@@ -219,7 +219,7 @@
 | 테이블 | 주요 컬럼 |
 |---|---|
 | `device` | id, fcm_token(nullable — 못 받았거나 FCM이 해제했으면 null), created_at |
-| `screenshot` | id, device_id, local_asset_id, taken_at, source_app, ocr_text, auto_category(모델 최초 값, 불변), category(현재 값), category_source(AUTO/USER), summary, analyzed_at |
+| `screenshot` | id, device_id, local_asset_id, taken_at, source_app, auto_category(모델 최초 값, 불변), category(현재 값), category_source(AUTO/USER), summary, analyzed_at |
 | `tag` | id, name(표시용, 처음 표기), normalized_name(unique, `#`·공백·대소문자 무시한 키) |
 | `screenshot_tag` | id, screenshot_id, tag_id (unique: screenshot_id + tag_id) |
 | `interest_alert` | id, device_id, tag_id, category(집계 당시 대표 카테고리), capture_count, week_start(그 주 월요일), status(PENDING/SENT/EXPIRED), created_at, sent_at (unique: device_id + week_start). 문구는 발송 때 만든다 |
