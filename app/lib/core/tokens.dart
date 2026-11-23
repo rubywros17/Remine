@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 
 import '../models/category.dart';
 
@@ -643,6 +644,21 @@ abstract final class AppMotion {
   static const barsDelay = Duration(milliseconds: 390);
   static const barsGrow = Duration(milliseconds: 750);
 
+  /// 앱 시작 인트로(콜드 스타트 1번). 시각은 시작부터 잰 ms.
+  /// 0 모서리 → [introFlashMs] 찰칵 → 모임 → 로고 → 유지 → [introRevealStartMs]부터 원으로 열기.
+  static const introFlashMs = 300;
+  static const introFlashFadeMs = 200; // 흰 오버레이가 사라지는 시간
+  static const double introFlashOpacity = 0.22;
+  static const introGatherStartMs = 500;
+  static const introGatherEndMs = 1300;
+  static const Curve introGather = Curves.easeInOutCubic;
+  static const introLogoEndMs = 1600; // 로고는 모임이 끝난 뒤 ~ 여기까지 나타난다
+  static const introDotPopMs = 200; // 콜론 점 하나가 튀어나오는 시간(둘째 점은 100ms 뒤)
+  static const introRevealStartMs = 2300; // 탭하면 여기로 건너뛴다
+  static const introFadeOutMs = 300; // 열리기 시작하면 모서리·로고가 사라지는 시간
+  static const introTotalMs = 3100;
+  static const introTotal = Duration(milliseconds: introTotalMs);
+
   /// 시트·눌림 반응용 스프링.
   static const spring = SpringDescription(mass: 1, stiffness: 300, damping: 22);
 
@@ -651,6 +667,44 @@ abstract final class AppMotion {
 
   static Duration duration(BuildContext context, MotionDuration d) =>
       reduced(context) ? Duration.zero : _durations[d]!;
+}
+
+/// 앱 시작 인트로 색. 앱 아이콘(android/app/src/{main,debug}/res)과 같은 값이라
+/// 디버그 빌드(Dev 앱)는 Dev 아이콘 색: 검정 바탕 · 셀라돈 모서리·mine · 레몬 콜론.
+/// 바탕은 `ic_launcher_background`(시스템 스플래시도 이 색)와 같아야 끊김 없이 이어진다.
+abstract final class IntroColors {
+  static const background = kDebugMode ? Color(0xFF111111) : AppColors.darkGray;
+  static const frame = kDebugMode ? AppColors.celadon : AppColors.lemon;
+  static const colon = kDebugMode ? AppColors.lemon : AppColors.celadon;
+  static const re = AppColors.white;
+  static const mine = frame;
+  static const flash = AppColors.white;
+}
+
+/// 앱 시작 인트로 모양. 앱 아이콘(1024px 원본, 보이는 영역 = 적응형 아이콘 72dp)에서 잰 값이라
+/// 단위는 "아이콘 한 변 = 1024". 화면에서는 프레임 폭이 [frameShare]·[frameMax] 중 작은 값이 되게 줄인다.
+abstract final class IntroGeometry {
+  static const double icon = 1024;
+  static const double frameShare = 0.4; // 화면 폭의 40%
+  static const double frameMax = 180; // dp
+  static const double startInset = 18; // 처음 모서리: 안전 영역 가장자리에서 띄우는 dp
+
+  static const double frameLeft = 150; // 프레임 바깥 가장자리(위·왼쪽 같음)
+  static const double frame = 724; // 프레임 바깥 한 변
+  static const double arm = 204; // 모서리 한 조각의 한 변(바깥 가장자리 ~ 둥근 끝)
+  static const double stroke = 48;
+  static const double radius = 100; // 바깥 둥글기
+
+  static const re = Rect.fromLTWH(
+    318,
+    407,
+    277,
+    169,
+  ); // assets/intro/re.png 크기 그대로
+  static const mine = Rect.fromLTWH(368, 656, 292, 90); // assets/intro/mine.png
+  static const double dotRadius = 43.5;
+  static const dotTop = Offset(684, 379.5);
+  static const dotBottom = Offset(684, 527);
 }
 
 /// 첫 분석 화면의 카드 스테이지·서랍 칸. 카드 한 장: 등장 → 이름표 → 멈춤 → 칸으로 쏙.

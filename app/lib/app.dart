@@ -20,6 +20,7 @@ import 'screens/older_range_screen.dart';
 import 'screens/permission_gate.dart';
 import 'screens/shell_screen.dart';
 import 'screens/sync_gate.dart';
+import 'widgets/app_intro.dart';
 
 /// 앱 루트. 3주차에 서버 연동 때는 [repository]만 API 구현으로 바꿔 넣으면 된다.
 class RemineApp extends StatefulWidget {
@@ -29,6 +30,7 @@ class RemineApp extends StatefulWidget {
     this.now,
     this.startScreen = '',
     this.device,
+    this.intro = false,
   });
 
   /// 지정하지 않으면 가짜 저장소.
@@ -43,6 +45,9 @@ class RemineApp extends StatefulWidget {
   /// 기기 모드(`--dart-define=DATA=device`)의 갤러리·OCR 서비스. null이면 가짜 데이터 모드(크롬·테스트).
   /// 기기 모드에서는 사진 권한을 먼저 확인한다. 화면의 목록 데이터는 서버 분류가 붙는 3주차 전까지 가짜 저장소다.
   final DeviceServices? device;
+
+  /// 앱 시작 인트로([AppIntro]). main에서만 켠다(테스트는 기본 꺼짐).
+  final bool intro;
 
   @override
   State<RemineApp> createState() => _RemineAppState();
@@ -175,9 +180,12 @@ class _RemineAppState extends State<RemineApp> {
                         ),
                 ),
               ),
-        builder: device == null
-            ? null
-            : (context, child) => DeviceScope(services: device, child: child!),
+        builder: (context, child) {
+          final app = device == null
+              ? child!
+              : DeviceScope(services: device, child: child!);
+          return widget.intro ? AppIntro(child: app) : app;
+        },
       ),
     );
   }

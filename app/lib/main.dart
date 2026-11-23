@@ -66,6 +66,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(
     RemineApp(
+      intro: true, // 콜드 스타트 인트로(백그라운드에서 돌아올 땐 안 나옴)
       // 개발용 시작 화면: flutter run --dart-define=START_SCREEN=analysis
       startScreen: const String.fromEnvironment('START_SCREEN'),
       device: _dataMode == 'device' ? await _deviceServices() : null,
