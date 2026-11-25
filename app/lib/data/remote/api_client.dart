@@ -302,20 +302,6 @@ class RemineApi {
     return json['token'] as String;
   }
 
-  /// [임시] POST /api/devices/legacy-claim: 토큰 도입 전에 등록한 기기가 기존 기록을 이어 갈 토큰을 한 번 받는다.
-  /// 서버가 거절하거나(403) 창구가 닫혔으면(404) null → 새로 등록한다. 닿지 못하면 [ApiException](다음에 다시).
-  Future<String?> claimLegacyDevice(int legacyId, String? fcmToken) async {
-    final request = http.Request('POST', _uri('/api/devices/legacy-claim'))
-      ..headers['Content-Type'] = 'application/json'
-      ..body = jsonEncode({'deviceId': legacyId, 'fcmToken': fcmToken});
-    try {
-      return (await _send(request))['token'] as String;
-    } on ApiException catch (e) {
-      if (e.failure == ApiFailure.rejected) return null;
-      rethrow;
-    }
-  }
-
   /// PUT /api/devices/me/fcm-token. 앱 시작 때·FCM이 토큰을 바꿀 때.
   Future<void> updateFcmToken(String deviceToken, String fcmToken) =>
       _withDevice(

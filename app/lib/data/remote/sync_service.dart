@@ -179,18 +179,21 @@ class SyncService {
     }
   }
 
+  /// 새로 등록하고 서버에 있다고 믿던 전송 기록을 버린다. 동시에 여러 번 불려도 등록은 한 번.
+  Future<String> _registerFresh() => _reregistering ??= () async {
+    final token = await api.registerDevice(await _tokenForRegister());
+    await state.clear();
+    await state.setDeviceToken(token);
+    await settings.setOlderCursor(null); // 전송 기록을 비웠으니 예전 스크린샷도 처음부터 다시 본다
+    await trash?.resendAll(); // 새 기기에는 휴지통 표시가 없다. 이번 실행의 재전송 뒤에 다시 알린다
+    return token;
+  }().whenComplete(() => _reregistering = null);
+
   /// 서버가 이 기기를 모를 때 [RemineApi]가 부른다(동시 요청이 여럿이어도 한 번).
   /// 새로 등록하고, 서버에 있다고 믿던 전송 기록을 버린 뒤 전체 재전송을 예약한다.
   Future<String> _recoverDevice() async {
     log?.call('[sync] 서버가 기기를 모름 → 재등록');
-    final token = await (_reregistering = () async {
-      final token = await api.registerDevice(await _tokenForRegister());
-      await state.clear();
-      await state.setDeviceToken(token);
-      await settings.setOlderCursor(null); // 전송 기록을 비웠으니 예전 스크린샷도 처음부터 다시 본다
-      await trash?.resendAll(); // 새 기기에는 휴지통 표시가 없다. 이번 실행의 재전송 뒤에 다시 알린다
-      return token;
-    }().whenComplete(() => _reregistering = null));
+    final token = await _registerFresh();
     if (_inFlight != null) {
       _again = true; // 돌고 있던 실행(수동이어도)이 끝나면 한 번 더
     } else if (autoSync) {
@@ -730,21 +733,9 @@ class SyncService {
     if (pending != null) return pending;
     final saved = await state.deviceToken();
     if (saved != null) return saved;
-    // [임시] 토큰 도입 전에 등록한 기기: 이전 창구로 기존 기록을 이어 간다. 거절되면 새 기기로 다시 시작한다.
-    final legacy = await state.legacyDeviceId();
-    if (legacy != null) {
-      final claimed = await api.claimLegacyDevice(
-        legacy,
-        await _tokenForRegister(),
-      );
-      log?.call('[sync] 기존 기기 이전 ${claimed != null ? '성공' : '거절 → 새로 등록'}');
-      if (claimed == null) return _recoverDevice();
-      await state.setDeviceToken(claimed);
-      return claimed;
-    }
-    final token = await api.registerDevice(await _tokenForRegister());
-    await state.setDeviceToken(token);
-    return token;
+    // 토큰이 없으면 서버에 이 기기의 기록도 없다: 남은 전송 기록(예전 앱·지워진 토큰)을 비우고 새로 등록한다.
+    // 실행을 시작하는 자리라 이번 실행이 비운 기록 기준으로 전부 보낸다(재실행 예약은 필요 없다).
+    return _registerFresh();
   }
 
   /// [quiet]면 진행 화면([status])에 알리지 않는다(첫 분석이 끝난 뒤 조용히 도는 예전 스크린샷).

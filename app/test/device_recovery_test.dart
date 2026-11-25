@@ -269,4 +269,33 @@ void main() {
       expect((await rig.state.entry('p0'))?.status, SyncStatusCode.synced);
     });
   });
+
+  test('전송 기록이 있는데 토큰이 없으면 기록을 비우고 새로 등록해 예전 캡처까지 다시 보낸다', () async {
+    final rig = await SyncRig.create(
+      photos: photosNamed({'p0': 'Screenshot_1.png', 'p1': 'Screenshot_2.png'}),
+      texts: {'p0': '첫 번째 캡처 글자', 'p1': '두 번째 캡처 글자'},
+      push: FakePushClient(),
+    );
+    // 예전 앱이 남긴 상태: p0은 보냈다고 기록돼 있지만 기기 토큰은 없다.
+    await rig.state.putEntry(
+      const SyncEntry(
+        assetId: 'p0',
+        modifiedAt: 1000,
+        status: SyncStatusCode.synced,
+      ),
+    );
+
+    await rig.sync.run();
+
+    final paths = rig.client.sent.map((r) => r.path);
+    expect(paths.where((p) => p == '/api/devices'), hasLength(1));
+    expect(paths.where((p) => p.contains('legacy')), isEmpty); // 이전 시도 없이 바로 등록
+    expect(await rig.state.deviceToken(), isNotNull);
+    final sent = rig.client.sent
+        .where((r) => r.path == '/api/screenshots/analyze')
+        .map((r) => r.utf8Text)
+        .join();
+    expect(sent, allOf(contains('"p0"'), contains('"p1"')));
+    expect((await rig.state.entry('p0'))?.status, SyncStatusCode.synced);
+  });
 }

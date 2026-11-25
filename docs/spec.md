@@ -248,7 +248,6 @@
 | Method | Path | 설명 |
 |---|---|---|
 | POST | `/api/devices` | 기기 등록 `{fcmToken}`(FCM 토큰은 없어도 됨 → 푸시만 안 감) → 201 `{token}`. 기기 인증 토큰(256비트, URL-safe Base64 43자)은 이 응답으로 **한 번만** 나가고 서버에는 SHA-256만 남는다. 숫자 기기 id는 응답에 없다 |
-| POST | `/api/devices/legacy-claim` | **[임시] 토큰 도입 전 기기 이전.** `{deviceId, fcmToken}` → 200 `{token}`. 허용 목록(`remine.legacy.ids`)·기한(`remine.legacy.until`)·저장된 FCM 토큰 일치·아직 토큰 없음을 모두 만족할 때 한 번만. 거절은 이유와 상관없이 403 `LEGACY_CLAIM_REJECTED`(로그에는 사유 코드만). 허용 목록이 비어 있으면 404(기본). 이전이 끝나면 지운다 |
 | PUT | `/api/devices/me/fcm-token` | FCM 토큰 갱신 `{fcmToken}`(빈 값 400) → 204. 알림을 켰을 때·토큰이 바뀔 때. 토큰 없음·틀림 401 |
 | DELETE | `/api/devices/me/fcm-token` | 알림 끄기 → 토큰 삭제, 204(이미 없어도 204). 토큰 없음·틀림 401 |
 | GET / DELETE | `/api/dev/metrics` | **dev 프로필 전용**(그 외 404). 서버 기동(또는 DELETE) 이후 누적 측정값 `{requests, llmCalls, llmItems, inputTokens, outputTokens, costUsd, costPerItemUsd, serverElapsedMs, maxRequestMs, wallElapsedMs}`. 비용은 유료 단가 환산. DELETE는 0으로 초기화(204) |
